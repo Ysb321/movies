@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // tree-shake barrel imports → smaller client bundles
     optimizePackageImports: ["framer-motion", "lenis"],
+    // Meta's React Compiler: auto-memoizes components at build time
+    reactCompiler: true,
   },
   async headers() {
     return [

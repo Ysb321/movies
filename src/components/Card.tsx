@@ -70,7 +70,7 @@ function Card({
     dwell.current = setTimeout(() => {
       const el = rootRef.current;
       if (el) setPreview(el.getBoundingClientRect());
-    }, 380);
+    }, 750);
   };
   const leave = () => {
     hoverRef.current = false;

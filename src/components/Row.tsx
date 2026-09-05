@@ -31,6 +31,7 @@ export default function Row({
   top10,
   loading,
   href,
+  action,
   progressItems,
   onRemove,
   onRequestMore,
@@ -42,6 +43,8 @@ export default function Row({
   top10?: boolean;
   loading?: boolean;
   href?: string;
+  /** optional element rendered next to the title (e.g. Clear All) */
+  action?: React.ReactNode;
   progressItems?: Map<number, ProgressItem>;
   onRemove?: (id: number) => void;
   /** called when the user scrolls near the end → parent appends items */
@@ -152,6 +155,7 @@ export default function Row({
         <span className="ml-1 hidden text-[11px] text-neutral-500 opacity-0 transition group-hover/row:opacity-100 md:inline">
           drag or ← → to browse
         </span>
+        {action}
       </div>
 
       <div className="relative">

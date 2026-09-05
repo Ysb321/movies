@@ -11,6 +11,9 @@ export default function Footer() {
           <Link href="/categories" className="hover:text-neutral-300">Categories</Link>
           <Link href="/my-list" className="hover:text-neutral-300">My List</Link>
         </div>
+        <p className="mb-2 text-[12px] font-semibold text-neutral-400">
+          Yetflix — crafted with 🍿 by <span className="text-neutral-200">Yashraj</span>
+        </p>
         <p className="leading-relaxed">
           This product uses the TMDB API but is not endorsed or certified by TMDB. Metadata and
           artwork © TMDB. Streaming player powered by{" "}

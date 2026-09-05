@@ -54,7 +54,8 @@ export default function ProfileGate() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-ink px-6">
       <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/60 to-transparent" />
-      <p className="mb-4 text-3xl font-semibold text-neutral-100 md:text-5xl">Who&rsquo;s watching?</p>
+      <p className="mb-1 text-3xl font-semibold text-neutral-100 md:text-5xl">Who&rsquo;s watching?</p>
+      <p className="mb-6 text-sm font-medium tracking-wide text-neutral-500">Yetflix · by Yashraj</p>
 
       <div className="flex flex-wrap items-start justify-center gap-5 md:gap-8">
         <AnimatePresence>

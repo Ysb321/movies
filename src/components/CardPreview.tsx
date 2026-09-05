@@ -56,7 +56,7 @@ export default function CardPreview({
 
   /* trailer after a short dwell inside the expanded card */
   useEffect(() => {
-    const t = setTimeout(() => setTrailerOn(true), 650);
+    const t = setTimeout(() => setTrailerOn(true), 1000);
     return () => clearTimeout(t);
   }, []);
 

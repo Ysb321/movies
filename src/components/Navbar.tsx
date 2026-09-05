@@ -56,8 +56,9 @@ export default function Navbar() {
       )}
     >
       <nav className="flex h-14 items-center gap-6 px-[4vw] md:h-[60px]">
-        <Link href="/home" className="shrink-0 text-2xl font-black tracking-tighter text-brand md:text-[26px]">
-          NETOUT
+        <Link href="/home" className="flex shrink-0 items-baseline gap-1.5">
+          <span className="text-2xl font-black tracking-tighter text-brand md:text-[26px]">YETFLIX</span>
+          <span className="hidden text-[11px] font-semibold tracking-wide text-neutral-400 sm:inline">by Yashraj</span>
         </Link>
 
         {/* desktop links */}
@@ -151,7 +152,7 @@ export default function Navbar() {
                   }}
                   className="block w-full px-4 py-1.5 text-left hover:underline"
                 >
-                  Sign out of NetOut
+                  Sign out of Yetflix
                 </button>
               </div>
             )}

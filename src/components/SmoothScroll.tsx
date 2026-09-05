@@ -9,6 +9,7 @@ export default function SmoothScroll({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (window.matchMedia("(pointer: coarse)").matches) return; // native touch scroll
 
     const lenis = new Lenis({
       lerp: 0.12,

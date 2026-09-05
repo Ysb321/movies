@@ -1,7 +1,9 @@
-# NetOut Clone — Netflix-style Streaming UI
+# Yetflix — by Yashraj 🍿
+
+> A Netflix-style streaming UI. Crafted by **Yashraj**.
 
 A high-performance, full-stack Netflix-style streaming app (inspired by
-[netout.pages.dev](https://netout.pages.dev/home)) built with **Next.js**,
+netflix.com / netout.pages.dev (inspiration)) built with **Next.js**,
 **Tailwind CSS**, **Framer Motion** and the **TMDB API**, streaming through the
 **[VidCore](https://vidcore.io)** embed player.
 

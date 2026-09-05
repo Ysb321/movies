@@ -11,7 +11,7 @@ import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { HOME_ROWS } from "@/lib/rows";
 import {
-  getProgress, onProgressChange,
+  getProgress, onProgressChange, removeProgress, clearProgress,
   getList, onListChange, getActiveProfile,
 } from "@/lib/storage";
 import type { ListItem, ProgressItem } from "@/lib/storage";
@@ -75,6 +75,15 @@ export default function HomePage() {
             items={cwItems as any}
             variant="backdrop"
             progressItems={cwMap}
+            onRemove={removeProgress}
+            action={
+              <button
+                onClick={() => clearProgress()}
+                className="ml-auto rounded-full border border-neutral-600 px-3 py-0.5 text-[11px] font-semibold text-neutral-400 transition hover:border-white hover:text-white"
+              >
+                Remove all
+              </button>
+            }
           />
         )}
         {listItems.length > 0 && <Row title="My List" items={listItems} />}

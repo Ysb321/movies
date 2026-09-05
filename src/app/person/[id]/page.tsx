@@ -122,7 +122,9 @@ export default function PersonPage() {
           <h2 className="mb-4 text-lg font-bold">Known For</h2>
           <div className="grid grid-cols-3 gap-x-2.5 gap-y-10 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
             {knownFor.map((m) => (
-              <Card key={`${m.media_type}-${m.id}`} item={m} variant="poster" className="w-full" />
+              <div key={`${m.media_type}-${m.id}`} className="cv-auto">
+                <Card item={m} variant="poster" className="w-full" />
+              </div>
             ))}
           </div>
         </div>

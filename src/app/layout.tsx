@@ -4,10 +4,12 @@ import SWRProvider from "@/components/SWRProvider";
 import SmoothScroll from "@/components/SmoothScroll";
 
 export const metadata: Metadata = {
-  title: { default: "NetOut — Watch Movies, TV Shows, Animes & Dramas", template: "%s · NetOut" },
+  title: { default: "Yetflix — by Yashraj · Watch Movies, TV Shows, Animes & Dramas", template: "%s · Yetflix" },
   description:
     "Watch movies, TV shows, anime and dramas online. Trending, Bollywood, Hollywood, Korean, Chinese and more — powered by TMDB.",
-  applicationName: "NetOut",
+  applicationName: "Yetflix",
+  authors: [{ name: "Yashraj" }],
+  creator: "Yashraj",
 };
 
 export const viewport: Viewport = {
