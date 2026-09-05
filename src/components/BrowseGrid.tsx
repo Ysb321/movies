@@ -93,7 +93,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
   return (
     <div className="px-[4vw] pb-10">
       <div className="mb-5 flex flex-wrap items-center gap-2 pt-24 md:pt-28">
-        <h1 className="mr-3 text-2xl font-bold md:text-3xl">{heading}</h1>
+        <h1 className="font-display mr-3 text-3xl tracking-wide md:text-5xl">{heading}</h1>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={activeGenre === undefined} onClick={() => setActiveGenre(undefined)}>
             All

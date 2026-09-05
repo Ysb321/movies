@@ -163,7 +163,7 @@ export function getCached(key: string) {
 function persistSnapshot(key: string, data: any) {
   if (data === undefined || data === null) return;
   memorySnapshots.set(key, data);
-  if (typeof window !== "undefined" && memorySnapshots.size < 400) {
+  if (typeof window !== "undefined" && memorySnapshots.size < 150) {
     try {
       localStorage.setItem(`tmdbcache:${key}`, JSON.stringify(data));
     } catch {

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import "@fontsource-variable/inter";
-import "@fontsource/anton/400.css";
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource/anton/latin-400.css";
+import "@fontsource/bebas-neue/latin-400.css";
 import "./globals.css";
 import SWRProvider from "@/components/SWRProvider";
 import ServiceWorker from "@/components/ServiceWorker";

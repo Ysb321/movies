@@ -96,7 +96,7 @@ export default function TitlePage() {
               />
             )}
             <div className="max-w-2xl pb-1">
-              <h1 className="font-display mb-2 text-3xl leading-tight tracking-wide drop-shadow-lg md:text-5xl">{title}</h1>
+              <h1 className="font-display mb-2 text-4xl leading-tight tracking-wide drop-shadow-lg md:text-6xl">{title}</h1>
               {d.tagline && <p className="mb-2 text-sm italic text-neutral-300">&ldquo;{d.tagline}&rdquo;</p>}
               <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-200">
                 <span className="flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-amber-400">

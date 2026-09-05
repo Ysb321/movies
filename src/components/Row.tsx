@@ -126,7 +126,7 @@ export default function Row({
   return (
     <section className="group/row relative z-0 py-2.5 hover:z-30">
       <div className="mb-1.5 flex items-baseline gap-3 px-[4vw]">
-        <h2 className="cursor-default text-[15px] font-bold tracking-wide text-neutral-200 transition-colors md:text-[17px]">
+        <h2 className="cursor-default font-display2 text-lg tracking-wider text-neutral-200 transition-colors md:text-[22px]">
           {title}
         </h2>
         {href && (
@@ -179,7 +179,7 @@ export default function Row({
                     <div className={clsx("skeleton", top10 || variant === "poster" ? "aspect-[2/3]" : "aspect-video", "w-[88%]")} />
                   </div>
                 ))
-              : items.slice(0, 60).map((item, i) => (
+              : items.slice(0, 40).map((item, i) => (
                   <div key={`${item.id}-${i}`} data-card className={clsx("shrink-0 snap-start", itemWidth)}>
                     <Card
                       item={item}

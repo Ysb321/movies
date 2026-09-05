@@ -89,7 +89,7 @@ function SearchResults() {
       return <GridSkeleton />;
     return (
       <>
-        <p className="mb-4 text-sm text-neutral-400">Trending today</p>
+        <p className="font-display2 mb-4 text-xl tracking-wider text-neutral-300">Trending today</p>
         <PosterGrid items={titles} />
       </>
     );
@@ -138,7 +138,7 @@ function SearchResults() {
 
       {people.length > 0 && (
         <>
-          <p className="mb-4 mt-12 text-sm text-neutral-400">People</p>
+          <p className="font-display2 mb-4 mt-12 text-xl tracking-wider text-neutral-300">People</p>
           <div className="flex flex-wrap gap-5">
             {people.slice(0, 12).map((p) => (
               <div key={p.id} className="w-28">

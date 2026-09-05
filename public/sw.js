@@ -2,13 +2,21 @@
  *   image.tmdb.org  → cache-first (LRU ~400 entries)
  *   /api/tmdb/* and api.themoviedb.org → stale-while-revalidate
  * Everything else passes straight through. */
-const VERSION = "yetflix-v1";
+const VERSION = "yetflix-v2";
 const IMG_CACHE = `${VERSION}-img`;
 const API_CACHE = `${VERSION}-api`;
-const IMG_LIMIT = 400;
+const IMG_LIMIT = 250;
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (e) =>
+  e.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => !n.startsWith(VERSION)).map((n) => caches.delete(n)));
+      await self.clients.claim();
+    })()
+  )
+);
 
 async function trim(cache, limit) {
   const keys = await cache.keys();
