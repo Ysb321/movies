@@ -2,7 +2,6 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { img, titleOf, yearOf, typeOf, type Media } from "@/lib/tmdb";
 import { toggleList, inList, type ProgressItem } from "@/lib/storage";
@@ -228,20 +227,18 @@ function Card({
       </div>
 
       {/* ── expanded 16:9 preview with trailer (netflix-style) ── */}
-      <AnimatePresence>
-        {preview && (
-          <CardPreview
+      {preview && (
+        <CardPreview
             item={item}
             anchor={preview}
             progress={progress}
-            onClose={() => setPreview(null)}
-            onEnter={() => {
-              if (closeT.current) clearTimeout(closeT.current);
-            }}
-            onLeave={() => setPreview(null)}
-          />
-        )}
-      </AnimatePresence>
+          onClose={() => setPreview(null)}
+          onEnter={() => {
+            if (closeT.current) clearTimeout(closeT.current);
+          }}
+          onLeave={() => setPreview(null)}
+        />
+      )}
     </>
   );
 }

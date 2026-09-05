@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import SWRProvider from "@/components/SWRProvider";
+import ServiceWorker from "@/components/ServiceWorker";
 
 export const metadata: Metadata = {
   title: { default: "Yetflix — by Yashraj · Watch Movies, TV Shows, Animes & Dramas", template: "%s · Yetflix" },
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-ink text-white antialiased">
         <SWRProvider>{children}</SWRProvider>
+        <ServiceWorker />
       </body>
     </html>
   );

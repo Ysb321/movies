@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { useTmdbSnapshot } from "./SWRProvider";
 import { img, titleOf, yearOf, type Media } from "@/lib/tmdb";
 import { MOVIE_GENRES } from "@/lib/rows";
@@ -40,15 +39,7 @@ export default function HeroBillboard({ heroes }: { heroes: Media[] }) {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <AnimatePresence mode="sync">
-        <motion.div
-          key={active.id}
-          initial={{ opacity: 0, scale: 1.04 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 1.1, ease: "easeOut" }}
-          className="absolute inset-0"
-        >
+      <div key={active.id} className="hero-in absolute inset-0">
           {img(active.backdrop_path ?? active.poster_path, "w1280") && (
             <img
               src={img(active.backdrop_path ?? active.poster_path, "w1280")!}
@@ -58,22 +49,13 @@ export default function HeroBillboard({ heroes }: { heroes: Media[] }) {
               draggable={false}
             />
           )}
-        </motion.div>
-      </AnimatePresence>
+      </div>
 
       <div className="hero-fade absolute inset-0" />
       <div className="hero-fade-bottom absolute inset-x-0 bottom-0 h-40" />
 
       <div className="absolute inset-x-0 bottom-[16%] px-[4vw]">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={active.id}
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.55, ease: "easeOut" }}
-            className="max-w-[36rem]"
-          >
+        <div key={active.id} className="hero-text-in max-w-[36rem]">
             {logo ? (
               <img src={logo} alt={titleOf(active)} className="mb-4 max-h-28 max-w-[78%] object-contain drop-shadow-lg md:max-h-36" draggable={false} />
             ) : (
@@ -123,8 +105,7 @@ export default function HeroBillboard({ heroes }: { heroes: Media[] }) {
                 <InfoIcon className="h-5 w-5" /> More Info
               </button>
             </div>
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </div>
 
       {/* rotation dots + maturity tag (netflix-style) */}

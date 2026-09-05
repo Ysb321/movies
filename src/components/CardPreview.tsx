@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { img, titleOf, yearOf, typeOf, type Media } from "@/lib/tmdb";
 import { genreNames, MOVIE_GENRES } from "@/lib/rows";
@@ -89,11 +88,7 @@ export default function CardPreview({
   if (!mounted) return null;
 
   return createPortal(
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.14 } }}
-      transition={{ type: "spring", stiffness: 340, damping: 30 }}
+    <div
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       style={{
@@ -104,7 +99,7 @@ export default function CardPreview({
         zIndex: 100,
         transformOrigin: "center",
       }}
-      className="overflow-hidden rounded-lg bg-[#141414] shadow-[0_18px_55px_rgba(0,0,0,0.85)]"
+      className="preview-in overflow-hidden rounded-lg bg-[#141414] shadow-[0_18px_55px_rgba(0,0,0,0.85)]"
     >
       {/* ── maximized 16:9 media area — click → details ── */}
       <div className="relative w-full cursor-pointer" style={{ height: geo.videoH }} onClick={openDetails}>
@@ -180,7 +175,7 @@ export default function CardPreview({
           {genreNames(item, MOVIE_GENRES).join(" • ")}
         </div>
       </div>
-    </motion.div>,
+    </div>,
     document.body
   );
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import Avatar from "@/components/Avatar";
 import { PencilIcon, PlusIcon, XIcon } from "@/components/Icons";
 import {
@@ -58,15 +57,13 @@ export default function ProfileGate() {
       <p className="mb-6 text-sm font-medium tracking-wide text-neutral-500">Yetflix · by Yashraj</p>
 
       <div className="flex flex-wrap items-start justify-center gap-5 md:gap-8">
-        <AnimatePresence>
+        <>
           {profiles.map((p, i) => (
-            <motion.button
+            <button
               key={p.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
               onClick={() => !manage && pick(p)}
-              className="group flex w-[104px] flex-col items-center gap-2 md:w-[138px]"
+              style={{ animationDelay: `${i * 0.07}s` }}
+              className="pop-in group flex w-[104px] flex-col items-center gap-2 md:w-[138px]"
             >
               <div className="relative">
                 <Avatar
@@ -94,9 +91,9 @@ export default function ProfileGate() {
                   DELETE
                 </button>
               )}
-            </motion.button>
+            </button>
           ))}
-        </AnimatePresence>
+        </>
 
         {profiles.length < 5 && !adding && (
           <button
@@ -112,11 +109,7 @@ export default function ProfileGate() {
       </div>
 
       {adding && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-8 w-[min(90vw,380px)] rounded-lg border border-white/15 bg-panel p-5"
-        >
+        <div className="pop-in mt-8 w-[min(90vw,380px)] rounded-lg border border-white/15 bg-panel p-5">
           <p className="mb-3 text-sm font-semibold">Add a profile</p>
           <input
             autoFocus
@@ -146,7 +139,7 @@ export default function ProfileGate() {
               Continue
             </button>
           </div>
-        </motion.div>
+        </div>
       )}
 
       <button

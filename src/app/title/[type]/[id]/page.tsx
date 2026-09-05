@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Row from "@/components/Row";
@@ -240,23 +239,15 @@ export default function TitlePage() {
       <Footer />
 
       {/* trailer modal */}
-      <AnimatePresence>
-        {trailerOpen && trailer && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-            onClick={() => setTrailerOpen(false)}
+      {trailerOpen && trailer && (
+        <div
+          className="anim-fade-in fixed inset-0 z-[200] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setTrailerOpen(false)}
+        >
+          <div
+            className="modal-in relative w-[min(92vw,960px)]"
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div
-              initial={{ scale: 0.92 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.94 }}
-              transition={{ type: "spring", stiffness: 260, damping: 26 }}
-              className="relative w-[min(92vw,960px)]"
-              onClick={(e) => e.stopPropagation()}
-            >
               <button
                 onClick={() => setTrailerOpen(false)}
                 aria-label="Close trailer"
@@ -273,10 +264,9 @@ export default function TitlePage() {
                   allowFullScreen
                 />
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
