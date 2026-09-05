@@ -1,4 +1,4 @@
-/* Yetflix desktop — Electron main process.
+/* Yetflix desktop - Electron main process.
  * Bundles the Next.js standalone server (desktop/app) and shows it in an
  * app window. The server runs as a child process using Electron's own
  * binary in Node mode (ELECTRON_RUN_AS_NODE), so no system Node is needed. */
@@ -9,7 +9,7 @@ const fs = require("fs");
 const http = require("http");
 const net = require("net");
 
-// when packaged with asar, app/** is unpacked to app.asar.unpacked/ — the
+// when packaged with asar, app/** is unpacked to app.asar.unpacked/ - the
 // spawned Node child (ELECTRON_RUN_AS_NODE) can only read real files
 const APP_ROOT = __dirname.includes("app.asar")
   ? __dirname.replace("app.asar", "app.asar.unpacked")
@@ -63,7 +63,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!fs.existsSync(SERVER)) {
       const { dialog } = require("electron");
       dialog.showErrorBox(
-        "Yetflix — site not bundled",
+        "Yetflix - site not bundled",
         "The app bundle is missing (desktop/app). Run:  npm run dist   or   npm run start   from the desktop/ folder to build it first."
       );
       app.quit();
@@ -95,7 +95,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 600,
       backgroundColor: "#0b0b0f",
       autoHideMenuBar: true,
-      title: "Yetflix — by Yashraj",
+      title: "Yetflix - by Yashraj",
       show: false,
       webPreferences: {
         contextIsolation: true,

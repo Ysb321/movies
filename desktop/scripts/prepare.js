@@ -9,7 +9,7 @@ const nextDir = path.join(root, ".next");
 const standalone = path.join(nextDir, "standalone");
 const appDir = path.join(__dirname, "..", "app");
 
-console.log("▶ Building Yetflix (Next.js standalone)…");
+console.log(">> Building Yetflix (Next.js standalone)...");
 const build = spawnSync("npm", ["run", "build"], {
   cwd: root,
   stdio: "inherit",
@@ -17,16 +17,16 @@ const build = spawnSync("npm", ["run", "build"], {
   env: { ...process.env, BUILD_STANDALONE: "1" },
 });
 if (build.status !== 0) {
-  console.error("✗ Site build failed — see output above.");
+  console.error("[FAIL] Site build failed - see output above.");
   process.exit(build.status ?? 1);
 }
 
 if (!fs.existsSync(path.join(standalone, "server.js"))) {
-  console.error("✗ Standalone output missing (.next/standalone/server.js).");
+  console.error("[FAIL] Standalone output missing (.next/standalone/server.js).");
   process.exit(1);
 }
 
-console.log("▶ Copying bundle into desktop/app…");
+console.log(">> Copying bundle into desktop/app...");
 fs.rmSync(appDir, { recursive: true, force: true });
 fs.cpSync(standalone, appDir, { recursive: true });
 fs.cpSync(path.join(nextDir, "static"), path.join(appDir, ".next", "static"), { recursive: true });
@@ -37,8 +37,8 @@ const dist = path.join(__dirname, "..", "dist");
 fs.rmSync(dist, { recursive: true, force: true });
 const entry = path.join(__dirname, "..", "index.js");
 if (!fs.existsSync(entry)) {
-  console.error("✗ desktop/index.js is missing — run `git pull` inside the repo.");
+  console.error("[FAIL] desktop/index.js is missing - run `git pull` inside the repo.");
   process.exit(1);
 }
 
-console.log("✓ Site bundled at desktop/app — run `npm run start` or `npm run dist`.");
+console.log("[OK] Site bundled at desktop/app - run `npm run start` or `npm run dist`.");
