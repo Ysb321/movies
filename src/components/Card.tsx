@@ -44,6 +44,12 @@ function Card({
     : img(item.backdrop_path ?? item.poster_path, "w500") ?? img(item.poster_path, "w342");
   const match = Math.round((item.vote_average ?? 0) * 10);
 
+  /* ── netflix-style expansion: horizontal-biased zoom on hover, bigger
+   *    again once the trailer starts (staged, GPU transforms only) ── */
+  const k = previewOn ? 1.1 : 1;
+  const sx = (poster ? 1.16 : 1.3) * k;
+  const sy = (poster ? 1.13 : 1.16) * k;
+
   // resume: clicking a continue-watching card plays straight from where it
   // left off (exact season/episode + startAt); other cards open details
   const open = () => {
@@ -83,13 +89,20 @@ function Card({
       tabIndex={0}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={() => setHover(false)}
       onClick={open}
       onKeyDown={(e) => e.key === "Enter" && open()}
       aria-label={titleOf(item)}
+      style={{
+        transform: hover ? `scale(${sx}, ${sy})` : undefined,
+        zIndex: hover ? 50 : undefined,
+        willChange: hover ? "transform" : undefined,
+      }}
       className={clsx(
         "group/card flex cursor-pointer flex-col rounded-md transition-transform duration-300 ease-[cubic-bezier(.22,.61,.36,1)]",
-        poster ? "hover:scale-[1.07]" : "hover:scale-[1.13]",
-        "hover:z-40 hover:card-shadow focus-visible:z-40 focus-visible:scale-[1.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        hover && "card-shadow",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
         className
       )}
     >
@@ -171,7 +184,10 @@ function Card({
         )}
 
         {/* ── hover overlay: buttons + meta always fully visible ── */}
-        <div className="pointer-events-none invisible absolute inset-0 z-20 flex flex-col justify-end rounded-md bg-gradient-to-t from-black/95 via-black/45 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover/card:visible group-hover/card:opacity-100 group-focus-within/card:visible group-focus-within/card:opacity-100">
+        <div className={clsx(
+          "pointer-events-none invisible absolute inset-0 z-20 flex flex-col justify-end rounded-md bg-gradient-to-t to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover/card:visible group-hover/card:opacity-100 group-focus-within/card:visible group-focus-within/card:opacity-100",
+          previewOn ? "from-black/90 via-black/20" : "from-black/95 via-black/45"
+        )}>
           <div className="pointer-events-auto">
             <div className="mb-1.5 flex items-center gap-2">
               <button
