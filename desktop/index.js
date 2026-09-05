@@ -2,7 +2,7 @@
  * Bundles the Next.js standalone server (desktop/app) and shows it in an
  * app window. The server runs as a child process using Electron's own
  * binary in Node mode (ELECTRON_RUN_AS_NODE), so no system Node is needed. */
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, session } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -17,6 +17,12 @@ const APP_ROOT = __dirname.includes("app.asar")
 const SERVER = path.join(APP_ROOT, "app", "server.js");
 let child = null;
 let win = null;
+
+/* Player-friendly popup hosts (server selection / external players) */
+const POPUP_HOSTS = [
+  "vidcore.io", "vidcore.org", "youtube.com", "youtube-nocookie.com",
+  "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
+];
 
 const freePort = () =>
   new Promise((resolve, reject) => {
@@ -59,7 +65,15 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  /* allow embedded-player media without a user gesture */
+  app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
   app.whenReady().then(async () => {
+    /* grant media/fullscreen/clipboard permissions to the app session */
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => {
+      const ok = ["media", "fullscreen", "clipboard-read", "clipboard-sanitized-write", "pointerLock"].includes(permission);
+      cb(ok);
+    });
     if (!fs.existsSync(SERVER)) {
       const { dialog } = require("electron");
       dialog.showErrorBox(
@@ -107,9 +121,23 @@ if (!app.requestSingleInstanceLock()) {
     win.once("ready-to-show", () => win.show());
     await win.loadURL(`${site}/home`);
 
-    // external links (target=_blank) open in the system browser, never in-app
+    // player popups (vidcore server selection etc.) open as in-app child
+    // windows; everything else goes to the system browser
     win.webContents.setWindowOpenHandler(({ url }) => {
-      if (!url.startsWith(site)) shell.openExternal(url);
+      try {
+        const u = new URL(url);
+        if (POPUP_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) {
+          return {
+            action: "allow",
+            overrideBrowserWindowOptions: {
+              width: 1050, height: 650, autoHideMenuBar: true,
+              backgroundColor: "#0b0b0f", title: "Yetflix Player",
+              parent: win,
+            },
+          };
+        }
+      } catch {}
+      shell.openExternal(url);
       return { action: "deny" };
     });
     // block full navigations away from the app
