@@ -1,10 +1,8 @@
-/** Streaming embed provider: Nxsha (single server).
- *  Docs: nxsha.space/embed — /embed/movie/{tmdbOrImdbId},
- *  /embed/tv/{tmdbOrImdbId}/{season}/{episode} (both verified live).
- *  Params: color (netflix preset), server/one_server (their engine
- *  auto-falls-back across nodes on error), sub/lang (ISO 639-1),
- *  disable_app_ad. No URL start-time param is documented, so resume
- *  starts tracked but playback begins at 0.
+/** Streaming embed provider: VidZee (single server).
+ *  Routes verified live: player.vidzee.wtf/embed/movie/{tmdbId} and
+ *  /embed/tv/{tmdbId}/{season}/{episode}. TMDB ids native.
+ *  No URL params are documented on their landing page; their internal API
+ *  takes id/sr (server)/ss/ep, so playback params stay unset.
  *  To add a fallback server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -28,11 +26,10 @@ const qs = (params: Record<string, string | number | undefined>) => {
 
 export const PROVIDERS: EmbedProvider[] = [
   {
-    id: "nxsha",
-    name: "Nxsha",
-    movie: (id) => `https://nxsha.space/embed/movie/${id}${qs({ color: "netflix", disable_app_ad: "true" })}`,
-    tv: (id, s, e) =>
-      `https://nxsha.space/embed/tv/${id}/${s}/${e}${qs({ color: "netflix", disable_app_ad: "true" })}`,
+    id: "vidzee",
+    name: "VidZee",
+    movie: (id) => `https://player.vidzee.wtf/embed/movie/${id}`,
+    tv: (id, s, e) => `https://player.vidzee.wtf/embed/tv/${id}/${s}/${e}`,
   },
 ];
 
@@ -53,7 +50,7 @@ export function embedUrl(
 }
 
 /* ── Player postMessage events ──────────────────────────────────────────────
- * Nxsha does not document postMessage progress events; the parser stays
+ * VidZee does not document postMessage progress events; the parser stays
  * generic (JSON string or object, deep time-field scan) so continue-watching
  * tracking works automatically if/when they emit them.
  * NB: "progress" (%-fields) and epoch-ms "timestamp" fields are never read
@@ -65,7 +62,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["nxsha"];
+const PLAYER_HOSTS = ["vidzee"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
