@@ -166,7 +166,7 @@ export default function Row({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           className={clsx(
-            "flex snap-x snap-proximity overflow-x-auto overflow-y-hidden px-[4vw] pb-12 pt-7 outline-none focus-visible:ring-1 focus-visible:ring-white/30",
+            "flex snap-x snap-proximity overflow-x-auto overflow-y-hidden px-[4vw] pb-8 pt-5 outline-none focus-visible:ring-1 focus-visible:ring-white/30",
             dragging ? "cursor-grabbing select-none [&_[data-card]]:pointer-events-none" : "cursor-grab"
           )}
         >
