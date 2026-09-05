@@ -12,7 +12,8 @@
     "dist": "npm run site && electron-builder --win",
     "dist:portable": "npm run site && electron-builder --win portable",
     "dist:all": "npm run site && electron-builder -mwl",
-    "dist:simple": "npm run site && npx electron-packager . Yetflix --platform=win --arch=x64 --icon=build/icon.png --overwrite --out=dist-simple --ignore=\"^/?dist\" --ignore=\"^/?dist-simple\" --ignore=\"^/?scripts\" --ignore=\"site-url.txt\""
+    "dist:simple": "npm run site && npx electron-packager . Yetflix --platform=win --arch=x64 --icon=build/icon.png --overwrite --out=dist-simple --ignore=\"^/?dist\" --ignore=\"^/?dist-simple\" --ignore=\"^/?scripts\" --ignore=\"site-url.txt\"",
+    "portable": "npm run site && node scripts/portable.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",

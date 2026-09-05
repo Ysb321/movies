@@ -5,7 +5,8 @@ from most-featured to most-bulletproof:
 
 | Method | Command | Result |
 |---|---|---|
-| ⚡ **Simple packager** *(recommended if builder fails)* | `npm run dist:simple` | `dist-simple/Yetflix-win-x64/Yetflix.exe` — folder app via **electron-packager** (no NSIS/asar machinery) |
+| 🎒 **Portable** *(recommended)* | `npm run portable` | `dist-simple/Yetflix-Portable-win-x64.zip` — self-contained app + the unzip-anywhere folder (`Yetflix-win32-x64/Yetflix.exe`). No install, no admin, no registry. Runs from USB |
+| ⚡ Simple packager | `npm run dist:simple` | `dist-simple/Yetflix-win32-x64/Yetflix.exe` — same folder app, without the zip step |
 | 📦 Full installer | `npm run dist` | `dist/Yetflix-Setup-1.0.0.exe` + `Yetflix-Portable-1.0.0.exe` via electron-builder |
 | 🪟 No packaging at all | double-click `Yetflix-AppWindow.bat` | Yetflix in a chromeless **Edge app window** (preinstalled on Win 10/11) |
 
