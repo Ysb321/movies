@@ -6,6 +6,7 @@ import clsx from "clsx";
 import Card from "./Card";
 import { ChevronIcon } from "./Icons";
 import { markDragEnd } from "@/lib/dragGuard";
+import { forwardWheelToPage } from "@/lib/scroll";
 import { type Media, type ProgressItem } from "@/lib/tmdb";
 
 const WIDTHS = {
@@ -70,6 +71,19 @@ export default function Row({
     ro.observe(el);
     return () => ro.disconnect();
   }, [syncEdges, items.length]);
+
+  /* ── wheel routing: horizontal → native row scroll; vertical → page
+     scroll (Lenis), so scrolling over cards never stalls the page ── */
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) + 4) return; // row scrolls itself
+      if (forwardWheelToPage(e)) e.preventDefault();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   /* ── mouse drag-to-scroll (native touch/trackpad need no help) ── */
   const onPointerDown = (e: React.PointerEvent) => {

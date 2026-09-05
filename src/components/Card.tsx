@@ -34,6 +34,7 @@ function Card({
   const rootRef = useRef<HTMLDivElement>(null);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverRef = useRef(false);
 
   const type = typeOf(item);
   const poster = variant === "poster" || rank !== undefined;
@@ -61,6 +62,8 @@ function Card({
 
   /* ── hover → dwell → expanded 16:9 preview (mouse devices only) ── */
   const enter = () => {
+    if (hoverRef.current) return; // ignore re-enters while scrolling across cards
+    hoverRef.current = true;
     setHover(true);
     if (closeT.current) clearTimeout(closeT.current);
     if (typeof window === "undefined" || !window.matchMedia?.("(hover: hover)").matches) return;
@@ -70,6 +73,7 @@ function Card({
     }, 380);
   };
   const leave = () => {
+    hoverRef.current = false;
     setHover(false);
     if (dwell.current) clearTimeout(dwell.current);
     closeT.current = setTimeout(() => setPreview(null), 160);
@@ -95,10 +99,9 @@ function Card({
         onClick={open}
         onKeyDown={(e) => e.key === "Enter" && open()}
         aria-label={titleOf(item)}
-        style={{ transform: hover ? "scale(1.05)" : undefined, zIndex: hover ? 40 : undefined }}
+        style={{ zIndex: hover ? 40 : undefined }}
         className={clsx(
-          "group/card flex cursor-pointer flex-col rounded-md transition-transform duration-200 ease-[cubic-bezier(.22,.61,.36,1)]",
-          hover && "card-shadow",
+          "group/card flex cursor-pointer flex-col rounded-md [contain:layout_style]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
           className
         )}
