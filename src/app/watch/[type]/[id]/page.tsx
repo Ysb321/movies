@@ -293,7 +293,7 @@ function WatchContent() {
 
       {similar.length > 0 && (
         <div className="mt-10">
-          <Row title="More Like This" items={similar} variant="backdrop" />
+          <Row title="More Like This" items={similar} />
         </div>
       )}
     </main>

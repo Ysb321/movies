@@ -24,7 +24,7 @@ const WIDTHS = {
 export default function Row({
   title,
   items,
-  variant = "backdrop",
+  variant = "poster",
   top10,
   loading,
   href,
