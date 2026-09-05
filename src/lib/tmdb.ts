@@ -72,6 +72,10 @@ export const typeOf = (m: Media): "movie" | "tv" =>
 export const img = (path?: string | null, size = "w500") =>
   path ? `${IMG}/${size}${path}` : null;
 
+/** Detect keys that were never replaced after copying .env.example */
+const looksLikePlaceholder = (k: string) =>
+  !k || /^your_|^<|placeholder|xxxx/i.test(k.trim());
+
 export class TmdbError extends Error {
   code: "NO_KEY" | "HTTP";
   status?: number;
@@ -102,11 +106,17 @@ async function tmdbFetch(path: string, params: Record<string, string | number | 
   }
 
   // 2) direct browser → TMDB (NetOut-style static deployment path)
-  if (TMDB_KEY) {
+  if (TMDB_KEY && !looksLikePlaceholder(TMDB_KEY)) {
     qs.set("api_key", TMDB_KEY);
     const res = await fetch(`${TMDB_BASE}/${path}?${qs}`, { headers: { accept: "application/json" } });
     if (!res.ok) throw new TmdbError(`TMDB responded ${res.status}`, "HTTP", res.status);
     return res.json();
+  }
+  if (looksLikePlaceholder(TMDB_KEY)) {
+    throw new TmdbError(
+      "PLACEHOLDER: .env.local still contains 'your_tmdb_v3_api_key' — replace it with your real key, then restart the dev server",
+      "NO_KEY"
+    );
   }
   throw new TmdbError(
     "TMDB API key is not configured — create .env.local from .env.example",

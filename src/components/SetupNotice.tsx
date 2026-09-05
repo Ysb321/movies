@@ -5,22 +5,38 @@
 export default function SetupNotice({ error }: { error?: unknown }) {
   const err = error as { message?: string; status?: number; code?: string } | undefined;
   const rejected = err?.status === 401;
-  const blocked = err?.status !== 401 && err?.code !== "NO_KEY";
+  const placeholder = !!err?.message?.includes("PLACEHOLDER");
+  const blocked = !rejected && !placeholder && err?.code !== "NO_KEY";
 
   return (
     <div className="mx-auto my-10 max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-5 text-sm leading-relaxed">
       <h2 className="mb-2 text-base font-bold text-amber-300">
         {rejected
           ? "⚠️ TMDB rejected the API key (401)"
-          : blocked
-            ? "⚠️ Can't reach TMDB"
-            : "⚠️ TMDB API key isn't set up yet"}
+          : placeholder
+            ? "⚠️ .env.local still has the example placeholder key"
+            : blocked
+              ? "⚠️ Can't reach TMDB"
+              : "⚠️ TMDB API key isn't set up yet"}
       </h2>
 
       {rejected ? (
         <p className="mb-3 text-neutral-200">
           The key was pasted incorrectly or is invalid. Re-copy it — no quotes, no extra
           spaces — and make sure it&rsquo;s the <strong>v3 API key</strong> from themoviedb.org.
+        </p>
+      ) : placeholder ? (
+        <p className="mb-3 text-neutral-200">
+          You created <code className="rounded bg-black/40 px-1">.env.local</code>, but it still
+          contains <code className="rounded bg-black/40 px-1">your_tmdb_v3_api_key</code> — the
+          example placeholder. Open the file and replace <strong>both</strong> values with your
+          real key:
+          <pre className="mt-2 overflow-x-auto rounded bg-black/50 p-2.5 text-[12px] text-neutral-300">
+{`TMDB_API_KEY=paste_your_real_key_here
+NEXT_PUBLIC_TMDB_API_KEY=paste_your_real_key_here`}
+          </pre>
+          Then stop the server (<code className="rounded bg-black/40 px-1">Ctrl+C</code>) and run{" "}
+          <code className="rounded bg-black/40 px-1">npm run dev</code> again.
         </p>
       ) : blocked ? (
         <p className="mb-3 text-neutral-200">

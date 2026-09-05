@@ -21,6 +21,9 @@ const ALLOWED = [
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_KEY = process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
 
+/** Detect keys that were never replaced after copying .env.example */
+const looksLikePlaceholder = (k: string) => !k || /^your_|^<|placeholder|xxxx/i.test(k.trim());
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -31,11 +34,17 @@ export async function GET(
     return NextResponse.json({ error: "forbidden path" }, { status: 403 });
   }
 
-  // no server key? tell the client immediately so it can use its public-key
-  // fallback (and surface a setup notice if that's missing too)
-  if (!TMDB_KEY) {
+  // no server key (or the .env.example placeholder is still there)? tell the
+  // client immediately so it can use its public-key fallback / setup notice
+  if (looksLikePlaceholder(TMDB_KEY)) {
     return NextResponse.json(
-      { error: "no_api_key", fallback: true, hint: "Create .env.local from .env.example and set TMDB_API_KEY" },
+      {
+        error: "no_api_key",
+        fallback: true,
+        hint: TMDB_KEY
+          ? ".env.local still contains the example placeholder 'your_tmdb_v3_api_key' — paste your real key"
+          : "Create .env.local from .env.example and set TMDB_API_KEY",
+      },
       { status: 503 }
     );
   }
@@ -52,6 +61,13 @@ export async function GET(
       next: { revalidate: 300 },
     });
     if (!res.ok) {
+      // forward auth failures so the UI can say "rejected key", not "no key"
+      if (res.status === 401) {
+        return NextResponse.json(
+          { error: "tmdb_rejected_key", hint: "TMDB returned 401 — check the key value in .env.local" },
+          { status: 401 }
+        );
+      }
       return NextResponse.json(
         { error: `upstream ${res.status}` },
         { status: res.status === 404 ? 404 : 502 }
