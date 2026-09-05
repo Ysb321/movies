@@ -1,0 +1,32 @@
+{
+  "applicationId": "org.yashraj.yetflix",
+  "port": -1,
+  "defaultMode": "window",
+  "cli": {
+    "binaryName": "Yetflix",
+    "resourcesPath": "/resources/",
+    "extensionsPath": "/extensions/",
+    "clientLibrary": "/resources/js/neutralino.js",
+    "binaryChange": { "arm64": "neutralino-win_arm64.exe", "x64": "neutralino-win_x64.exe" },
+    "documentRoot": "--"
+  },
+  "modes": {
+    "window": {
+      "title": "Yetflix — by Yashraj",
+      "width": 1280,
+      "height": 800,
+      "minWidth": 960,
+      "minHeight": 600,
+      "center": true,
+      "fullScreen": false,
+      "alwaysOnTop": false,
+      "icon": "/resources/icons/appIcon.png",
+      "enableInspector": false,
+      "borderless": false,
+      "maximize": false,
+      "hidden": false,
+      "exitProcessOnClose": true,
+      "url": "/"
+    }
+  }
+}

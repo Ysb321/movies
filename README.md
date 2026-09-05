@@ -72,6 +72,10 @@ npm run dist     # → dist/Yetflix-Setup-1.0.0.exe + Yetflix-Portable-1.0.0.exe
 
 See `desktop/README.md` for details (mac/linux targets, quick-run script).
 
+Want a **~2–5 MB** exe instead of Electron's ~150 MB? `desktop-neutralino/`
+wraps your deployed site with Neutralino + the system WebView2 — see
+`desktop-neutralino/README.md` (deploy free on Vercel, then `npm run build`).
+
 ## 🚀 Getting started
 
 ```bash

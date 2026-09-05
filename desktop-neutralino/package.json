@@ -1,0 +1,16 @@
+{
+  "name": "yetflix-neutralino",
+  "version": "1.0.0",
+  "description": "Yetflix by Yashraj — tiny desktop client (Neutralino + WebView2)",
+  "author": "Yashraj",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "setup": "neu update",
+    "build": "node scripts/build.js",
+    "start": "node scripts/build.js --run"
+  },
+  "devDependencies": {
+    "@neutralinojs/neu": "^5.4.0"
+  }
+}
