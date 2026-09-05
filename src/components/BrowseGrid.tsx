@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useSWRInfinite from "swr/infinite";
 import { motion } from "framer-motion";
 import Card from "./Card";
+import SetupNotice from "./SetupNotice";
 import { swrFetcher, type Media } from "@/lib/tmdb";
 import { MOVIE_GENRES, TV_GENRES } from "@/lib/rows";
 import clsx from "clsx";
@@ -90,9 +91,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       </div>
 
       {error && items.length === 0 ? (
-        <div className="flex h-64 items-center justify-center text-neutral-400">
-          Couldn&rsquo;t load titles. Check your TMDB API key.
-        </div>
+        <SetupNotice error={error} />
       ) : items.length === 0 && isLoading ? (
         <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
           {Array.from({ length: 21 }).map((_, i) => (

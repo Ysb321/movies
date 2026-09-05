@@ -72,6 +72,17 @@ export const typeOf = (m: Media): "movie" | "tv" =>
 export const img = (path?: string | null, size = "w500") =>
   path ? `${IMG}/${size}${path}` : null;
 
+export class TmdbError extends Error {
+  code: "NO_KEY" | "HTTP";
+  status?: number;
+  constructor(message: string, code: "NO_KEY" | "HTTP", status?: number) {
+    super(message);
+    this.name = "TmdbError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 let proxyDown = false;
 
 async function tmdbFetch(path: string, params: Record<string, string | number | undefined> = {}) {
@@ -94,10 +105,13 @@ async function tmdbFetch(path: string, params: Record<string, string | number | 
   if (TMDB_KEY) {
     qs.set("api_key", TMDB_KEY);
     const res = await fetch(`${TMDB_BASE}/${path}?${qs}`, { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`TMDB ${res.status}`);
+    if (!res.ok) throw new TmdbError(`TMDB responded ${res.status}`, "HTTP", res.status);
     return res.json();
   }
-  throw new Error("TMDB unavailable: no API key configured");
+  throw new TmdbError(
+    "TMDB API key is not configured — create .env.local from .env.example",
+    "NO_KEY"
+  );
 }
 
 /* SWR fetcher with a persistent snapshot cache — revisit = instant paint,

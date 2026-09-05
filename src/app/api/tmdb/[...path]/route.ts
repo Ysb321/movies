@@ -31,6 +31,15 @@ export async function GET(
     return NextResponse.json({ error: "forbidden path" }, { status: 403 });
   }
 
+  // no server key? tell the client immediately so it can use its public-key
+  // fallback (and surface a setup notice if that's missing too)
+  if (!TMDB_KEY) {
+    return NextResponse.json(
+      { error: "no_api_key", fallback: true, hint: "Create .env.local from .env.example and set TMDB_API_KEY" },
+      { status: 503 }
+    );
+  }
+
   const search = req.nextUrl.searchParams;
   const qs = new URLSearchParams(search);
   if (TMDB_KEY) qs.set("api_key", TMDB_KEY);

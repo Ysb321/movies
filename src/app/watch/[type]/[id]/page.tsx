@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Row from "@/components/Row";
+import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf } from "@/lib/tmdb";
 import { saveProgress, inList, toggleList } from "@/lib/storage";
@@ -28,7 +29,7 @@ function WatchContent() {
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
   const playerRef = useRef<HTMLDivElement>(null);
 
-  const { data: d } = useTmdbSnapshot<any>(
+  const { data: d, error } = useTmdbSnapshot<any>(
     `${t}/${id}?append_to_response=credits,recommendations,similar,images&include_image_language=en,null`
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
@@ -122,6 +123,12 @@ function WatchContent() {
             referrerPolicy="origin"
           />
         </div>
+
+        {!d && error && (
+          <div className="mt-6">
+            <SetupNotice error={error} />
+          </div>
+        )}
 
         {/* TV episodes */}
         {t === "tv" && seasons.length > 0 && (

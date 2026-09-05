@@ -6,6 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Card from "@/components/Card";
+import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, type Media } from "@/lib/tmdb";
 
@@ -13,7 +14,7 @@ function SearchResults() {
   const params = useSearchParams();
   const q = (params.get("q") ?? "").trim();
 
-  const { data, isLoading } = useTmdbSnapshot<any>(
+  const { data, isLoading, error } = useTmdbSnapshot<any>(
     q ? `search/multi?query=${encodeURIComponent(q)}&include_adult=false&page=1` : "trending/all/day?page=1"
   );
 
@@ -26,6 +27,10 @@ function SearchResults() {
       people: results.filter((r) => r.media_type === "person" && r.profile_path),
     };
   }, [data]);
+
+  if (error && titles.length === 0 && people.length === 0) {
+    return <SetupNotice error={error} />;
+  }
 
   if (!q) {
     return (

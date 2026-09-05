@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Row from "@/components/Row";
+import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf } from "@/lib/tmdb";
 import { toggleList, inList } from "@/lib/storage";
@@ -22,7 +23,7 @@ export default function TitlePage() {
   const t = type === "tv" ? "tv" : "movie";
   const router = useRouter();
   const key = `${t}/${id}?append_to_response=credits,videos,similar,recommendations,images&include_image_language=en,null`;
-  const { data: d, isLoading } = useTmdbSnapshot<any>(key);
+  const { data: d, isLoading, error } = useTmdbSnapshot<any>(key);
   const [saved, setSaved] = useState(false);
   const [trailerOpen, setTrailerOpen] = useState(false);
 
@@ -55,7 +56,13 @@ export default function TitlePage() {
     return (
       <main className="min-h-screen bg-ink">
         <Navbar />
-        <div className="flex h-[70vh] items-center justify-center text-neutral-400">Title not found.</div>
+        {error ? (
+          <div className="pt-24 md:pt-28">
+            <SetupNotice error={error} />
+          </div>
+        ) : (
+          <div className="flex h-[70vh] items-center justify-center text-neutral-400">Title not found.</div>
+        )}
       </main>
     );
   }

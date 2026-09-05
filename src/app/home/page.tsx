@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import HeroBillboard from "@/components/HeroBillboard";
 import Row from "@/components/Row";
 import TmdbRow from "@/components/TmdbRow";
+import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { HOME_ROWS } from "@/lib/rows";
 import {
@@ -15,7 +16,7 @@ import {
 import type { ListItem, ProgressItem } from "@/lib/storage";
 
 export default function HomePage() {
-  const { data, isLoading } = useTmdbSnapshot<any>("trending/movie/week?page=1");
+  const { data, isLoading, error } = useTmdbSnapshot<any>("trending/movie/week?page=1");
   const heroes = useMemo(() => (data?.results ?? []).slice(0, 6), [data]);
 
   const [progress, setProgress] = useState<ProgressItem[]>([]);
@@ -44,7 +45,9 @@ export default function HomePage() {
     <main className="min-h-screen bg-ink">
       <Navbar />
 
-      {isLoading && heroes.length === 0 ? (
+      {heroes.length > 0 ? (
+        <HeroBillboard heroes={heroes} />
+      ) : isLoading ? (
         <div className="relative h-[82vh] min-h-[480px] max-h-[860px] w-full">
           <div className="skeleton h-full w-full rounded-none opacity-70" />
           <div className="absolute bottom-[16%] px-[4vw]">
@@ -54,9 +57,11 @@ export default function HomePage() {
             <div className="skeleton h-11 w-52" />
           </div>
         </div>
-      ) : (
-        <HeroBillboard heroes={heroes} />
-      )}
+      ) : error ? (
+        <div className="px-[4vw] pt-24 md:pt-28">
+          <SetupNotice error={error} />
+        </div>
+      ) : null}
 
       <div className="relative z-10 -mt-14 flex flex-col gap-0.5 pb-6">
         {cwItems.length > 0 && (
