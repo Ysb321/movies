@@ -181,7 +181,7 @@ export default function TitlePage() {
       {(d.credits?.cast ?? []).length > 0 && (
         <div className="px-[4vw] pb-6">
           <h2 className="mb-4 text-lg font-bold">Cast</h2>
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
             {d.credits.cast.slice(0, 15).map((c: any) => (
               <Link key={`${c.credit_id}`} href={`/person/${c.id}`} className="w-24 shrink-0 text-center transition hover:opacity-85">
                 {c.profile_path ? (
@@ -204,7 +204,7 @@ export default function TitlePage() {
       {t === "tv" && (d.seasons ?? []).filter((s: any) => s.season_number > 0 && s.episode_count > 0).length > 0 && (
         <div className="px-[4vw] pb-6">
           <h2 className="mb-4 text-lg font-bold">Seasons</h2>
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
             {d.seasons.filter((s: any) => s.season_number > 0 && s.episode_count > 0).map((s: any) => (
               <button
                 key={s.id}
