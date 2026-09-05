@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import clsx from "clsx";
 import { img, titleOf, yearOf, typeOf, type Media } from "@/lib/tmdb";
 import { genreNames, MOVIE_GENRES } from "@/lib/rows";
 import { toggleList, inList, type ProgressItem } from "@/lib/storage";
-import { PlayIcon, PlusIcon, CheckIcon, XIcon, StarIcon } from "./Icons";
+import { PlayIcon, PlusIcon, CheckIcon, XIcon, StarIcon, ChevronIcon } from "./Icons";
 
 const runtimeLabel = (m: Media) => {
   if (typeOf(m) === "movie" && m.runtime) return `${Math.floor(m.runtime / 60)}h ${m.runtime % 60}m`;
@@ -41,7 +42,12 @@ export default function Card({
   const match = Math.round((item.vote_average ?? 0) * 10);
 
   const open = () => router.push(`/title/${type}/${item.id}`);
-  const play = () => router.push(type === "tv" ? `/watch/tv/${item.id}?s=1&e=1` : `/watch/movie/${item.id}`);
+  // resume: continue-watching cards jump straight back to the exact episode
+  const play = () => {
+    if (type === "tv" && progress?.season && progress?.episode)
+      router.push(`/watch/tv/${item.id}?s=${progress.season}&e=${progress.episode}`);
+    else router.push(type === "tv" ? `/watch/tv/${item.id}?s=1&e=1` : `/watch/movie/${item.id}`);
+  };
 
   return (
     <div
@@ -93,12 +99,19 @@ export default function Card({
             </div>
           )}
 
-          {/* continue-watching progress */}
+          {/* continue-watching progress (real position when known) */}
           {progress && (
             <div className="absolute inset-x-2 bottom-1.5 h-[3px] rounded bg-white/30">
               <div
                 className="h-full rounded bg-brand"
-                style={{ width: progress.season ? `${Math.min(92, 8 + progress.episode! * 18)}%` : "42%" }}
+                style={{
+                  width:
+                    progress.positionSec && progress.durationSec
+                      ? `${Math.min(98, (progress.positionSec / progress.durationSec) * 100)}%`
+                      : progress.season
+                        ? `${Math.min(92, 8 + progress.episode! * 18)}%`
+                        : "42%",
+                }}
               />
             </div>
           )}
@@ -168,10 +181,16 @@ export default function Card({
               <span className="rounded border border-neutral-600 px-1 text-[9px] font-medium text-neutral-300">HD</span>
               {runtimeLabel(item) && <span className="text-neutral-400">{runtimeLabel(item)}</span>}
             </div>
-            <div className="mt-1 truncate text-[10.5px] text-neutral-400">
-              {genreNames(item, MOVIE_GENRES).join(" • ")}
-            </div>
           </div>
+          {/* netflix-style footer bar → details page */}
+          <Link
+            href={`/title/${type}/${item.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center justify-between gap-1 border-t border-white/10 px-2.5 py-1.5 text-[10px] text-neutral-400 transition hover:bg-white/5 hover:text-white"
+          >
+            <span className="truncate">{genreNames(item, MOVIE_GENRES).join(" • ") || "More info"}</span>
+            <ChevronIcon className="h-3 w-3 shrink-0" />
+          </Link>
         </div>
       </div>
     </div>

@@ -127,17 +127,22 @@ export default function HeroBillboard({ heroes }: { heroes: Media[] }) {
         </AnimatePresence>
       </div>
 
-      {/* rotation dots */}
+      {/* rotation dots + maturity tag (netflix-style) */}
       {list.length > 1 && (
-        <div className="absolute bottom-[9%] right-[4vw] flex gap-1.5">
-          {list.map((h, i) => (
-            <button
-              key={h.id}
-              aria-label={`Show ${titleOf(h)}`}
-              onClick={() => setIdx(i)}
-              className={clsx("h-1.5 rounded-full transition-all", i === idx ? "w-6 bg-brand" : "w-3 bg-white/40 hover:bg-white/70")}
-            />
-          ))}
+        <div className="absolute bottom-[9%] right-[4vw] flex items-center gap-3">
+          <div className="flex gap-1.5">
+            {list.map((h, i) => (
+              <button
+                key={h.id}
+                aria-label={`Show ${titleOf(h)}`}
+                onClick={() => setIdx(i)}
+                className={clsx("h-1.5 rounded-full transition-all", i === idx ? "w-6 bg-brand" : "w-3 bg-white/40 hover:bg-white/70")}
+              />
+            ))}
+          </div>
+          <span className="border-l-2 border-white/70 bg-black/40 py-0.5 pl-2.5 pr-4 text-[13px] font-medium text-neutral-100">
+            U/A 16+
+          </span>
         </div>
       )}
     </section>

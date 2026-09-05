@@ -65,7 +65,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       (entries) => {
         if (entries[0].isIntersecting) {
           const total = data?.[0]?.total_pages ?? 1;
-          if (size < Math.min(total, 50)) setSize(size + 1);
+          if (size < Math.min(total, 500)) setSize(size + 1);
         }
       },
       { rootMargin: "900px 0px" }
@@ -111,7 +111,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
               <Card item={m} variant="poster" className="w-full" />
             </motion.div>
           ))}
-          {size < 50 &&
+          {size < 500 &&
             Array.from({ length: 7 }).map((_, i) => (
               <div key={`s${i}`} className="skeleton aspect-[2/3] opacity-60" />
             ))}

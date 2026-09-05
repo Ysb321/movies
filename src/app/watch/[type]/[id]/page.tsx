@@ -3,15 +3,19 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import clsx from "clsx";
 import Navbar from "@/components/Navbar";
 import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf } from "@/lib/tmdb";
-import { saveProgress, inList, toggleList } from "@/lib/storage";
-import { vidcoreUrl } from "@/lib/player";
-import { ChevronIcon, PlayIcon, PlusIcon, CheckIcon, StarIcon } from "@/components/Icons";
-import clsx from "clsx";
+import { vidcoreUrl, parsePlayerEvent, fmtTime } from "@/lib/player";
+import { scrollToEl } from "@/lib/scroll";
+import {
+  saveProgress, updateProgressPosition, inList, toggleList,
+  getResume, saveResume, clearResume, resumeKeyFor,
+} from "@/lib/storage";
+import { ChevronIcon, PlayIcon, PlusIcon, CheckIcon, StarIcon, RotateCcwIcon } from "@/components/Icons";
 
 export default function WatchPage() {
   return (
@@ -28,21 +32,83 @@ function WatchContent() {
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
   const playerRef = useRef<HTMLDivElement>(null);
+  const lastTime = useRef<{ time: number; duration?: number } | null>(null);
+  const lastSaved = useRef(0);
 
   const { data: d, error } = useTmdbSnapshot<any>(
     `${t}/${id}?append_to_response=credits,recommendations,similar,images&include_image_language=en,null`
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
 
-  const title = d ? titleOf(d) : `Loading…`;
+  const title = d ? titleOf(d) : "Loading…";
   const seasons = useMemo(
     () => (d?.seasons ?? []).filter((s: any) => s.season_number > 0 && s.episode_count > 0),
     [d]
   );
 
-  // track progress for Continue Watching
+  /* ── resume: pick up exactly where the user left off (startAt) ── */
+  const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
+
+  useEffect(() => {
+    const rkey = resumeKeyFor(t, id, season, episode);
+    const saved = getResume(rkey);
+    const resume =
+      saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
+        ? Math.floor(saved.positionSec)
+        : undefined;
+    setEmbed({ src: vidcoreUrl(t, id, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
+    lastSaved.current = resume ?? 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, id, season, episode]);
+
+  const startOver = () => {
+    clearResume(resumeKeyFor(t, id, season, episode));
+    lastTime.current = null;
+    lastSaved.current = 0;
+    setEmbed({ src: vidcoreUrl(t, id, { s: season, e: episode }) });
+  };
+
+  /* ── listen to player postMessage events → persist exact position ── */
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const pt = parsePlayerEvent(e);
+      if (!pt) return;
+      const rkey = resumeKeyFor(t, id, season, episode);
+      if (pt.ended) {
+        clearResume(rkey);
+        updateProgressPosition((p) => p.id === Number(id) && p.type === t, { positionSec: 0 });
+        lastTime.current = null;
+        return;
+      }
+      lastTime.current = { time: pt.time, duration: pt.duration };
+      if (pt.time - lastSaved.current >= 5) {
+        lastSaved.current = pt.time;
+        saveResume(rkey, pt.time, pt.duration);
+        updateProgressPosition(
+          (p) => p.id === Number(id) && p.type === t,
+          { positionSec: pt.time, durationSec: pt.duration ?? undefined, season: t === "tv" ? season : undefined, episode: t === "tv" ? episode : undefined }
+        );
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      // persist the last known position on leave
+      const lt = lastTime.current;
+      if (lt && lt.time > 5) {
+        const rkey = resumeKeyFor(t, id, season, episode);
+        const dur = lt.duration ?? getResume(rkey)?.durationSec;
+        if (!dur || lt.time < dur * 0.97) saveResume(rkey, lt.time, dur);
+        else clearResume(rkey);
+      }
+    };
+  }, [t, id, season, episode]);
+
+  /* ── continue-watching row entry ── */
   useEffect(() => {
     if (!d) return;
+    const rkey = resumeKeyFor(t, id, season, episode);
+    const saved = getResume(rkey);
     saveProgress({
       id: Number(id),
       type: t as "movie" | "tv",
@@ -54,13 +120,15 @@ function WatchContent() {
       season: t === "tv" ? season : undefined,
       episode: t === "tv" ? episode : undefined,
       episodeCount: seasonData?.episodes?.length,
+      positionSec: saved?.positionSec,
+      durationSec: saved?.durationSec,
     });
   }, [d, id, t, season, episode, seasonData]);
 
   const goEpisode = (s: number, e: number) => {
     setSeason(s);
     setEpisode(e);
-    playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToEl(playerRef.current);
   };
 
   const similar = useMemo(() => {
@@ -90,8 +158,18 @@ function WatchContent() {
                 </span>
               )}
             </h1>
+            {embed?.resumedFrom ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]">
+                <span className="rounded-full bg-brand/20 px-2.5 py-0.5 font-semibold text-brand">
+                  Resumed from {fmtTime(embed.resumedFrom)}
+                </span>
+                <button onClick={startOver} className="flex items-center gap-1 text-neutral-400 hover:text-white">
+                  <RotateCcwIcon className="h-3.5 w-3.5" /> Start over
+                </button>
+              </div>
+            ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {d && (
               <span className="hidden items-center gap-1 rounded bg-black/50 px-2 py-1 text-[12px] font-semibold text-amber-400 sm:flex">
                 <StarIcon className="h-3 w-3" /> {(d.vote_average ?? 0).toFixed(1)}
@@ -111,17 +189,21 @@ function WatchContent() {
           </div>
         </div>
 
-        {/* ── VidCore player ── */}
+        {/* ── VidCore player (mounts after resume position is resolved) ── */}
         <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
-          <iframe
-            key={`${t}-${id}-${season}-${episode}`}
-            src={vidcoreUrl(t as "movie" | "tv", id, season, episode)}
-            title={title}
-            className="h-full w-full"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
-            allowFullScreen
-            referrerPolicy="origin"
-          />
+          {embed ? (
+            <iframe
+              key={`${t}-${id}-${season}-${episode}-${embed.src}`}
+              src={embed.src}
+              title={title}
+              className="h-full w-full"
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
+              allowFullScreen
+              referrerPolicy="origin"
+            />
+          ) : (
+            <div className="skeleton h-full w-full rounded-none opacity-50" />
+          )}
         </div>
 
         {!d && error && (
@@ -151,6 +233,7 @@ function WatchContent() {
             <div className="divide-y divide-white/5">
               {(seasonData?.episodes ?? []).map((ep: any) => {
                 const current = ep.episode_number === episode;
+                const epResume = getResume(resumeKeyFor("tv", id, season, ep.episode_number));
                 return (
                   <button
                     key={ep.id}
@@ -176,7 +259,12 @@ function WatchContent() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-3">
                         <p className={clsx("truncate text-[14px] font-semibold", current && "text-brand")}>{ep.name}</p>
-                        <span className="shrink-0 text-[12px] text-neutral-500">{ep.runtime ? `${ep.runtime}m` : ""}</span>
+                        <span className="shrink-0 text-[12px] text-neutral-500">
+                          {ep.runtime ? `${ep.runtime}m` : ""}
+                          {epResume?.positionSec && epResume.durationSec && epResume.positionSec < epResume.durationSec * 0.97
+                            ? ` · ${Math.round((epResume.positionSec / epResume.durationSec) * 100)}% watched`
+                            : ""}
+                        </span>
                       </div>
                       <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-neutral-400">{ep.overview}</p>
                     </div>

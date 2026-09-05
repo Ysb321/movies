@@ -61,3 +61,10 @@ export const PencilIcon = ({ className = "w-5 h-5" }: { className?: string }) =>
     <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
   </svg>
 );
+
+export const RotateCcwIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+  </svg>
+);

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import SWRProvider from "@/components/SWRProvider";
+import SmoothScroll from "@/components/SmoothScroll";
 
 export const metadata: Metadata = {
   title: { default: "NetOut — Watch Movies, TV Shows, Animes & Dramas", template: "%s · NetOut" },
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-ink text-white antialiased">
-        <SWRProvider>{children}</SWRProvider>
+        <SmoothScroll>
+          <SWRProvider>{children}</SWRProvider>
+        </SmoothScroll>
       </body>
     </html>
   );

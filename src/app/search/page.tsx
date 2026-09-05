@@ -1,55 +1,86 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import useSWRInfinite from "swr/infinite";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Card from "@/components/Card";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { img, titleOf, type Media } from "@/lib/tmdb";
+import { swrFetcher, img, titleOf, type Media } from "@/lib/tmdb";
 
 function SearchResults() {
   const params = useSearchParams();
   const q = (params.get("q") ?? "").trim();
 
-  const { data, isLoading, error } = useTmdbSnapshot<any>(
-    q ? `search/multi?query=${encodeURIComponent(q)}&include_adult=false&page=1` : "trending/all/day?page=1"
-  );
+  const trending = useTmdbSnapshot<any>(!q ? "trending/all/day?page=1" : null);
 
-  const { titles, people } = useMemo(() => {
-    const results: Media[] = data?.results ?? [];
-    return {
-      titles: results.filter(
-        (r) => (r.media_type === "movie" || r.media_type === "tv") && (r.poster_path || r.backdrop_path)
-      ),
-      people: results.filter((r) => r.media_type === "person" && r.profile_path),
-    };
-  }, [data]);
+  const getKey = (index: number) =>
+    q ? `search/multi?query=${encodeURIComponent(q)}&include_adult=false&page=${index + 1}` : null;
 
-  if (error && titles.length === 0 && people.length === 0) {
-    return <SetupNotice error={error} />;
-  }
+  const { data, size, setSize, isLoading, error } = useSWRInfinite<any>(getKey, swrFetcher, {
+    revalidateFirstPage: false,
+    keepPreviousData: true,
+    initialSize: 1,
+  });
+
+  const { titles, people, total } = useMemo(() => {
+    if (!q) {
+      const results: Media[] = trending.data?.results ?? [];
+      return {
+        titles: results.filter((r) => (r.media_type === "movie" || r.media_type === "tv") && (r.poster_path || r.backdrop_path)),
+        people: [],
+        total: results.length,
+      };
+    }
+    const seen = new Set<number>();
+    const titles: Media[] = [];
+    let people: Media[] = [];
+    for (const [pi, page] of (data ?? []).entries()) {
+      for (const r of page?.results ?? []) {
+        if (pi === 0 && r.media_type === "person" && r.profile_path) people.push(r);
+        if ((r.media_type === "movie" || r.media_type === "tv") && (r.poster_path || r.backdrop_path) && !seen.has(r.id)) {
+          seen.add(r.id);
+          titles.push(r);
+        }
+      }
+    }
+    return { titles, people, total: data?.[0]?.total_results ?? 0 };
+  }, [q, data, trending.data]);
+
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !q) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          const pages = data?.[0]?.total_pages ?? 1;
+          if (size < Math.min(pages, 20)) setSize(size + 1);
+        }
+      },
+      { rootMargin: "800px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [size, setSize, data, q]);
+
+  if (error && titles.length === 0) return <SetupNotice error={error} />;
 
   if (!q) {
+    if (trending.isLoading && titles.length === 0)
+      return <GridSkeleton />;
     return (
-      <div className="flex h-[70vh] flex-col items-center justify-center gap-3 text-center">
-        <p className="text-2xl font-semibold text-neutral-200">Find something to watch</p>
-        <p className="text-sm text-neutral-500">Search across thousands of movies, TV shows, anime and people.</p>
-      </div>
+      <>
+        <p className="mb-4 text-sm text-neutral-400">Trending today</p>
+        <PosterGrid items={titles} />
+      </>
     );
   }
 
-  if (isLoading && titles.length === 0 && people.length === 0) {
-    return (
-      <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-        {Array.from({ length: 14 }).map((_, i) => (
-          <div key={i} className="skeleton aspect-[2/3]" />
-        ))}
-      </div>
-    );
-  }
+  if (isLoading && titles.length === 0 && people.length === 0) return <GridSkeleton />;
 
   if (titles.length === 0 && people.length === 0) {
     return (
@@ -64,18 +95,16 @@ function SearchResults() {
 
   return (
     <>
-      {titles.length > 0 && (
-        <>
-          <p className="mb-4 text-sm text-neutral-400">
-            {q ? <>Titles related to <span className="font-semibold text-white">&ldquo;{q}&rdquo;</span></> : "Trending today"}
-          </p>
-          <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-            {titles.map((m) => (
-              <Card key={`${m.media_type}-${m.id}`} item={m} variant="poster" className="w-full" />
-            ))}
-          </div>
-        </>
-      )}
+      <p className="mb-4 text-sm text-neutral-400">
+        {total > 0 && (
+          <>
+            {total.toLocaleString()} result{total === 1 ? "" : "s"} for{" "}
+            <span className="font-semibold text-white">&ldquo;{q}&rdquo;</span>
+          </>
+        )}
+      </p>
+
+      {titles.length > 0 && <PosterGrid items={titles} showSkeleton={size < 20} />}
 
       {people.length > 0 && (
         <>
@@ -85,7 +114,7 @@ function SearchResults() {
               <div key={p.id} className="w-28">
                 <Link href={`/search?q=${encodeURIComponent(p.name ?? "")}`} className="block">
                   <img
-                    src={img(p.profile_path, "w185")!}
+                    src={img(p.profile_path, "w185") ?? ""}
                     alt={p.name ?? ""}
                     loading="lazy"
                     decoding="async"
@@ -105,20 +134,33 @@ function SearchResults() {
   );
 }
 
+function PosterGrid({ items, showSkeleton }: { items: Media[]; showSkeleton?: boolean }) {
+  return (
+    <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
+      {items.map((m) => (
+        <Card key={`${m.media_type}-${m.id}`} item={m} variant="poster" className="w-full" />
+      ))}
+      {showSkeleton && Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton aspect-[2/3] opacity-60" />)}
+    </div>
+  );
+}
+
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
+      {Array.from({ length: 16 }).map((_, i) => (
+        <div key={i} className="skeleton aspect-[2/3]" />
+      ))}
+    </div>
+  );
+}
+
 export default function SearchPage() {
   return (
     <main className="min-h-screen bg-ink">
       <Navbar />
       <div className="px-[4vw] pb-10 pt-24 md:pt-28">
-        <Suspense
-          fallback={
-            <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-              {Array.from({ length: 14 }).map((_, i) => (
-                <div key={i} className="skeleton aspect-[2/3]" />
-              ))}
-            </div>
-          }
-        >
+        <Suspense fallback={<GridSkeleton />}>
           <SearchResults />
         </Suspense>
       </div>

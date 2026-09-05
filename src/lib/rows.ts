@@ -28,6 +28,8 @@ export type RowDef = {
   title: string;
   variant?: "backdrop" | "poster";
   top10?: boolean;
+  /** "Explore all" target shown next to the row title (netflix-style) */
+  href?: string;
   /** sources: [path, params] pairs — results are interleaved */
   sources: [string, Record<string, string | number>][];
   /** transform (e.g. dedupe / filter) */
@@ -38,16 +40,35 @@ export const HOME_ROWS: RowDef[] = [
   {
     key: "trending-movies",
     title: "Trending Movies",
+    href: "/movies",
     sources: [["trending/movie/week", { page: 1 }]],
   },
   {
     key: "trending-tv",
     title: "Trending TV Shows",
+    href: "/tv",
     sources: [["trending/tv/week", { page: 1 }]],
+  },
+  {
+    key: "trending-india",
+    title: "Trending in India",
+    href: "/movies",
+    sources: [
+      ["discover/movie", { region: "IN", sort_by: "popularity.desc", "vote_count.gte": 30 }],
+      ["discover/tv", { region: "IN", sort_by: "popularity.desc", "vote_count.gte": 20, with_origin_country: "IN" }],
+    ],
+  },
+  {
+    key: "top10-india",
+    title: "Top 10 in India Today",
+    top10: true,
+    href: "/movies",
+    sources: [["discover/movie", { region: "IN", sort_by: "popularity.desc", "vote_count.gte": 80 }]],
   },
   {
     key: "hollywood",
     title: "Hollywood Movies",
+    href: "/movies",
     sources: [
       ["discover/movie", { with_original_language: "en", with_origin_country: "US", "vote_count.gte": 400, sort_by: "popularity.desc" }],
     ],
@@ -55,6 +76,7 @@ export const HOME_ROWS: RowDef[] = [
   {
     key: "bollywood",
     title: "Bollywood Movies",
+    href: "/movies",
     sources: [["discover/movie", { with_original_language: "hi", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
   },
   {
@@ -69,6 +91,7 @@ export const HOME_ROWS: RowDef[] = [
   {
     key: "korean-tv",
     title: "Korean TV Shows",
+    href: "/tv",
     sources: [["discover/tv", { with_origin_country: "KR", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
   },
   {
@@ -109,12 +132,6 @@ export const HOME_ROWS: RowDef[] = [
     title: "WWE",
     sources: [["search/multi", { query: "WWE" }]],
     pick: (items) => items.filter((i) => i.media_type === "tv" || i.media_type === "movie"),
-  },
-  {
-    key: "top10-movies",
-    title: "Top 10 Movies Today",
-    top10: true,
-    sources: [["trending/movie/day", { page: 1 }]],
   },
 ];
 

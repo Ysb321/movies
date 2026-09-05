@@ -12,13 +12,6 @@ export type ListItem = {
   vote_average?: number;
   year?: string;
 };
-export type ProgressItem = ListItem & {
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-  episodeCount?: number;
-  ts: number;
-};
 
 const read = <T,>(key: string, fallback: T): T => {
   if (typeof window === "undefined") return fallback;
@@ -82,6 +75,18 @@ export const onListChange = (cb: (l: ListItem[]) => void) => {
 /* ── continue watching (per profile) ── */
 const progKey = () => `netout:progress:${getActiveProfile()?.id ?? "p1"}`;
 
+export type Progress = ListItem & {
+  season?: number;
+  episode?: number;
+  episodeName?: string;
+  episodeCount?: number;
+  positionSec?: number;
+  durationSec?: number;
+  ts: number;
+};
+
+export type ProgressItem = Progress;
+
 export const getProgress = (): ProgressItem[] =>
   read<ProgressItem[]>(progKey(), []).sort((a, b) => b.ts - a.ts);
 
@@ -90,6 +95,48 @@ export const saveProgress = (item: Omit<ProgressItem, "ts">) => {
   write(progKey(), [{ ...item, ts: Date.now() }, ...cur].slice(0, 20));
 };
 
+export const updateProgressPosition = (
+  match: (p: ProgressItem) => boolean,
+  patch: Partial<Pick<ProgressItem, "positionSec" | "durationSec" | "season" | "episode">>
+) => {
+  const cur = read<ProgressItem[]>(progKey(), []);
+  const idx = cur.findIndex(match);
+  if (idx === -1) return;
+  cur[idx] = { ...cur[idx], ...patch, ts: Date.now() };
+  write(progKey(), cur);
+};
+
 export const removeProgress = (id: number) => write(progKey(), getProgress().filter((i) => i.id !== id));
 export const clearProgress = () => write(progKey(), []);
 export const onProgressChange = (cb: (l: ProgressItem[]) => void) => sub<ProgressItem[]>(progKey(), cb);
+
+/* ── resume positions (exact second to resume at, per title/episode) ── */
+const RESUME_KEY = "netout:resume";
+
+export const resumeKeyFor = (type: "movie" | "tv", id: number | string, s?: number, e?: number) =>
+  type === "movie" ? `movie:${id}` : `tv:${id}:${s ?? 1}:${e ?? 1}`;
+
+export type ResumeEntry = { positionSec: number; durationSec?: number; ts: number };
+
+const allResume = () => read<Record<string, ResumeEntry>>(RESUME_KEY, {});
+
+export const getResume = (key: string): ResumeEntry | null => allResume()[key] ?? null;
+
+export const saveResume = (key: string, positionSec: number, durationSec?: number) => {
+  const all = allResume();
+  // prune: keep the 60 most recent entries
+  const entries = Object.entries(all);
+  if (entries.length > 60)
+    entries
+      .sort((a, b) => a[1].ts - b[1].ts)
+      .slice(0, entries.length - 60)
+      .forEach(([k]) => delete all[k]);
+  all[key] = { positionSec, durationSec, ts: Date.now() };
+  write(RESUME_KEY, all);
+};
+
+export const clearResume = (key: string) => {
+  const all = allResume();
+  delete all[key];
+  write(RESUME_KEY, all);
+};
