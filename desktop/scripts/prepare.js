@@ -10,7 +10,27 @@ const nextDir = path.join(root, ".next");
 const standalone = path.join(nextDir, "standalone");
 const appDir = path.join(__dirname, "..", "app");
 
-const standaloneOk = () => fs.existsSync(path.join(standalone, "server.js"));
+/* Locate the standalone entry even if a different workspace root made Next
+   nest it (e.g. .next/standalone/movies/server.js). Returns the directory
+   that directly contains server.js, shallowest match wins. */
+const findEntryDir = (dir) => {
+  let best = null;
+  const walk = (d, depth) => {
+    if (depth > 4) return;
+    let entries = [];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) {
+        if (!["node_modules", ".cache", "cache"].includes(e.name)) walk(p, depth + 1);
+      } else if (e.name === "server.js") {
+        if (!best || depth < best.depth) best = { dir: d, depth };
+      }
+    }
+  };
+  walk(dir, 0);
+  return best ? best.dir : null;
+};
 
 const build = () => {
   const r = spawnSync("npm", ["run", "build"], { cwd: root, stdio: "inherit", shell: true });
@@ -25,19 +45,31 @@ if (!build()) {
 
 /* Retry once from a clean slate: a stale .next cache can omit the
    standalone output when the output mode changed between builds. */
-if (!standaloneOk()) {
+let entryDir = findEntryDir(standalone);
+if (!entryDir) {
   console.log(">> Standalone output missing. Clearing the build cache and rebuilding once...");
   fs.rmSync(nextDir, { recursive: true, force: true });
-  if (!build() || !standaloneOk()) {
-    console.error("[FAIL] Standalone output still missing (.next/standalone/server.js).");
-    console.error("       Make sure the repo is current: git pull origin arena/01a070de-movies");
+  if (!build()) {
+    console.error("[FAIL] Site build failed on the clean rebuild.");
     process.exit(1);
   }
+  entryDir = findEntryDir(standalone);
 }
+if (!entryDir) {
+  console.error("[FAIL] Standalone output still missing (.next/standalone/**/server.js).");
+  console.error("       Try deleting any stray package-lock.json in parent folders, then re-run.");
+  process.exit(1);
+}
+console.log(">> Standalone entry found at: " + path.relative(root, path.join(entryDir, "server.js")));
 
 console.log(">> Copying bundle into desktop/app...");
 fs.rmSync(appDir, { recursive: true, force: true });
-fs.cpSync(standalone, appDir, { recursive: true });
+fs.cpSync(entryDir, appDir, { recursive: true });
+/* nested layouts keep node_modules at the standalone root */
+const sharedMods = path.join(standalone, "node_modules");
+if (fs.existsSync(sharedMods) && !fs.existsSync(path.join(appDir, "node_modules"))) {
+  fs.cpSync(sharedMods, path.join(appDir, "node_modules"), { recursive: true });
+}
 fs.cpSync(path.join(nextDir, "static"), path.join(appDir, ".next", "static"), { recursive: true });
 fs.cpSync(path.join(root, "public"), path.join(appDir, "public"), { recursive: true });
 
