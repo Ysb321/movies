@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3000",
+    "start": "node scripts/serve.js",
     "lint": "next lint",
     "desktop:start": "cd desktop && npm install && npm run start",
     "desktop:dist": "cd desktop && npm install && npm run dist"
