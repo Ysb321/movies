@@ -1,0 +1,25 @@
+import Link from "next/link";
+
+export default function Footer() {
+  return (
+    <footer className="mt-14 border-t border-white/10 px-[4vw] py-10 text-[12.5px] text-neutral-500">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-5 flex flex-wrap gap-x-6 gap-y-2">
+          <Link href="/home" className="hover:text-neutral-300">Home</Link>
+          <Link href="/movies" className="hover:text-neutral-300">Movies</Link>
+          <Link href="/tv" className="hover:text-neutral-300">TV Shows</Link>
+          <Link href="/categories" className="hover:text-neutral-300">Categories</Link>
+          <Link href="/my-list" className="hover:text-neutral-300">My List</Link>
+        </div>
+        <p className="leading-relaxed">
+          This product uses the TMDB API but is not endorsed or certified by TMDB. Metadata and
+          artwork © TMDB. Streaming player powered by{" "}
+          <a href="https://vidcore.io" target="_blank" rel="noreferrer" className="underline hover:text-neutral-300">
+            VidCore
+          </a>
+          .
+        </p>
+      </div>
+    </footer>
+  );
+}

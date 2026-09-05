@@ -1,0 +1,163 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import clsx from "clsx";
+import SearchBox from "./SearchBox";
+import Avatar from "./Avatar";
+import { getActiveProfile, getProfiles, onActiveProfileChange, setActiveProfile, type Profile } from "@/lib/storage";
+import { ChevronIcon } from "./Icons";
+
+const LINKS = [
+  { href: "/home", label: "Home" },
+  { href: "/tv", label: "TV Shows" },
+  { href: "/movies", label: "Movies" },
+  { href: "/categories", label: "Categories" },
+  { href: "/my-list", label: "My List" },
+];
+
+export default function Navbar() {
+  const [scrolled, setScrolled] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const browseRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setProfile(getActiveProfile());
+    return onActiveProfileChange(setProfile);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (browseRef.current && !browseRef.current.contains(e.target as Node)) setBrowseOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, []);
+
+  return (
+    <header
+      className={clsx(
+        "fixed inset-x-0 top-0 z-[90] transition-colors duration-500",
+        scrolled ? "bg-[#0b0b0f]/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 via-black/40 to-transparent"
+      )}
+    >
+      <nav className="flex h-14 items-center gap-6 px-[4vw] md:h-[60px]">
+        <Link href="/home" className="shrink-0 text-2xl font-black tracking-tighter text-brand md:text-[26px]">
+          NETOUT
+        </Link>
+
+        {/* desktop links */}
+        <div className="hidden items-center gap-4 text-[13.5px] md:flex">
+          {LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={clsx(
+                "transition-colors hover:text-neutral-300",
+                pathname.startsWith(l.href) ? "font-semibold text-white" : "text-neutral-200"
+              )}
+            >
+              {l.label}
+            </Link>
+          ))}
+        </div>
+
+        {/* mobile browse dropdown */}
+        <div className="relative md:hidden" ref={browseRef}>
+          <button
+            onClick={() => setBrowseOpen((v) => !v)}
+            className="flex items-center gap-1 text-[13px] text-neutral-200"
+          >
+            Browse <ChevronIcon className="h-3.5 w-3.5" />
+          </button>
+          {browseOpen && (
+            <div className="absolute left-0 top-9 w-44 border-t-2 border-white bg-black/95 py-2 text-sm">
+              {LINKS.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setBrowseOpen(false)}
+                  className="block px-4 py-2 text-center text-neutral-200 hover:bg-white/10"
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="ml-auto flex items-center gap-3 md:gap-4">
+          <SearchBox />
+          <Link href="/my-list" aria-label="My List" className="hidden text-neutral-200 hover:text-white sm:block">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
+              <path d="M4 6h16M4 12h10M4 18h7" strokeLinecap="round" />
+            </svg>
+          </Link>
+
+          {/* profile menu */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex items-center gap-1.5"
+              aria-label="Profile menu"
+            >
+              <Avatar color={profile?.color ?? "#5e17eb"} kids={profile?.kids} className="h-8 w-8" />
+              <ChevronIcon className={clsx("hidden h-3.5 w-3.5 text-white transition-transform sm:block", menuOpen && "rotate-90")} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-11 w-56 border-t-2 border-white bg-black/95 py-2.5 text-sm text-neutral-200 shadow-2xl">
+                {getProfiles()
+                  .filter((p) => p.id !== profile?.id)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setActiveProfile(p);
+                        setProfile(p);
+                        setMenuOpen(false);
+                        router.refresh();
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2 hover:underline"
+                    >
+                      <Avatar color={p.color} kids={p.kids} className="h-7 w-7" />
+                      {p.name}
+                    </button>
+                  ))}
+                <div className="my-2 border-t border-white/20" />
+                <Link href="/my-list" onClick={() => setMenuOpen(false)} className="block px-4 py-1.5 hover:underline">
+                  My List
+                </Link>
+                <Link href="/" onClick={() => setMenuOpen(false)} className="block px-4 py-1.5 hover:underline">
+                  Manage Profiles
+                </Link>
+                <button
+                  onClick={() => {
+                    setActiveProfile(null);
+                    router.push("/");
+                  }}
+                  className="block w-full px-4 py-1.5 text-left hover:underline"
+                >
+                  Sign out of NetOut
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </nav>
+    </header>
+  );
+}
