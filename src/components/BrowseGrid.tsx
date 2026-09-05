@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWRInfinite from "swr/infinite";
-import { motion } from "framer-motion";
 import Card from "./Card";
 import SetupNotice from "./SetupNotice";
 import { swrFetcher, type Media } from "@/lib/tmdb";
@@ -15,9 +14,11 @@ export type BrowseOptions = {
   heading: string;
 };
 
-/** Infinite poster grid — discover/search pages share this. Pages stream in
- *  via useSWRInfinite; a sentinel triggers the next page before you reach the
- *  bottom, so scrolling never stalls. */
+const PAGE_CAP = 500; // TMDB discover caps at 500 pages
+
+/** Infinite poster grid (Movies / TV / Genres). Pages stream in via
+ *  useSWRInfinite with a stable, cooldown-guarded IntersectionObserver —
+ *  no runaway fetch loops, no observer churn, smooth on huge lists. */
 export default function BrowseGrid({ options }: { options: BrowseOptions }) {
   const { type, genre, heading } = options;
   const [activeGenre, setActiveGenre] = useState<number | undefined>(genre);
@@ -31,17 +32,16 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       include_adult: "false",
       "vote_count.gte": type === "movie" ? "80" : "25",
     });
-    if (type === "tv") p.set("with_origin_country", ""); // all regions
     if (activeGenre) p.set("with_genres", String(activeGenre));
     return p;
   }, [type, activeGenre]);
 
   const getKey = (index: number) => `discover/${type}?${params.toString()}&page=${index + 1}`;
-  const { data, size, setSize, isLoading, error } = useSWRInfinite<any>(getKey, swrFetcher, {
+  const { data, size, setSize, isLoading, isValidating, error } = useSWRInfinite<any>(getKey, swrFetcher, {
     revalidateFirstPage: false,
     revalidateAll: false,
     keepPreviousData: true,
-    initialSize: 2,
+    initialSize: 1,
   });
 
   const items = useMemo(() => {
@@ -57,22 +57,38 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
     return out;
   }, [data, type]);
 
+  const total = data?.[0]?.total_pages ?? 1;
+  const hasMore = size < Math.min(total, PAGE_CAP);
+
+  /* ── stable infinite-scroll sentinel (never recreated, ref-driven) ── */
   const sentinel = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(true);
+  const hasMoreRef = useRef(true);
+  const sizeRef = useRef(size);
+  const setSizeRef = useRef(setSize);
+  useEffect(() => void (busyRef.current = isLoading || isValidating), [isLoading, isValidating]);
+  useEffect(() => void (hasMoreRef.current = hasMore), [hasMore]);
+  useEffect(() => void (sizeRef.current = size), [size]);
+  setSizeRef.current = setSize;
+
   useEffect(() => {
     const el = sentinel.current;
-    if (!el) return;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    let cooldown = 0;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          const total = data?.[0]?.total_pages ?? 1;
-          if (size < Math.min(total, 500)) setSize(size + 1);
-        }
+        if (!entries[0].isIntersecting) return;
+        if (busyRef.current || !hasMoreRef.current) return;
+        const now = performance.now();
+        if (now - cooldown < 400) return; // one page per 400ms max
+        cooldown = now;
+        setSizeRef.current(sizeRef.current + 1);
       },
-      { rootMargin: "900px 0px" }
+      { rootMargin: "800px 0px" }
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [size, setSize, data]);
+  }, []);
 
   return (
     <div className="px-[4vw] pb-10">
@@ -93,31 +109,32 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       {error && items.length === 0 ? (
         <SetupNotice error={error} />
       ) : items.length === 0 && isLoading ? (
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
+        <div className="grid grid-cols-3 gap-x-2.5 gap-y-10 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
           {Array.from({ length: 21 }).map((_, i) => (
             <div key={i} className="skeleton aspect-[2/3]" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-          {items.map((m, i) => (
-            <motion.div
-              key={m.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.25, delay: i % 14 === 0 ? 0 : 0 }}
-              className="cv-auto"
-            >
-              <Card item={m} variant="poster" className="w-full" />
-            </motion.div>
-          ))}
-          {size < 500 &&
-            Array.from({ length: 7 }).map((_, i) => (
-              <div key={`s${i}`} className="skeleton aspect-[2/3] opacity-60" />
+        <>
+          <div className="grid grid-cols-3 gap-x-2.5 gap-y-10 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
+            {items.map((m) => (
+              <div key={m.id} className="cv-auto">
+                <Card item={m} variant="poster" className="w-full" />
+              </div>
             ))}
-        </div>
+            {isValidating && hasMore &&
+              Array.from({ length: 7 }).map((_, i) => <div key={`s${i}`} className="skeleton aspect-[2/3] opacity-60" />)}
+          </div>
+          <div ref={sentinel} className="h-4" />
+          <div className="py-4 text-center text-[12px] text-neutral-500">
+            {hasMore
+              ? isValidating
+                ? "Loading more…"
+                : `Scroll for more · ${items.length.toLocaleString()} titles loaded`
+              : `${items.length.toLocaleString()} titles · You've reached the end`}
+          </div>
+        </>
       )}
-      <div ref={sentinel} className="h-2" />
     </div>
   );
 }

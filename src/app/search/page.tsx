@@ -51,21 +51,36 @@ function SearchResults() {
   }, [q, data, trending.data]);
 
   const sentinel = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(true);
+  const hasMoreRef = useRef(true);
+  const sizeRef = useRef(size);
+  const setSizeRef = useRef(setSize);
+  useEffect(() => void (busyRef.current = isLoading || (data?.[0]?.total_pages ?? 1) === 0), [isLoading, data]);
+  useEffect(
+    () => void (hasMoreRef.current = q ? size < Math.min(data?.[0]?.total_pages ?? 1, 20) : false),
+    [size, data, q]
+  );
+  useEffect(() => void (sizeRef.current = size), [size]);
+  setSizeRef.current = setSize;
+
   useEffect(() => {
     const el = sentinel.current;
-    if (!el || !q) return;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    let cooldown = 0;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          const pages = data?.[0]?.total_pages ?? 1;
-          if (size < Math.min(pages, 20)) setSize(size + 1);
-        }
+        if (!entries[0].isIntersecting) return;
+        if (busyRef.current || !hasMoreRef.current) return;
+        const now = performance.now();
+        if (now - cooldown < 400) return;
+        cooldown = now;
+        setSizeRef.current(sizeRef.current + 1);
       },
       { rootMargin: "800px 0px" }
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [size, setSize, data, q]);
+  }, []);
 
   if (error && titles.length === 0) return <SetupNotice error={error} />;
 
