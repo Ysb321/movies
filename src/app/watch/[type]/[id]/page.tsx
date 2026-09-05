@@ -49,9 +49,11 @@ function WatchContent() {
   const lastSaved = useRef(0);
 
   const { data: d, error } = useTmdbSnapshot<any>(
-    `${t}/${id}?append_to_response=credits,recommendations,similar,images&include_image_language=en,null`
+    `${t}/${id}?append_to_response=credits,recommendations,similar,images,external_ids&include_image_language=en,null`
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
+  /* scrapers index best by IMDb id — prefer it when TMDB provides one */
+  const embedId: string = d?.external_ids?.imdb_id || (id as string);
 
   const title = d ? titleOf(d) : "Loading…";
   const seasons = useMemo(
@@ -69,16 +71,16 @@ function WatchContent() {
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    setEmbed({ src: embedUrl(provider, t, id, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
+    setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, id, season, episode, provider.id]);
+  }, [t, id, season, episode, provider.id, embedId]);
 
   const startOver = () => {
     clearResume(resumeKeyFor(t, id, season, episode));
     lastTime.current = null;
     lastSaved.current = 0;
-    setEmbed({ src: embedUrl(provider, t, id, { s: season, e: episode }) });
+    setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode }) });
   };
 
   /* ── listen to player postMessage events → persist exact position ── */
@@ -187,7 +189,6 @@ function WatchContent() {
               <button
                 key={pv.id}
                 onClick={() => switchServer(pv.id)}
-                title={pv.base}
                 className={clsx(
                   "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
                   serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
@@ -207,7 +208,7 @@ function WatchContent() {
               onClick={() =>
                 embed &&
                 window.open(
-                  embedUrl(provider, t, id, { s: season, e: episode }),
+                  embedUrl(provider, t, embedId, { s: season, e: episode }),
                   "_blank",
                   "noopener,noreferrer"
                 )

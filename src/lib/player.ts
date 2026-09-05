@@ -1,27 +1,57 @@
-/** VidCore embed (https://vidcore.io) — movie & TV endpoints
- *  movie: https://vidcore.io/movie/{id}
- *  tv:    https://vidcore.io/tv/{id}/{season}/{episode}
- *  params: autoPlay, theme, sub, poster, title, startAt (seconds), server… */
+/** Streaming embed providers.
+ *  All accept IMDb ids (tt…) and most TMDB numeric ids; IMDb ids resolve to
+ *  richer source indexes, so the watch page passes imdb_id when available. */
 
 export type EmbedProvider = {
   id: string;
   name: string;
-  base: string;
+  movie: (id: string) => string;
+  tv: (id: string, season: number, episode: number) => string;
   supportsStartAt?: boolean;
 };
 
-/** Streaming servers. VidCore is the default; the VidSrc mirrors share the
- *  same /movie/{id} + /tv/{id}/{s}/{e} URL format and accept TMDB ids, so a
- *  500/dead source on one server can be bypassed with one click. */
+const qs = (params: Record<string, string | number | undefined>) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined) p.set(k, String(v));
+  const s = p.toString();
+  return s ? `?${s}` : "";
+};
+
 export const PROVIDERS: EmbedProvider[] = [
-  { id: "vidcore", name: "VidCore", base: "https://vidcore.io", supportsStartAt: true },
-  { id: "vidsrc", name: "VidSrc", base: "https://vidsrc.to" },
-  { id: "vidsrc2", name: "VidSrc 2", base: "https://vidsrc.hair" },
-  { id: "vidsrc3", name: "VidSrc 3", base: "https://vid-src.top" },
+  {
+    id: "vidcore",
+    name: "VidCore",
+    supportsStartAt: true,
+    movie: (id) => `https://vidcore.io/movie/${id}${qs({ autoPlay: "true", theme: "E50914" })}`,
+    tv: (id, s, e) => `https://vidcore.io/tv/${id}/${s}/${e}${qs({ autoPlay: "true", theme: "E50914" })}`,
+  },
+  {
+    id: "vidcore2",
+    name: "VidCore 2",
+    movie: (id) => `https://vidcore.org/embed/movie/${id}${qs({ autoplay: "true" })}`,
+    tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}${qs({ autoplay: "true" })}`,
+  },
+  {
+    id: "vidsrc",
+    name: "VidSrc",
+    movie: (id) => `https://vidsrc.to/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidsrc2",
+    name: "VidSrc 2",
+    movie: (id) => `https://vidsrc.hair/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vidsrc.hair/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidsrc3",
+    name: "VidSrc 3",
+    movie: (id) => `https://vid-src.top/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vid-src.top/embed/tv/${id}/${s}/${e}`,
+  },
 ];
 
-export const getProvider = (id: string) =>
-  PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
+export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
 
 export function embedUrl(
   provider: EmbedProvider,
@@ -29,14 +59,16 @@ export function embedUrl(
   id: number | string,
   opts: { s?: number; e?: number; startAt?: number } = {}
 ) {
-  const path =
-    type === "movie" ? `/movie/${id}` : `/tv/${id}/${opts.s ?? 1}/${opts.e ?? 1}`;
-  const qs = new URLSearchParams({ autoPlay: "true", theme: "E50914" });
-  if (provider.supportsStartAt && opts.startAt && opts.startAt > 5)
-    qs.set("startAt", String(Math.floor(opts.startAt)));
-  return `${provider.base}${path}?${qs.toString()}`;
+  const startAt = provider.supportsStartAt && opts.startAt && opts.startAt > 5 ? opts.startAt : undefined;
+  const base =
+    type === "movie"
+      ? provider.movie(String(id))
+      : provider.tv(String(id), opts.s ?? 1, opts.e ?? 1);
+  if (!startAt) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}startAt=${Math.floor(startAt)}`;
 }
 
+/** legacy helper (VidCore default) */
 export function vidcoreUrl(
   type: "movie" | "tv",
   id: number | string,
