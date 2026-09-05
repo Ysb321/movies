@@ -21,13 +21,10 @@
     "appId": "com.yashraj.yetflix",
     "productName": "Yetflix",
     "directories": {
-      "output": "dist"
+      "app": ".",
+      "output": "dist",
+      "buildResources": "build"
     },
-    "files": [
-      "index.js",
-      "app/**/*",
-      "build/icon.png"
-    ],
     "asar": true,
     "win": {
       "target": [

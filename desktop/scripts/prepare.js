@@ -32,4 +32,13 @@ fs.cpSync(standalone, appDir, { recursive: true });
 fs.cpSync(path.join(nextDir, "static"), path.join(appDir, ".next", "static"), { recursive: true });
 fs.cpSync(path.join(root, "public"), path.join(appDir, "public"), { recursive: true });
 
+// wipe stale packaging output + verify the Electron entry exists
+const dist = path.join(__dirname, "..", "dist");
+fs.rmSync(dist, { recursive: true, force: true });
+const entry = path.join(__dirname, "..", "index.js");
+if (!fs.existsSync(entry)) {
+  console.error("✗ desktop/index.js is missing — run `git pull` inside the repo.");
+  process.exit(1);
+}
+
 console.log("✓ Site bundled at desktop/app — run `npm run start` or `npm run dist`.");
