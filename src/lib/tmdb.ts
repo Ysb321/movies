@@ -48,6 +48,7 @@ export type Media = {
   next_episode_to_air?: any;
   known_for_department?: string;
   known_for?: Media[];
+  character?: string; // from combined_credits / credits
 };
 
 export const titleOf = (m?: Media | null) =>

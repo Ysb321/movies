@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   images: { unoptimized: true }, // TMDB CDN serves pre-optimized sizes; we use direct lazy <img>
+  experimental: {
+    // tree-shake barrel imports → smaller client bundles
+    optimizePackageImports: ["framer-motion", "lenis"],
+  },
   async headers() {
     return [
       {

@@ -19,6 +19,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* warm up TMDB connections early — faster first images & API calls */}
+        <link rel="preconnect" href="https://image.tmdb.org" />
+        <link rel="preconnect" href="https://api.themoviedb.org" />
+        <link rel="dns-prefetch" href="https://www.youtube.com" />
+      </head>
       <body className="min-h-screen bg-ink text-white antialiased">
         <SmoothScroll>
           <SWRProvider>{children}</SWRProvider>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -182,18 +183,18 @@ export default function TitlePage() {
           <h2 className="mb-4 text-lg font-bold">Cast</h2>
           <div className="flex gap-4 overflow-x-auto pb-2">
             {d.credits.cast.slice(0, 15).map((c: any) => (
-              <div key={`${c.credit_id}`} className="w-24 shrink-0 text-center">
+              <Link key={`${c.credit_id}`} href={`/person/${c.id}`} className="w-24 shrink-0 text-center transition hover:opacity-85">
                 {c.profile_path ? (
                   <img src={img(c.profile_path, "w185")!} alt={c.name} loading="lazy" decoding="async"
-                    className="h-24 w-24 rounded-full object-cover ring-1 ring-white/15" />
+                    className="h-24 w-24 rounded-full object-cover ring-1 ring-white/15 transition hover:ring-white/50" />
                 ) : (
                   <div className="flex h-24 w-24 items-center justify-center rounded-full bg-panel-2 text-xl text-neutral-500">
                     {c.name?.[0]}
                   </div>
                 )}
-                <p className="mt-2 truncate text-[12px] font-semibold text-neutral-200">{c.name}</p>
+                <p className="mt-2 truncate text-[12px] font-semibold text-neutral-200 hover:text-white">{c.name}</p>
                 <p className="truncate text-[11px] text-neutral-500">{c.character}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

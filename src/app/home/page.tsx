@@ -11,7 +11,7 @@ import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { HOME_ROWS } from "@/lib/rows";
 import {
-  getProgress, onProgressChange, removeProgress,
+  getProgress, onProgressChange,
   getList, onListChange, getActiveProfile,
 } from "@/lib/storage";
 import type { ListItem, ProgressItem } from "@/lib/storage";
@@ -75,7 +75,6 @@ export default function HomePage() {
             items={cwItems as any}
             variant="backdrop"
             progressItems={cwMap}
-            onRemove={removeProgress}
           />
         )}
         {listItems.length > 0 && <Row title="My List" items={listItems} />}

@@ -284,7 +284,14 @@ function WatchContent() {
             {(d.credits?.cast ?? []).length > 0 && (
               <p className="mt-3 text-[13px] text-neutral-500">
                 <span className="text-neutral-400">Starring: </span>
-                {d.credits.cast.slice(0, 5).map((c: any) => c.name).join(", ")}
+                {d.credits.cast.slice(0, 5).map((c: any, i: number) => (
+                  <span key={c.id}>
+                    <Link href={`/person/${c.id}`} className="text-neutral-300 hover:text-white hover:underline">
+                      {c.name}
+                    </Link>
+                    {i < Math.min(5, d.credits.cast.length) - 1 ? ", " : ""}
+                  </span>
+                ))}
               </p>
             )}
           </div>

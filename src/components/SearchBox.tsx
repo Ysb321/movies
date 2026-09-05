@@ -91,7 +91,7 @@ export default function SearchBox() {
       const entry = flat[sel];
       if (entry) {
         setFocused(false);
-        router.push(entry.kind === "title" ? `/title/${entry.item.media_type}/${entry.item.id}` : `/search?q=${encodeURIComponent(entry.item.name ?? "")}`);
+        router.push(entry.kind === "title" ? `/title/${entry.item.media_type}/${entry.item.id}` : `/person/${entry.item.id}`);
       } else {
         goAllResults();
       }
@@ -183,7 +183,7 @@ export default function SearchBox() {
                 return (
                   <Link
                     key={`${entry.kind}-${m.id}`}
-                    href={entry.kind === "title" ? `/title/${m.media_type}/${m.id}` : `/search?q=${encodeURIComponent(m.name ?? "")}`}
+                    href={entry.kind === "title" ? `/title/${m.media_type}/${m.id}` : `/person/${m.id}`}
                     onClick={() => setFocused(false)}
                     onMouseEnter={() => setSel(i)}
                     className={clsx(
@@ -213,7 +213,7 @@ export default function SearchBox() {
                       <p className="truncate text-[11px] text-neutral-500">
                         {entry.kind === "title"
                           ? `${typeOf(m) === "tv" ? "TV Show" : "Movie"}${yearOf(m) ? ` · ${yearOf(m)}` : ""}`
-                          : m.known_for_department ?? "Person"}
+                          : "Actor — see movies & series"}
                       </p>
                     </div>
                   </Link>
