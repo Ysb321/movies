@@ -5,8 +5,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   images: { unoptimized: true }, // TMDB CDN serves pre-optimized sizes; we use direct lazy <img>
-  // desktop/ packaging builds a self-contained server bundle
-  output: process.env.BUILD_STANDALONE === "1" ? "standalone" : undefined,
+  // always emit the self-contained server bundle (used by desktop packaging;
+  // harmless for dev / next start / Vercel)
+  output: "standalone",
   experimental: {
     // Meta's React Compiler: auto-memoizes components at build time
     reactCompiler: true,
