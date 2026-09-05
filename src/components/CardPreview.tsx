@@ -65,6 +65,8 @@ export default function CardPreview({
     ? (vids?.results ?? []).find((v: any) => v.site === "YouTube" && v.type === "Trailer") ??
       (vids?.results ?? []).find((v: any) => v.site === "YouTube")
     : null;
+  /** controls/info stay hidden only while a trailer is actually playing */
+  const playing = !!trailer;
 
   /* close on scroll / resize / Esc — the anchor is stale the moment page moves */
   useEffect(() => {
@@ -83,18 +85,15 @@ export default function CardPreview({
   const backdrop = img(item.backdrop_path ?? item.poster_path, "w780");
   const match = Math.round((item.vote_average ?? 0) * 10);
 
-  const play = () => {
-    if (type === "tv" && progress?.season && progress?.episode)
-      router.push(`/watch/tv/${item.id}?s=${progress.season}&e=${progress.episode}`);
-    else router.push(type === "tv" ? `/watch/tv/${item.id}?s=1&e=1` : `/watch/movie/${item.id}`);
-  };
+  // clicking the preview (video included) → details page for that content
+  const openDetails = () => router.push(`/title/${type}/${item.id}`);
 
   if (!mounted) return null;
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, scale: 0.8, height: geo.videoH + 96 }}
+      animate={{ opacity: 1, scale: 1, height: playing ? geo.videoH : geo.videoH + 96 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.14 } }}
       transition={{ type: "spring", stiffness: 340, damping: 30 }}
       onMouseEnter={onEnter}
@@ -109,8 +108,8 @@ export default function CardPreview({
       }}
       className="overflow-hidden rounded-lg bg-[#141414] shadow-[0_18px_55px_rgba(0,0,0,0.85)]"
     >
-      {/* ── maximized 16:9 media area ── */}
-      <div className="relative w-full cursor-pointer" style={{ height: geo.videoH }} onClick={play}>
+      {/* ── maximized 16:9 media area — click → details ── */}
+      <div className="relative w-full cursor-pointer" style={{ height: geo.videoH }} onClick={openDetails}>
         {backdrop && <img src={backdrop} alt="" className="h-full w-full object-cover" draggable={false} />}
         {trailer && (
           <iframe
@@ -121,22 +120,28 @@ export default function CardPreview({
             tabIndex={-1}
           />
         )}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#141414] to-transparent" />
-        <div className="absolute inset-x-2.5 bottom-1.5 flex items-end justify-between gap-2">
-          <p className="truncate text-[14.5px] font-bold text-white drop-shadow">{titleOf(item)}</p>
-          <span className="flex shrink-0 items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-amber-400">
-            <StarIcon className="h-3 w-3" />
-            {(item.vote_average ?? 0).toFixed(1)}
-          </span>
-        </div>
+        {/* title overlay only while no trailer is playing (clean video otherwise) */}
+        {!playing && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#141414] to-transparent" />
+            <div className="absolute inset-x-2.5 bottom-1.5 flex items-end justify-between gap-2">
+              <p className="truncate text-[14.5px] font-bold text-white drop-shadow">{titleOf(item)}</p>
+              <span className="flex shrink-0 items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-amber-400">
+                <StarIcon className="h-3 w-3" />
+                {(item.vote_average ?? 0).toFixed(1)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ── info panel (netflix expanded card) ── */}
+      {/* ── info panel — hidden entirely while the trailer plays ── */}
+      {!playing && (
       <div className="flex flex-col gap-1 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <button
-            onClick={play}
-            aria-label="Play"
+            onClick={openDetails}
+            aria-label="More info"
             className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition hover:scale-110 hover:bg-neutral-300"
           >
             <PlayIcon className="ml-0.5 h-4 w-4" />
@@ -178,6 +183,7 @@ export default function CardPreview({
           {genreNames(item, MOVIE_GENRES).join(" • ")}
         </div>
       </div>
+      )}
     </motion.div>,
     document.body
   );
