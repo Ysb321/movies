@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR, { SWRConfig } from "swr";
+import { useEffect, useState } from "react";
 import { swrFetcher, getCached } from "@/lib/tmdb";
 
 export default function SWRProvider({ children }: { children: React.ReactNode }) {
@@ -21,12 +22,23 @@ export default function SWRProvider({ children }: { children: React.ReactNode })
 }
 
 /** useSWR + localStorage snapshot: paints cached data instantly, then
- *  revalidates in the background — zero spinner on revisit. */
+ *  revalidates in the background — zero spinner on revisit.
+ *
+ *  Hydration-safe: the snapshot is applied only AFTER mount so the first
+ *  client render matches the server (server has no localStorage → skeleton),
+ *  then the cached data pops in immediately. */
 export function useTmdbSnapshot<T = any>(key: string | null) {
-  const snapshot = key ? getCached(key) : undefined;
-  const swr = useSWR<any, any, any | null>(key, {
-    fallbackData: snapshot && snapshot.data !== undefined ? snapshot.data : undefined,
+  const [snapshot, setSnapshot] = useState<{ key: string | null; data: T | undefined } | null>(null);
+
+  useEffect(() => {
+    setSnapshot({ key, data: key ? getCached(key).data : undefined });
+  }, [key]);
+
+  const fallbackData =
+    snapshot && snapshot.key === key && snapshot.data !== undefined ? snapshot.data : undefined;
+
+  return useSWR<T, any, string | null>(key, {
+    fallbackData,
     keepPreviousData: true,
   });
-  return swr;
 }

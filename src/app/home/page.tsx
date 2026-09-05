@@ -20,10 +20,12 @@ export default function HomePage() {
 
   const [progress, setProgress] = useState<ProgressItem[]>([]);
   const [myList, setMyList] = useState<ListItem[]>([]);
+  const [profileName, setProfileName] = useState("you");
 
   useEffect(() => {
     setProgress(getProgress());
     setMyList(getList());
+    setProfileName(getActiveProfile()?.name ?? "you");
     const a = onProgressChange(setProgress);
     const b = onListChange(setMyList);
     return () => { a(); b(); };
@@ -59,7 +61,7 @@ export default function HomePage() {
       <div className="relative z-10 -mt-14 flex flex-col gap-0.5 pb-6">
         {cwItems.length > 0 && (
           <Row
-            title={`Continue Watching for ${getActiveProfile()?.name ?? "you"}`}
+            title={`Continue Watching for ${profileName}`}
             items={cwItems as any}
             progressItems={cwMap}
             onRemove={removeProgress}
