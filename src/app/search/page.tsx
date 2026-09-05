@@ -20,7 +20,7 @@ function SearchResults() {
   const getKey = (index: number) =>
     q ? `search/multi?query=${encodeURIComponent(q)}&include_adult=false&page=${index + 1}` : null;
 
-  const { data, size, setSize, isLoading, error } = useSWRInfinite<any>(getKey, swrFetcher, {
+  const { data, size, setSize, isLoading, isValidating, error } = useSWRInfinite<any>(getKey, swrFetcher, {
     revalidateFirstPage: false,
     keepPreviousData: true,
     initialSize: 1,
@@ -119,7 +119,22 @@ function SearchResults() {
         )}
       </p>
 
-      {titles.length > 0 && <PosterGrid items={titles} showSkeleton={size < 20} />}
+      {titles.length > 0 && (
+        <>
+          <PosterGrid items={titles} />
+          {q && size < Math.min(data?.[0]?.total_pages ?? 1, 20) && (
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => setSize(size + 1)}
+                disabled={isValidating || isLoading}
+                className="rounded-md bg-brand px-8 py-2.5 text-sm font-bold text-white shadow transition hover:scale-[1.03] hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isValidating || isLoading ? "Loading…" : `Load More — ${titles.length.toLocaleString()} results`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {people.length > 0 && (
         <>

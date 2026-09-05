@@ -41,7 +41,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
     revalidateFirstPage: false,
     revalidateAll: false,
     keepPreviousData: true,
-    initialSize: 1,
+    initialSize: 2,
   });
 
   const items = useMemo(() => {
@@ -126,12 +126,20 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
               Array.from({ length: 7 }).map((_, i) => <div key={`s${i}`} className="skeleton aspect-[2/3] opacity-60" />)}
           </div>
           <div ref={sentinel} className="h-4" />
-          <div className="py-4 text-center text-[12px] text-neutral-500">
-            {hasMore
-              ? isValidating
-                ? "Loading more…"
-                : `Scroll for more · ${items.length.toLocaleString()} titles loaded`
-              : `${items.length.toLocaleString()} titles · You've reached the end`}
+          <div className="flex flex-col items-center gap-2 py-4">
+            {hasMore ? (
+              <button
+                onClick={() => setSize(size + 1)}
+                disabled={isValidating || isLoading}
+                className="rounded-md bg-brand px-8 py-2.5 text-sm font-bold text-white shadow transition hover:scale-[1.03] hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isValidating || isLoading ? "Loading…" : `Load More — ${items.length.toLocaleString()} loaded`}
+              </button>
+            ) : (
+              <p className="text-[12px] text-neutral-500">
+                {items.length.toLocaleString()} titles · You&rsquo;ve reached the end
+              </p>
+            )}
           </div>
         </>
       )}
