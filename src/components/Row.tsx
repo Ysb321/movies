@@ -6,7 +6,6 @@ import clsx from "clsx";
 import Card from "./Card";
 import { ChevronIcon } from "./Icons";
 import { markDragEnd } from "@/lib/dragGuard";
-import { forwardWheelToPage } from "@/lib/scroll";
 import { type Media, type ProgressItem } from "@/lib/tmdb";
 
 const WIDTHS = {
@@ -22,8 +21,7 @@ const WIDTHS = {
 
 /** Netflix-style carousel built on NATIVE horizontal scrolling:
  *  trackpad swipes, touch drag, shift+wheel and keyboard all work out of the
- *  box. Extras: mouse drag-to-scroll, hover arrows, snap, infinite append.
- *  data-lenis-prevent keeps Lenis from touching gestures inside the row. */
+ *  box. Extras: mouse drag-to-scroll, hover arrows, snap, infinite append. */
 export default function Row({
   title,
   items,
@@ -74,19 +72,6 @@ export default function Row({
     ro.observe(el);
     return () => ro.disconnect();
   }, [syncEdges, items.length]);
-
-  /* ── wheel routing: horizontal → native row scroll; vertical → page
-     scroll (Lenis), so scrolling over cards never stalls the page ── */
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) + 4) return; // row scrolls itself
-      if (forwardWheelToPage(e)) e.preventDefault();
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
 
   /* ── mouse drag-to-scroll (native touch/trackpad need no help) ── */
   const onPointerDown = (e: React.PointerEvent) => {
@@ -139,7 +124,7 @@ export default function Row({
   const itemWidth = top10 ? WIDTHS.top10 : variant === "poster" ? WIDTHS.poster : WIDTHS.backdrop;
 
   return (
-    <section className="group/row relative z-0 py-2.5 hover:z-30 cv-auto">
+    <section className="group/row relative z-0 py-2.5 hover:z-30">
       <div className="mb-1.5 flex items-baseline gap-3 px-[4vw]">
         <h2 className="cursor-default text-[15px] font-bold tracking-wide text-neutral-200 transition-colors md:text-[17px]">
           {title}
@@ -173,7 +158,6 @@ export default function Row({
 
         <div
           ref={scrollerRef}
-          data-lenis-prevent
           tabIndex={0}
           role="region"
           aria-label={`${title} carousel`}

@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import SWRProvider from "@/components/SWRProvider";
-import SmoothScroll from "@/components/SmoothScroll";
 
 export const metadata: Metadata = {
   title: { default: "Yetflix — by Yashraj · Watch Movies, TV Shows, Animes & Dramas", template: "%s · Yetflix" },
@@ -28,9 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://www.youtube.com" />
       </head>
       <body className="min-h-screen bg-ink text-white antialiased">
-        <SmoothScroll>
-          <SWRProvider>{children}</SWRProvider>
-        </SmoothScroll>
+        <SWRProvider>{children}</SWRProvider>
       </body>
     </html>
   );

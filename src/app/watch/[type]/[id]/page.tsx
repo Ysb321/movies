@@ -231,7 +231,6 @@ function WatchContent() {
               ))}
             </div>
             <div
-              data-lenis-prevent
               className="styled-scroll max-h-[68vh] divide-y divide-white/5 overflow-y-auto overscroll-contain pr-1.5"
             >
               {(seasonData?.episodes ?? []).map((ep: any) => {

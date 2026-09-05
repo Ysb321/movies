@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true }, // TMDB CDN serves pre-optimized sizes; we use direct lazy <img>
   experimental: {
     // tree-shake barrel imports → smaller client bundles
-    optimizePackageImports: ["framer-motion", "lenis"],
+    optimizePackageImports: ["framer-motion"],
     // Meta's React Compiler: auto-memoizes components at build time
     reactCompiler: true,
   },

@@ -152,7 +152,6 @@ export default function SearchBox() {
       {/* ── live results dropdown (no page reload — just this panel) ── */}
       {showPanel && (
         <div
-          data-lenis-prevent
           className="styled-scroll absolute right-0 top-11 z-[120] max-h-[72vh] w-[86vw] overflow-y-auto overscroll-contain rounded-md border border-white/10 bg-[#141414]/98 shadow-2xl backdrop-blur-md sm:w-[400px]"
         >
           {isLoading && flat.length === 0 && (

@@ -168,7 +168,7 @@ function PosterGrid({ items, showSkeleton }: { items: Media[]; showSkeleton?: bo
   return (
     <div className="grid grid-cols-3 gap-x-2.5 gap-y-14 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
       {items.map((m) => (
-        <div key={`${m.media_type}-${m.id}`} className="cv-auto">
+        <div key={`${m.media_type}-${m.id}`}>
           <Card item={m} variant="poster" className="w-full" />
         </div>
       ))}

@@ -74,19 +74,9 @@ html::-webkit-scrollbar-thumb:hover {
   display: none;
 }
 
-/* lenis smooth scroll */
-html.lenis,
-html.lenis body {
-  height: auto;
-}
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-.lenis.lenis-stopped {
-  overflow: hidden;
+/* native compositor scrolling — no JS smooth-scroll layer */
+html {
+  scroll-behavior: smooth;
 }
 
 ::selection {
@@ -136,12 +126,6 @@ html.lenis body {
   background: #1a1a22;
   animation: skeleton-pulse 1.6s ease-in-out infinite;
   border-radius: 0.25rem;
-}
-
-/* off-screen rows skip layout & paint — huge lists scroll smoothly */
-.cv-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 340px;
 }
 
 /* fade edge on carousels */
