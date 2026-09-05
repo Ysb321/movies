@@ -65,8 +65,6 @@ export default function CardPreview({
     ? (vids?.results ?? []).find((v: any) => v.site === "YouTube" && v.type === "Trailer") ??
       (vids?.results ?? []).find((v: any) => v.site === "YouTube")
     : null;
-  /** controls/info stay hidden only while a trailer is actually playing */
-  const playing = !!trailer;
 
   /* close on scroll / resize / Esc — the anchor is stale the moment page moves */
   useEffect(() => {
@@ -92,8 +90,8 @@ export default function CardPreview({
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0, scale: 0.8, height: geo.videoH + 96 }}
-      animate={{ opacity: 1, scale: 1, height: playing ? geo.videoH : geo.videoH + 96 }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.14 } }}
       transition={{ type: "spring", stiffness: 340, damping: 30 }}
       onMouseEnter={onEnter}
@@ -113,30 +111,29 @@ export default function CardPreview({
         {backdrop && <img src={backdrop} alt="" className="h-full w-full object-cover" draggable={false} />}
         {trailer && (
           <iframe
-            src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${trailer.key}`}
+            src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${trailer.key}&disablekb=1&iv_load_policy=3&fs=0`}
             title={`${titleOf(item)} preview`}
             className="absolute inset-0 h-full w-full"
             allow="autoplay; encrypted-media"
             tabIndex={-1}
           />
         )}
-        {/* title overlay only while no trailer is playing (clean video otherwise) */}
-        {!playing && (
-          <>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#141414] to-transparent" />
-            <div className="absolute inset-x-2.5 bottom-1.5 flex items-end justify-between gap-2">
-              <p className="truncate text-[14.5px] font-bold text-white drop-shadow">{titleOf(item)}</p>
-              <span className="flex shrink-0 items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-amber-400">
-                <StarIcon className="h-3 w-3" />
-                {(item.vote_average ?? 0).toFixed(1)}
-              </span>
-            </div>
-          </>
-        )}
+        {/* transparent shield over the video: YouTube never sees hover/clicks,
+            so its own controls (title bar, watch-later/share, progress bar)
+            never appear — our clicks route to the details page instead */}
+        {trailer && <div className="absolute inset-0 z-10 cursor-pointer" onClick={openDetails} aria-hidden />}
+        {/* our title overlay — always visible, kept clean of player chrome */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-14 bg-gradient-to-t from-[#141414] to-transparent" />
+        <div className="pointer-events-none absolute inset-x-2.5 bottom-1.5 z-20 flex items-end justify-between gap-2">
+          <p className="truncate text-[14.5px] font-bold text-white drop-shadow">{titleOf(item)}</p>
+          <span className="flex shrink-0 items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-amber-400">
+            <StarIcon className="h-3 w-3" />
+            {(item.vote_average ?? 0).toFixed(1)}
+          </span>
+        </div>
       </div>
 
-      {/* ── info panel — hidden entirely while the trailer plays ── */}
-      {!playing && (
+      {/* ── info panel (always visible; only YouTube's own player chrome is blocked) ── */}
       <div className="flex flex-col gap-1 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <button
@@ -183,7 +180,6 @@ export default function CardPreview({
           {genreNames(item, MOVIE_GENRES).join(" • ")}
         </div>
       </div>
-      )}
     </motion.div>,
     document.body
   );
