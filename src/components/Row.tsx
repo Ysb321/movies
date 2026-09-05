@@ -9,13 +9,14 @@ import { markDragEnd } from "@/lib/dragGuard";
 import { type Media, type ProgressItem } from "@/lib/tmdb";
 
 const WIDTHS = {
-  // netflix-style landscape 16:9 row cards, ~5-6 visible per page
-  backdrop:
-    "w-[62vw] sm:w-[38vw] md:w-[29vw] lg:w-[22.5vw] xl:w-[18vw] 2xl:w-[15.2vw]",
+  // vertical poster cards for all rows (~7-8 per view, netout style)
   poster:
     "w-[38vw] sm:w-[26vw] md:w-[20vw] lg:w-[14.2vw] xl:w-[11.6vw] 2xl:w-[9.8vw]",
+  // landscape 16:9 — continue watching only (netflix style)
+  backdrop:
+    "w-[62vw] sm:w-[38vw] md:w-[29vw] lg:w-[22.5vw] xl:w-[18vw] 2xl:w-[15.2vw]",
   top10:
-    "w-[52vw] sm:w-[35vw] md:w-[27vw] lg:w-[19.5vw] xl:w-[15.4vw] 2xl:w-[13vw]",
+    "w-[42vw] sm:w-[29vw] md:w-[22vw] lg:w-[16vw] xl:w-[12.6vw] 2xl:w-[10.8vw]",
 };
 
 /** Netflix-style carousel built on NATIVE horizontal scrolling:
@@ -25,7 +26,7 @@ const WIDTHS = {
 export default function Row({
   title,
   items,
-  variant = "backdrop",
+  variant = "poster",
   top10,
   loading,
   href,

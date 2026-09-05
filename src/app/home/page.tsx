@@ -73,6 +73,7 @@ export default function HomePage() {
           <Row
             title={`Continue Watching for ${profileName}`}
             items={cwItems as any}
+            variant="backdrop"
             progressItems={cwMap}
             onRemove={removeProgress}
           />
