@@ -27,7 +27,7 @@ console.log(">> Step 1/3: packaging the app with electron-packager...");
 run("npx", [
   "electron-packager", ".", "Yetflix",
   "--platform=win32", "--arch=x64",
-  "--icon=build/icon.png",
+  "--icon=build/icon.ico",
   "--overwrite", "--prune=true",
   '--out=dist-simple',
   '--ignore="^/?dist$"', '--ignore="^/?dist-simple$"', '--ignore="^/?scripts$"',

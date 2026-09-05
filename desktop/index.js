@@ -18,12 +18,21 @@ const SERVER = path.join(APP_ROOT, "app", "server.js");
 let child = null;
 let win = null;
 
-/* Player-friendly popup hosts (server selection / external players) */
+/* Player-friendly popup hosts (the "Open in browser" button / video CDNs).
+ * Anything NOT on this list that tries to open a window is an ad popup
+ * and gets blocked - popups never leave the app. */
 const POPUP_HOSTS = [
   "nxsha.space",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];
+
+const isPopupHost = (url) => {
+  try {
+    const u = new URL(url);
+    return POPUP_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h));
+  } catch { return false; }
+};
 
 const freePort = () =>
   new Promise((resolve, reject) => {
@@ -110,6 +119,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 600,
       backgroundColor: "#0b0b0f",
       autoHideMenuBar: true,
+      icon: path.join(__dirname, "build", "icon.png"),
       title: "Yetflix - by Yashraj",
       show: false,
       webPreferences: {
@@ -122,12 +132,13 @@ if (!app.requestSingleInstanceLock()) {
     win.once("ready-to-show", () => win.show());
     await win.loadURL(`${site}/home`);
 
-    // player popups (vidcore server selection etc.) open as in-app child
-    // windows; everything else goes to the system browser
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      try {
-        const u = new URL(url);
-        if (POPUP_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) {
+    /* Popup guard: only whitelisted player hosts may open windows (they
+     * open as in-app child windows). Every other window.open / target=_blank
+     * is an ad popup (popads etc.) and is denied outright - never sent to
+     * the system browser. Applied recursively to child windows too. */
+    const popupGuard = (wc) => {
+      wc.setWindowOpenHandler(({ url }) => {
+        if (isPopupHost(url)) {
           return {
             action: "allow",
             overrideBrowserWindowOptions: {
@@ -137,17 +148,14 @@ if (!app.requestSingleInstanceLock()) {
             },
           };
         }
-      } catch {}
-      shell.openExternal(url);
-      return { action: "deny" };
-    });
-    // block full navigations away from the app
-    win.webContents.on("will-navigate", (e, url) => {
-      if (!url.startsWith(site)) {
-        e.preventDefault();
-        shell.openExternal(url);
-      }
-    });
+        return { action: "deny" };
+      });
+      wc.on("will-navigate", (e, url) => {
+        if (!url.startsWith(site) && !isPopupHost(url)) e.preventDefault();
+      });
+      wc.on("did-create-window", (child) => popupGuard(child.webContents));
+    };
+    popupGuard(win.webContents);
   });
 
   app.on("window-all-closed", () => app.quit());
