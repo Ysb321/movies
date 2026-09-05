@@ -52,7 +52,7 @@ export default function Navbar() {
     <header
       className={clsx(
         "fixed inset-x-0 top-0 z-[90] transition-colors duration-500",
-        scrolled ? "bg-[#0b0b0f]/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 via-black/40 to-transparent"
+        scrolled ? "bg-[#0b0b0f]/97 shadow-lg" : "bg-gradient-to-b from-black/80 via-black/40 to-transparent"
       )}
     >
       <nav className="flex h-14 items-center gap-6 px-[4vw] md:h-[60px]">

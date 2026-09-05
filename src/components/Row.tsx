@@ -9,12 +9,13 @@ import { markDragEnd } from "@/lib/dragGuard";
 import { type Media, type ProgressItem } from "@/lib/tmdb";
 
 const WIDTHS = {
+  // netflix-style landscape 16:9 row cards, ~5-6 visible per page
   backdrop:
-    "w-[68vw] sm:w-[41vw] md:w-[31vw] lg:w-[23.5vw] xl:w-[18.7vw] 2xl:w-[15.6vw]",
+    "w-[62vw] sm:w-[38vw] md:w-[29vw] lg:w-[22.5vw] xl:w-[18vw] 2xl:w-[15.2vw]",
   poster:
-    "w-[35vw] sm:w-[25vw] md:w-[19vw] lg:w-[13.6vw] xl:w-[10.8vw] 2xl:w-[9.2vw]",
+    "w-[38vw] sm:w-[26vw] md:w-[20vw] lg:w-[14.2vw] xl:w-[11.6vw] 2xl:w-[9.8vw]",
   top10:
-    "w-[42vw] sm:w-[29vw] md:w-[22vw] lg:w-[16vw] xl:w-[12.6vw] 2xl:w-[10.8vw]",
+    "w-[52vw] sm:w-[35vw] md:w-[27vw] lg:w-[19.5vw] xl:w-[15.4vw] 2xl:w-[13vw]",
 };
 
 /** Netflix-style carousel built on NATIVE horizontal scrolling:
@@ -24,7 +25,7 @@ const WIDTHS = {
 export default function Row({
   title,
   items,
-  variant = "poster",
+  variant = "backdrop",
   top10,
   loading,
   href,
@@ -144,7 +145,7 @@ export default function Row({
           aria-label="Scroll left"
           onClick={() => page(-1)}
           className={clsx(
-            "absolute bottom-8 left-0 top-8 z-40 hidden w-[4vw] min-w-10 items-center justify-center rounded-r-xl bg-gradient-to-r from-black/80 to-black/40 text-white/90 opacity-0 backdrop-blur-sm transition hover:bg-black/80 sm:flex",
+              "absolute bottom-8 left-0 top-8 z-40 hidden w-[4vw] min-w-10 items-center justify-center rounded-r-xl bg-gradient-to-r from-black/80 to-black/30 text-white/90 opacity-0 transition hover:bg-black/80 sm:flex",
             atStart ? "pointer-events-none !opacity-0" : "group-hover/row:opacity-100"
           )}
         >
@@ -200,7 +201,7 @@ export default function Row({
           aria-label="Scroll right"
           onClick={() => page(1)}
           className={clsx(
-            "absolute bottom-8 right-0 top-8 z-40 hidden w-[4vw] min-w-10 items-center justify-center rounded-l-xl bg-gradient-to-l from-black/80 to-black/40 text-white/90 opacity-0 backdrop-blur-sm transition hover:bg-black/80 sm:flex",
+              "absolute bottom-8 right-0 top-8 z-40 hidden w-[4vw] min-w-10 items-center justify-center rounded-l-xl bg-gradient-to-l from-black/80 to-black/30 text-white/90 opacity-0 transition hover:bg-black/80 sm:flex",
             atEnd && !onRequestMore ? "pointer-events-none !opacity-0" : "group-hover/row:opacity-100"
           )}
         >

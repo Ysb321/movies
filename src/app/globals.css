@@ -81,26 +81,26 @@ html.lenis body {
   );
 }
 
-/* shimmer skeleton */
-@keyframes shimmer {
-  0% {
-    background-position: -400px 0;
-  }
+/* skeleton — compositor-only opacity pulse (no paint-inducing shimmer) */
+@keyframes skeleton-pulse {
+  0%,
   100% {
-    background-position: 400px 0;
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
   }
 }
 .skeleton {
-  background: linear-gradient(90deg, #16161c 25%, #23232c 50%, #16161c 75%);
-  background-size: 800px 100%;
-  animation: shimmer 1.4s infinite linear;
+  background: #1a1a22;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
   border-radius: 0.25rem;
 }
 
-/* off-screen rows/grid cells skip layout & paint — huge lists scroll smoothly */
+/* off-screen rows skip layout & paint — huge lists scroll smoothly */
 .cv-auto {
   content-visibility: auto;
-  contain-intrinsic-size: auto 260px;
+  contain-intrinsic-size: auto 340px;
 }
 
 /* fade edge on carousels */

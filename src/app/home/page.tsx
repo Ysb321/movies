@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import HeroBillboard from "@/components/HeroBillboard";
 import Row from "@/components/Row";
+import RowLazy from "@/components/RowLazy";
 import TmdbRow from "@/components/TmdbRow";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
@@ -33,7 +34,11 @@ export default function HomePage() {
   }, []);
 
   // continue-watching: distinct items keyed by id with their progress
-  const cwItems = useMemo(() => progress.slice(0, 14), [progress]);
+  // (media_type mapped from storage `type` so cards route correctly)
+  const cwItems = useMemo(
+    () => progress.slice(0, 14).map((p) => ({ ...p, media_type: p.type })),
+    [progress]
+  );
   const cwMap = useMemo(() => new Map(cwItems.map((p) => [p.id, p])), [cwItems]);
 
   const listItems = useMemo(
@@ -73,8 +78,10 @@ export default function HomePage() {
           />
         )}
         {listItems.length > 0 && <Row title="My List" items={listItems} />}
-        {HOME_ROWS.map((def) => (
-          <TmdbRow key={def.key} def={def} />
+        {HOME_ROWS.map((def, i) => (
+          <RowLazy key={def.key} reserve={i < 6 ? 340 : 320}>
+            <TmdbRow def={def} />
+          </RowLazy>
         ))}
       </div>
 

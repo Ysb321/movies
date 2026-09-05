@@ -37,14 +37,19 @@ export default function Card({
   const poster = variant === "poster" || rank !== undefined;
   const src = poster
     ? img(item.poster_path ?? item.backdrop_path, "w342") ?? img(item.backdrop_path, "w780")
-    : img(item.backdrop_path ?? item.poster_path, "w780");
+    : img(item.backdrop_path ?? item.poster_path, "w500") ?? img(item.poster_path, "w342");
   const match = Math.round((item.vote_average ?? 0) * 10);
 
+  // resume: clicking a continue-watching card plays straight from where it
+  // left off (exact season/episode + startAt); other cards open details
   const open = () => {
-    if (wasRecentlyDragged()) return; // ignore the click after a carousel drag
+    if (wasRecentlyDragged()) return;
+    if (progress) {
+      play();
+      return;
+    }
     router.push(`/title/${type}/${item.id}`);
   };
-  // resume: continue-watching cards jump straight back to the exact episode
   const play = () => {
     if (wasRecentlyDragged()) return;
     if (type === "tv" && progress?.season && progress?.episode)
@@ -60,8 +65,8 @@ export default function Card({
       onKeyDown={(e) => e.key === "Enter" && open()}
       aria-label={titleOf(item)}
       className={clsx(
-        "group/card relative cursor-pointer rounded-md transition-transform duration-300 ease-[cubic-bezier(.22,.61,.36,1)] will-change-transform",
-        "hover:z-30 hover:scale-[1.1] hover:card-shadow focus-visible:scale-[1.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        "group/card relative cursor-pointer rounded-md transition-transform duration-300 ease-[cubic-bezier(.22,.61,.36,1)]",
+        "hover:z-30 hover:scale-[1.12] hover:card-shadow focus-visible:scale-[1.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
         className
       )}
     >
@@ -129,8 +134,9 @@ export default function Card({
           </div>
         )}
 
-        {/* ── in-card hover overlay (netflix mobile style) ── */}
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-end rounded-md bg-gradient-to-t from-black/95 via-black/55 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover/card:opacity-100 group-focus-within/card:opacity-100">
+        {/* ── in-card hover overlay (netflix style) — visibility-gated so
+             hidden overlays cost nothing to paint ── */}
+        <div className="pointer-events-none invisible absolute inset-0 z-20 flex flex-col justify-end rounded-md bg-gradient-to-t from-black/95 via-black/45 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover/card:visible group-hover/card:opacity-100 group-focus-within/card:visible group-focus-within/card:opacity-100">
           <div className="pointer-events-auto">
             <div className="mb-1.5 flex items-center gap-1.5">
               <button
