@@ -3,18 +3,46 @@
  *  tv:    https://vidcore.io/tv/{id}/{season}/{episode}
  *  params: autoPlay, theme, sub, poster, title, startAt (seconds), server… */
 
+export type EmbedProvider = {
+  id: string;
+  name: string;
+  base: string;
+  supportsStartAt?: boolean;
+};
+
+/** Streaming servers. VidCore is the default; the VidSrc mirrors share the
+ *  same /movie/{id} + /tv/{id}/{s}/{e} URL format and accept TMDB ids, so a
+ *  500/dead source on one server can be bypassed with one click. */
+export const PROVIDERS: EmbedProvider[] = [
+  { id: "vidcore", name: "VidCore", base: "https://vidcore.io", supportsStartAt: true },
+  { id: "vidsrc", name: "VidSrc", base: "https://vidsrc.to" },
+  { id: "vidsrc2", name: "VidSrc 2", base: "https://vidsrc.hair" },
+  { id: "vidsrc3", name: "VidSrc 3", base: "https://vid-src.top" },
+];
+
+export const getProvider = (id: string) =>
+  PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
+
+export function embedUrl(
+  provider: EmbedProvider,
+  type: "movie" | "tv",
+  id: number | string,
+  opts: { s?: number; e?: number; startAt?: number } = {}
+) {
+  const path =
+    type === "movie" ? `/movie/${id}` : `/tv/${id}/${opts.s ?? 1}/${opts.e ?? 1}`;
+  const qs = new URLSearchParams({ autoPlay: "true", theme: "E50914" });
+  if (provider.supportsStartAt && opts.startAt && opts.startAt > 5)
+    qs.set("startAt", String(Math.floor(opts.startAt)));
+  return `${provider.base}${path}?${qs.toString()}`;
+}
+
 export function vidcoreUrl(
   type: "movie" | "tv",
   id: number | string,
   opts: { s?: number; e?: number; startAt?: number } = {}
 ) {
-  const base =
-    type === "movie"
-      ? `https://vidcore.io/movie/${id}`
-      : `https://vidcore.io/tv/${id}/${opts.s ?? 1}/${opts.e ?? 1}`;
-  const qs = new URLSearchParams({ autoPlay: "true", theme: "E50914" });
-  if (opts.startAt && opts.startAt > 5) qs.set("startAt", String(Math.floor(opts.startAt)));
-  return `${base}?${qs.toString()}`;
+  return embedUrl(PROVIDERS[0], type, id, opts);
 }
 
 /* ── Player postMessage events ──────────────────────────────────────────────

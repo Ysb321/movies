@@ -20,7 +20,8 @@ let win = null;
 
 /* Player-friendly popup hosts (server selection / external players) */
 const POPUP_HOSTS = [
-  "vidcore.io", "vidcore.org", "youtube.com", "youtube-nocookie.com",
+  "vidcore.io", "vidcore.org", "vidsrc.to", "vidsrc.hair", "vid-src.top",
+  "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];
 

@@ -9,7 +9,7 @@ import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf } from "@/lib/tmdb";
-import { vidcoreUrl, parsePlayerEvent, fmtTime } from "@/lib/player";
+import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
@@ -31,6 +31,19 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
+  const [serverId, setServerId] = useState("vidcore");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    setServerId(() => {
+      try { return localStorage.getItem("yetflix:server") || "vidcore"; } catch { return "vidcore"; }
+    });
+  }, []);
+  const switchServer = (id: string) => {
+    setServerId(id);
+    try { localStorage.setItem("yetflix:server", id); } catch {}
+  };
+  const provider = getProvider(serverId);
   const playerRef = useRef<HTMLDivElement>(null);
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
   const lastSaved = useRef(0);
@@ -56,16 +69,16 @@ function WatchContent() {
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    setEmbed({ src: vidcoreUrl(t, id, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
+    setEmbed({ src: embedUrl(provider, t, id, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, id, season, episode]);
+  }, [t, id, season, episode, provider.id]);
 
   const startOver = () => {
     clearResume(resumeKeyFor(t, id, season, episode));
     lastTime.current = null;
     lastSaved.current = 0;
-    setEmbed({ src: vidcoreUrl(t, id, { s: season, e: episode }) });
+    setEmbed({ src: embedUrl(provider, t, id, { s: season, e: episode }) });
   };
 
   /* ── listen to player postMessage events → persist exact position ── */
@@ -169,6 +182,42 @@ function WatchContent() {
               </div>
             ) : null}
           </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {PROVIDERS.map((pv) => (
+              <button
+                key={pv.id}
+                onClick={() => switchServer(pv.id)}
+                title={pv.base}
+                className={clsx(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                  serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
+                )}
+              >
+                {pv.name}
+              </button>
+            ))}
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              title="Reload player"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white"
+            >
+              <RotateCcwIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() =>
+                embed &&
+                window.open(
+                  embedUrl(provider, t, id, { s: season, e: episode }),
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+              title="Open this server in your browser"
+              className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition hover:bg-white/20 hover:text-white"
+            >
+              Open ↗
+            </button>
+          </div>
           <div className="flex shrink-0 items-center gap-2">
             {d && (
               <span className="hidden items-center gap-1 rounded bg-black/50 px-2 py-1 text-[12px] font-semibold text-amber-400 sm:flex">
@@ -193,7 +242,7 @@ function WatchContent() {
         <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
           {embed ? (
             <iframe
-              key={`${t}-${id}-${season}-${episode}-${embed.src}`}
+              key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
               src={embed.src}
               title={title}
               className="h-full w-full"
