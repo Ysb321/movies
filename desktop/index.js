@@ -9,7 +9,12 @@ const fs = require("fs");
 const http = require("http");
 const net = require("net");
 
-const SERVER = path.join(__dirname, "app", "server.js");
+// when packaged with asar, app/** is unpacked to app.asar.unpacked/ — the
+// spawned Node child (ELECTRON_RUN_AS_NODE) can only read real files
+const APP_ROOT = __dirname.includes("app.asar")
+  ? __dirname.replace("app.asar", "app.asar.unpacked")
+  : __dirname;
+const SERVER = path.join(APP_ROOT, "app", "server.js");
 let child = null;
 let win = null;
 

@@ -2,10 +2,10 @@
   "name": "yetflix-desktop",
   "productName": "Yetflix",
   "version": "1.0.0",
-  "description": "Yetflix by Yashraj — Netflix-style streaming desktop app",
+  "description": "Yetflix by Yashraj \u2014 Netflix-style streaming desktop app",
   "author": "Yashraj",
   "license": "MIT",
-  "main": "main.js",
+  "main": "index.js",
   "scripts": {
     "site": "node scripts/prepare.js",
     "start": "npm run site && electron .",
@@ -24,15 +24,25 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
+      "index.js",
       "app/**/*",
       "build/icon.png"
     ],
-    "asar": false,
+    "asar": true,
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },
@@ -42,6 +52,9 @@
     },
     "portable": {
       "artifactName": "Yetflix-Portable-${version}.exe"
-    }
+    },
+    "asarUnpack": [
+      "app/**/*"
+    ]
   }
 }
