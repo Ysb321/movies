@@ -29,3 +29,8 @@ next-env.d.ts
 
 # cloudflare
 .wrangler/
+
+# desktop app build artifacts
+desktop/node_modules/
+desktop/app/
+desktop/dist/

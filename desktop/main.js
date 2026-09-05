@@ -1,0 +1,122 @@
+/* Yetflix desktop — Electron main process.
+ * Bundles the Next.js standalone server (desktop/app) and shows it in an
+ * app window. The server runs as a child process using Electron's own
+ * binary in Node mode (ELECTRON_RUN_AS_NODE), so no system Node is needed. */
+const { app, BrowserWindow, shell } = require("electron");
+const { spawn } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+const http = require("http");
+const net = require("net");
+
+const SERVER = path.join(__dirname, "app", "server.js");
+let child = null;
+let win = null;
+
+const freePort = () =>
+  new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+    srv.on("error", reject);
+  });
+
+const waitForServer = (url, timeoutMs = 45000) =>
+  new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      http
+        .get(url, (res) => (res.statusCode < 500 ? resolve() : res.resume()))
+        .on("error", () => {
+          if (Date.now() - started > timeoutMs) reject(new Error("server did not start"));
+          else setTimeout(tick, 300);
+        });
+    };
+    tick();
+  });
+
+const killServer = () => {
+  if (child && !child.killed) {
+    try { child.kill(); } catch {}
+    child = null;
+  }
+};
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+
+  app.whenReady().then(async () => {
+    if (!fs.existsSync(SERVER)) {
+      const { dialog } = require("electron");
+      dialog.showErrorBox(
+        "Yetflix — site not bundled",
+        "The app bundle is missing (desktop/app). Run:  npm run dist   or   npm run start   from the desktop/ folder to build it first."
+      );
+      app.quit();
+      return;
+    }
+
+    const port = await freePort();
+    const site = `http://127.0.0.1:${port}`;
+
+    child = spawn(process.execPath, [SERVER], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", PORT: String(port), HOSTNAME: "127.0.0.1", NODE_ENV: "production" },
+      stdio: "ignore",
+    });
+    child.on("exit", () => { child = null; });
+
+    try {
+      await waitForServer(`${site}/home`);
+    } catch (err) {
+      const { dialog } = require("electron");
+      dialog.showErrorBox("Yetflix", "The local server failed to start: " + err.message);
+      app.quit();
+      return;
+    }
+
+    win = new BrowserWindow({
+      width: 1280,
+      height: 800,
+      minWidth: 960,
+      minHeight: 600,
+      backgroundColor: "#0b0b0f",
+      autoHideMenuBar: true,
+      title: "Yetflix — by Yashraj",
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        spellcheck: false,
+      },
+    });
+
+    win.once("ready-to-show", () => win.show());
+    await win.loadURL(`${site}/home`);
+
+    // external links (target=_blank) open in the system browser, never in-app
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (!url.startsWith(site)) shell.openExternal(url);
+      return { action: "deny" };
+    });
+    // block full navigations away from the app
+    win.webContents.on("will-navigate", (e, url) => {
+      if (!url.startsWith(site)) {
+        e.preventDefault();
+        shell.openExternal(url);
+      }
+    });
+  });
+
+  app.on("window-all-closed", () => app.quit());
+  app.on("before-quit", killServer);
+  process.on("exit", killServer);
+}

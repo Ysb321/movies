@@ -59,6 +59,19 @@ src/
 networks or purely-static hosting), the client transparently falls back to calling
 TMDB directly — exactly how static Cloudflare Pages deployments work.
 
+## 🖥️ Desktop app (runnable .exe)
+
+The `desktop/` folder packages the whole site as a **Windows executable**
+(Electron). On your PC:
+
+```powershell
+cd desktop
+npm install
+npm run dist     # → dist/Yetflix-Setup-1.0.0.exe + Yetflix-Portable-1.0.0.exe
+```
+
+See `desktop/README.md` for details (mac/linux targets, quick-run script).
+
 ## 🚀 Getting started
 
 ```bash

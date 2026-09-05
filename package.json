@@ -6,7 +6,9 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "desktop:start": "cd desktop && npm install && npm run start",
+    "desktop:dist": "cd desktop && npm install && npm run dist"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
