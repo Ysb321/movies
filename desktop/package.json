@@ -11,11 +11,13 @@
     "start": "npm run site && electron .",
     "dist": "npm run site && electron-builder --win",
     "dist:portable": "npm run site && electron-builder --win portable",
-    "dist:all": "npm run site && electron-builder -mwl"
+    "dist:all": "npm run site && electron-builder -mwl",
+    "dist:simple": "npm run site && npx electron-packager . Yetflix --platform=win --arch=x64 --icon=build/icon.png --overwrite --out=dist-simple --ignore=\"^/?dist\" --ignore=\"^/?dist-simple\" --ignore=\"^/?scripts\" --ignore=\"site-url.txt\""
   },
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "electron-packager": "^17.1.2"
   },
   "build": {
     "appId": "com.yashraj.yetflix",

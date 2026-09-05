@@ -1,8 +1,17 @@
 # Yetflix Desktop 🖥️
 
-Turn the Yetflix site into a **runnable Windows executable** (Electron) —
-installer + portable `.exe`, no browser and no technical steps for the end
-user. macOS/Linux targets also possible.
+Turn the Yetflix site into a **runnable Windows executable** — three ways,
+from most-featured to most-bulletproof:
+
+| Method | Command | Result |
+|---|---|---|
+| ⚡ **Simple packager** *(recommended if builder fails)* | `npm run dist:simple` | `dist-simple/Yetflix-win-x64/Yetflix.exe` — folder app via **electron-packager** (no NSIS/asar machinery) |
+| 📦 Full installer | `npm run dist` | `dist/Yetflix-Setup-1.0.0.exe` + `Yetflix-Portable-1.0.0.exe` via electron-builder |
+| 🪟 No packaging at all | double-click `Yetflix-AppWindow.bat` | Yetflix in a chromeless **Edge app window** (preinstalled on Win 10/11) |
+
+> If `npm run dist` (electron-builder) fails on your PC — antivirus and
+> folder-permission interference are the usual culprits — just use
+> `npm run dist:simple` or the AppWindow bat. Same app, different wrapping.
 
 ## Build the .exe (on your Windows PC)
 
