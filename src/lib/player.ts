@@ -1,13 +1,16 @@
 /** Streaming embed providers.
- *  All accept IMDb ids (tt…) and most TMDB numeric ids; IMDb ids resolve to
- *  richer source indexes, so the watch page passes imdb_id when available. */
+ *  vidcore.io/org index by IMDb id (preferred when TMDB has one);
+ *  videasy is TMDB-native. All are user-selectable fallback servers. */
 
 export type EmbedProvider = {
   id: string;
   name: string;
+  /** prefer IMDb id (via TMDB external_ids) when available */
+  prefersImdb?: boolean;
+  /** query param name that sets the start time in seconds, if supported */
+  startParam?: string;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
-  supportsStartAt?: boolean;
 };
 
 const qs = (params: Record<string, string | number | undefined>) => {
@@ -21,33 +24,29 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     id: "vidcore",
     name: "VidCore",
-    supportsStartAt: true,
+    prefersImdb: true,
+    startParam: "startAt",
     movie: (id) => `https://vidcore.io/movie/${id}${qs({ autoPlay: "true", theme: "E50914" })}`,
     tv: (id, s, e) => `https://vidcore.io/tv/${id}/${s}/${e}${qs({ autoPlay: "true", theme: "E50914" })}`,
   },
   {
     id: "vidcore2",
     name: "VidCore 2",
+    prefersImdb: true,
     movie: (id) => `https://vidcore.org/embed/movie/${id}${qs({ autoplay: "true" })}`,
     tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}${qs({ autoplay: "true" })}`,
   },
   {
-    id: "vidsrc",
-    name: "VidSrc",
-    movie: (id) => `https://vidsrc.to/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidsrc2",
-    name: "VidSrc 2",
-    movie: (id) => `https://vidsrc.hair/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vidsrc.hair/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidsrc3",
-    name: "VidSrc 3",
-    movie: (id) => `https://vid-src.top/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vid-src.top/embed/tv/${id}/${s}/${e}`,
+    id: "videasy",
+    name: "Videasy",
+    movie: (id) => `https://player.videasy.to/movie/${id}${qs({ color: "E50914", overlay: "true" })}`,
+    tv: (id, s, e) =>
+      `https://player.videasy.to/tv/${id}/${s}/${e}${qs({
+        color: "E50914",
+        overlay: "true",
+        nextEpisode: "true",
+        episodeSelector: "true",
+      })}`,
   },
 ];
 
@@ -59,13 +58,12 @@ export function embedUrl(
   id: number | string,
   opts: { s?: number; e?: number; startAt?: number } = {}
 ) {
-  const startAt = provider.supportsStartAt && opts.startAt && opts.startAt > 5 ? opts.startAt : undefined;
   const base =
-    type === "movie"
-      ? provider.movie(String(id))
-      : provider.tv(String(id), opts.s ?? 1, opts.e ?? 1);
+    type === "movie" ? provider.movie(String(id)) : provider.tv(String(id), opts.s ?? 1, opts.e ?? 1);
+  const startAt =
+    provider.startParam && opts.startAt && opts.startAt > 5 ? Math.floor(opts.startAt) : undefined;
   if (!startAt) return base;
-  return `${base}${base.includes("?") ? "&" : "?"}startAt=${Math.floor(startAt)}`;
+  return `${base}${base.includes("?") ? "&" : "?"}${provider.startParam}=${startAt}`;
 }
 
 /** legacy helper (VidCore default) */
@@ -78,14 +76,18 @@ export function vidcoreUrl(
 }
 
 /* ── Player postMessage events ──────────────────────────────────────────────
- * VidCore emits player events from the iframe (vidcore:play / vidcore:pause /
- * vidcore:ended, and PLAYER_EVENT payloads with current time + duration).
- * Shapes vary, so we defensively deep-scan the payload for time fields. */
+ * VidCore emits PLAYER_EVENT payloads (object) with time + duration.
+ * Videasy sends a JSON *string* with { timestamp, duration, progress % }.
+ * Shapes vary, so we defensively deep-scan for time fields. NB: "progress"
+ * is a percentage on Videasy, so it is deliberately NOT treated as seconds. */
 
 export type PlayerTime = { time: number; duration?: number; ended?: boolean; paused?: boolean };
 
-const TIME_KEYS = ["currentTime", "current_time", "currenttime", "time", "position", "progress", "seconds", "elapsed"];
+const TIME_KEYS = [
+  "currentTime", "current_time", "currenttime", "timestamp", "time", "position", "seconds", "elapsed",
+];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
+const PLAYER_HOSTS = ["vidcore", "videasy"];
 
 function scan(obj: unknown, depth = 0): Partial<PlayerTime> {
   if (!obj || typeof obj !== "object" || depth > 3) return {};
@@ -110,14 +112,18 @@ function scan(obj: unknown, depth = 0): Partial<PlayerTime> {
   return out;
 }
 
-/** Extract playback time from a postMessage event, if it is one */
+/** Extract playback time from a player postMessage event, if it is one */
 export function parsePlayerEvent(event: MessageEvent): PlayerTime | null {
-  if (typeof event.origin === "string" && !event.origin.includes("vidcore")) return null;
-  const data: any = event.data;
+  if (typeof event.origin === "string" && !PLAYER_HOSTS.some((h) => event.origin.includes(h))) return null;
+  let data: any = event.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
   if (!data || typeof data !== "object") return null;
-  const str = JSON.stringify(data).toLowerCase();
-  if (!str.includes("vidcore") && !str.includes("player") && !str.includes("time") && !str.includes("progress"))
-    return null;
   const parsed = scan(data);
   return parsed.time !== undefined ? (parsed as PlayerTime) : null;
 }

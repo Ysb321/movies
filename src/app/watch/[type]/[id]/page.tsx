@@ -52,8 +52,8 @@ function WatchContent() {
     `${t}/${id}?append_to_response=credits,recommendations,similar,images,external_ids&include_image_language=en,null`
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
-  /* scrapers index best by IMDb id — prefer it when TMDB provides one */
-  const embedId: string = d?.external_ids?.imdb_id || (id as string);
+  /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
+  const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
   const title = d ? titleOf(d) : "Loading…";
   const seasons = useMemo(
