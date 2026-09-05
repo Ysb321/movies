@@ -6,6 +6,7 @@ import { motion, useAnimationControls, useMotionValue } from "framer-motion";
 import clsx from "clsx";
 import Card from "./Card";
 import { ChevronIcon } from "./Icons";
+import { markDragEnd } from "@/lib/dragGuard";
 import { type Media, type ProgressItem } from "@/lib/tmdb";
 
 const WIDTHS = {
@@ -102,15 +103,17 @@ export default function Row({
     [maxPage, width, controls, requestMore]
   );
 
-  // trackpad horizontal swipe → page turn
+  // trackpad horizontal swipe → page turn (stop Lenis from seeing it so the
+  // row pages instead of the page scrolling)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) + 4 && Math.abs(e.deltaX) > 6) {
         e.preventDefault();
+        e.stopPropagation();
         const now = performance.now();
-        if (now - lastWheel.current < 380) return;
+        if (now - lastWheel.current < 380) return; // one page per gesture
         lastWheel.current = now;
         snap(page + Math.sign(e.deltaX));
       }
@@ -178,6 +181,7 @@ export default function Row({
           onDragStart={() => setDragging(true)}
           onDragEnd={() => {
             setDragging(false);
+            markDragEnd(); // swallow the click that follows a drag
             const target = Math.round(-x.get() / width);
             if (target >= maxPage) requestMore();
             snap(target);

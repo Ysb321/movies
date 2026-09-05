@@ -108,9 +108,20 @@ async function tmdbFetch(path: string, params: Record<string, string | number | 
   // 2) direct browser → TMDB (NetOut-style static deployment path)
   if (TMDB_KEY && !looksLikePlaceholder(TMDB_KEY)) {
     qs.set("api_key", TMDB_KEY);
-    const res = await fetch(`${TMDB_BASE}/${path}?${qs}`, { headers: { accept: "application/json" } });
-    if (!res.ok) throw new TmdbError(`TMDB responded ${res.status}`, "HTTP", res.status);
-    return res.json();
+    try {
+      const res = await fetch(`${TMDB_BASE}/${path}?${qs}`, { headers: { accept: "application/json" } });
+      if (!res.ok) throw new TmdbError(`TMDB responded ${res.status}`, "HTTP", res.status);
+      return res.json();
+    } catch (err) {
+      if (err instanceof TmdbError) throw err;
+      // network/CORS block — retry the proxy on the next request instead of
+      // staying stuck on the direct path
+      proxyDown = false;
+      throw new TmdbError(
+        "Can't reach TMDB from the browser (network blocked, CORS or offline) and the server proxy is unavailable",
+        "HTTP"
+      );
+    }
   }
   if (looksLikePlaceholder(TMDB_KEY)) {
     throw new TmdbError(

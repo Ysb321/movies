@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { img, titleOf, yearOf, typeOf, type Media } from "@/lib/tmdb";
 import { genreNames, MOVIE_GENRES } from "@/lib/rows";
 import { toggleList, inList, type ProgressItem } from "@/lib/storage";
+import { wasRecentlyDragged } from "@/lib/dragGuard";
 import { PlayIcon, PlusIcon, CheckIcon, XIcon, StarIcon, ChevronIcon } from "./Icons";
 
 const runtimeLabel = (m: Media) => {
@@ -41,9 +42,13 @@ export default function Card({
     : img(item.backdrop_path ?? item.poster_path, "w780");
   const match = Math.round((item.vote_average ?? 0) * 10);
 
-  const open = () => router.push(`/title/${type}/${item.id}`);
+  const open = () => {
+    if (wasRecentlyDragged()) return; // ignore the click after a carousel drag
+    router.push(`/title/${type}/${item.id}`);
+  };
   // resume: continue-watching cards jump straight back to the exact episode
   const play = () => {
+    if (wasRecentlyDragged()) return;
     if (type === "tv" && progress?.season && progress?.episode)
       router.push(`/watch/tv/${item.id}?s=${progress.season}&e=${progress.episode}`);
     else router.push(type === "tv" ? `/watch/tv/${item.id}?s=1&e=1` : `/watch/movie/${item.id}`);
