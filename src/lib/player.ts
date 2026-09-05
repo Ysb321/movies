@@ -1,6 +1,8 @@
-/** Streaming embed providers.
- *  vidcore.io/org index by IMDb id (preferred when TMDB has one);
- *  videasy is TMDB-native. All are user-selectable fallback servers. */
+/** Streaming embed provider: Vidking (single server).
+ *  Docs: vidking.net — /embed/movie/{tmdbId}, /embed/tv/{tmdbId}/{season}/{episode}
+ *  Params: color, autoPlay, nextEpisode, episodeSelector, progress (start sec).
+ *  To add a fallback server later, append an entry to PROVIDERS — the watch
+ *  page shows a server switcher automatically when there is more than one. */
 
 export type EmbedProvider = {
   id: string;
@@ -22,28 +24,14 @@ const qs = (params: Record<string, string | number | undefined>) => {
 
 export const PROVIDERS: EmbedProvider[] = [
   {
-    id: "vidcore",
-    name: "VidCore",
-    prefersImdb: true,
-    startParam: "startAt",
-    movie: (id) => `https://vidcore.io/movie/${id}${qs({ autoPlay: "true", theme: "E50914" })}`,
-    tv: (id, s, e) => `https://vidcore.io/tv/${id}/${s}/${e}${qs({ autoPlay: "true", theme: "E50914" })}`,
-  },
-  {
-    id: "vidcore2",
-    name: "VidCore 2",
-    prefersImdb: true,
-    movie: (id) => `https://vidcore.org/embed/movie/${id}${qs({ autoplay: "true" })}`,
-    tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}${qs({ autoplay: "true" })}`,
-  },
-  {
-    id: "videasy",
-    name: "Videasy",
-    movie: (id) => `https://player.videasy.to/movie/${id}${qs({ color: "E50914", overlay: "true" })}`,
+    id: "vidking",
+    name: "Vidking",
+    startParam: "progress",
+    movie: (id) => `https://www.vidking.net/embed/movie/${id}${qs({ color: "E50914", autoPlay: "true" })}`,
     tv: (id, s, e) =>
-      `https://player.videasy.to/tv/${id}/${s}/${e}${qs({
+      `https://www.vidking.net/embed/tv/${id}/${s}/${e}${qs({
         color: "E50914",
-        overlay: "true",
+        autoPlay: "true",
         nextEpisode: "true",
         episodeSelector: "true",
       })}`,
@@ -66,28 +54,21 @@ export function embedUrl(
   return `${base}${base.includes("?") ? "&" : "?"}${provider.startParam}=${startAt}`;
 }
 
-/** legacy helper (VidCore default) */
-export function vidcoreUrl(
-  type: "movie" | "tv",
-  id: number | string,
-  opts: { s?: number; e?: number; startAt?: number } = {}
-) {
-  return embedUrl(PROVIDERS[0], type, id, opts);
-}
-
 /* ── Player postMessage events ──────────────────────────────────────────────
- * VidCore emits PLAYER_EVENT payloads (object) with time + duration.
- * Videasy sends a JSON *string* with { timestamp, duration, progress % }.
- * Shapes vary, so we defensively deep-scan for time fields. NB: "progress"
- * is a percentage on Videasy, so it is deliberately NOT treated as seconds. */
+ * Vidking sends a JSON *string*:
+ *   { type: "PLAYER_EVENT", data: { event, currentTime, duration, progress, ... } }
+ * event: timeupdate | play | pause | ended | seeked. NB: "progress" is a
+ * percentage and "timestamp" is epoch-ms — neither is read as seconds. */
 
 export type PlayerTime = { time: number; duration?: number; ended?: boolean; paused?: boolean };
 
 const TIME_KEYS = [
-  "currentTime", "current_time", "currenttime", "timestamp", "time", "position", "seconds", "elapsed",
+  "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidcore", "videasy"];
+const PLAYER_HOSTS = ["vidking", "videasy"];
+/** playback seconds can never reach this; epoch-ms "timestamp" fields do */
+const MAX_PLAUSIBLE_SECONDS = 1e7;
 
 function scan(obj: unknown, depth = 0): Partial<PlayerTime> {
   if (!obj || typeof obj !== "object" || depth > 3) return {};
@@ -95,7 +76,9 @@ function scan(obj: unknown, depth = 0): Partial<PlayerTime> {
   const rec = obj as Record<string, unknown>;
   for (const [k, v] of Object.entries(rec)) {
     const kl = k.toLowerCase();
-    if (TIME_KEYS.includes(kl) && typeof v === "number" && v >= 0 && out.time === undefined) out.time = v;
+    if (kl === "timestamp") continue; // epoch-ms, not playback time
+    if (TIME_KEYS.includes(kl) && typeof v === "number" && v >= 0 && v < MAX_PLAUSIBLE_SECONDS && out.time === undefined)
+      out.time = v;
     else if (DURATION_KEYS.includes(kl) && typeof v === "number" && v > 0) out.duration = v;
     else if (kl === "type" || kl === "event" || kl === "eventname") {
       const s = String(v).toLowerCase();

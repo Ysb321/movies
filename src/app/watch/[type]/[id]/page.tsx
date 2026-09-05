@@ -31,12 +31,12 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
-  const [serverId, setServerId] = useState("vidcore");
+  const [serverId, setServerId] = useState("vidking");
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setServerId(() => {
-      try { return localStorage.getItem("yetflix:server") || "vidcore"; } catch { return "vidcore"; }
+      try { return localStorage.getItem("yetflix:server") || "vidking"; } catch { return "vidking"; }
     });
   }, []);
   const switchServer = (id: string) => {
@@ -185,7 +185,8 @@ function WatchContent() {
             ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {PROVIDERS.map((pv) => (
+            {PROVIDERS.length > 1 &&
+              PROVIDERS.map((pv) => (
               <button
                 key={pv.id}
                 onClick={() => switchServer(pv.id)}
