@@ -57,7 +57,7 @@ export default function Navbar() {
     >
       <nav className="flex h-14 items-center gap-6 px-[4vw] md:h-[60px]">
         <Link href="/home" className="flex shrink-0 items-baseline gap-1.5">
-          <span className="text-2xl font-black tracking-tighter text-brand md:text-[26px]">YETFLIX</span>
+          <span className="font-display text-[26px] tracking-tight text-brand md:text-[30px]">YETFLIX</span>
           <span className="hidden text-[11px] font-semibold tracking-wide text-neutral-400 sm:inline">by Yashraj</span>
         </Link>
 

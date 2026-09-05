@@ -91,7 +91,7 @@ export default function PersonPage() {
         )}
 
         <div className="min-w-0 max-w-3xl flex-1">
-          <h1 className="mb-2 text-3xl font-black md:text-4xl">{p.name}</h1>
+          <h1 className="font-display mb-2 text-3xl tracking-wide md:text-4xl">{p.name}</h1>
           <div className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px] text-neutral-400">
             {p.known_for_department && (
               <span className="rounded-full bg-white/10 px-2.5 py-0.5 font-medium text-neutral-200">

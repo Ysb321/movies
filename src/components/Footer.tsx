@@ -14,14 +14,6 @@ export default function Footer() {
         <p className="mb-2 text-[12px] font-semibold text-neutral-400">
           Yetflix — crafted with 🍿 by <span className="text-neutral-200">Yashraj</span>
         </p>
-        <p className="leading-relaxed">
-          This product uses the TMDB API but is not endorsed or certified by TMDB. Metadata and
-          artwork © TMDB. Streaming player powered by{" "}
-          <a href="https://vidcore.io" target="_blank" rel="noreferrer" className="underline hover:text-neutral-300">
-            VidCore
-          </a>
-          .
-        </p>
       </div>
     </footer>
   );

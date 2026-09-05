@@ -6,7 +6,8 @@
   --color-ink: #0b0b0f;
   --color-panel: #141418;
   --color-panel-2: #1d1d24;
-  --font-sans: "Netflix Sans", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Netflix Sans", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-display: "Anton", "Arial Narrow", Impact, sans-serif;
 }
 
 :root {
