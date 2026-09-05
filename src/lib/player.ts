@@ -1,6 +1,10 @@
-/** Streaming embed provider: Vidking (single server).
- *  Docs: vidking.net — /embed/movie/{tmdbId}, /embed/tv/{tmdbId}/{season}/{episode}
- *  Params: color, autoPlay, nextEpisode, episodeSelector, progress (start sec).
+/** Streaming embed provider: Nxsha (single server).
+ *  Docs: nxsha.space/embed — /embed/movie/{tmdbOrImdbId},
+ *  /embed/tv/{tmdbOrImdbId}/{season}/{episode} (both verified live).
+ *  Params: color (netflix preset), server/one_server (their engine
+ *  auto-falls-back across nodes on error), sub/lang (ISO 639-1),
+ *  disable_app_ad. No URL start-time param is documented, so resume
+ *  starts tracked but playback begins at 0.
  *  To add a fallback server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -24,17 +28,11 @@ const qs = (params: Record<string, string | number | undefined>) => {
 
 export const PROVIDERS: EmbedProvider[] = [
   {
-    id: "vidking",
-    name: "Vidking",
-    startParam: "progress",
-    movie: (id) => `https://www.vidking.net/embed/movie/${id}${qs({ color: "E50914", autoPlay: "true" })}`,
+    id: "nxsha",
+    name: "Nxsha",
+    movie: (id) => `https://nxsha.space/embed/movie/${id}${qs({ color: "netflix", disable_app_ad: "true" })}`,
     tv: (id, s, e) =>
-      `https://www.vidking.net/embed/tv/${id}/${s}/${e}${qs({
-        color: "E50914",
-        autoPlay: "true",
-        nextEpisode: "true",
-        episodeSelector: "true",
-      })}`,
+      `https://nxsha.space/embed/tv/${id}/${s}/${e}${qs({ color: "netflix", disable_app_ad: "true" })}`,
   },
 ];
 
@@ -55,10 +53,11 @@ export function embedUrl(
 }
 
 /* ── Player postMessage events ──────────────────────────────────────────────
- * Vidking sends a JSON *string*:
- *   { type: "PLAYER_EVENT", data: { event, currentTime, duration, progress, ... } }
- * event: timeupdate | play | pause | ended | seeked. NB: "progress" is a
- * percentage and "timestamp" is epoch-ms — neither is read as seconds. */
+ * Nxsha does not document postMessage progress events; the parser stays
+ * generic (JSON string or object, deep time-field scan) so continue-watching
+ * tracking works automatically if/when they emit them.
+ * NB: "progress" (%-fields) and epoch-ms "timestamp" fields are never read
+ * as playback seconds. */
 
 export type PlayerTime = { time: number; duration?: number; ended?: boolean; paused?: boolean };
 
@@ -66,7 +65,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidking", "videasy"];
+const PLAYER_HOSTS = ["nxsha"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

@@ -20,7 +20,7 @@ let win = null;
 
 /* Player-friendly popup hosts (server selection / external players) */
 const POPUP_HOSTS = [
-  "vidking.net",
+  "nxsha.space",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];

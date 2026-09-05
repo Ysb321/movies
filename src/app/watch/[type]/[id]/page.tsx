@@ -31,12 +31,12 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
-  const [serverId, setServerId] = useState("vidking");
+  const [serverId, setServerId] = useState("nxsha");
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setServerId(() => {
-      try { return localStorage.getItem("yetflix:server") || "vidking"; } catch { return "vidking"; }
+      try { return localStorage.getItem("yetflix:server") || "nxsha"; } catch { return "nxsha"; }
     });
   }, []);
   const switchServer = (id: string) => {
