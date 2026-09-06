@@ -9,11 +9,10 @@
  *    (verified live). ?startAt= resume, autoNext, multi-source fallback.
  *    Anti-sandbox detection: MUST run unsandboxed; popups revoked via
  *    Permissions-Policy instead (denyPopups flag).
- *  - CineBit: cinebit-api.vercel.app/embed/movie/{tmdb} +
- *    /embed/tv/{tmdb}/{s}/{e} per their docs. NB: all routes returned 404
- *    from our probes at integration time - wired to spec; rollback =
- *    restore the vidzy entry from git history. Full sandbox kept (popup
- *    ads die at the engine level; app layers cover the rest).
+ *  - BingeR: bingr.one/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
+ *    (both verified live). Integrated multi-source player (FilmU engine),
+ *    built-in episode list + auto-next; full site -> noScroll crops their
+ *    page chrome; full sandbox kept (popup ads die at engine level).
  *  - PVRPlay: pvrplay.online/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
  *    (both resolve live). Full streaming SITE rather than an embed API - no
  *    customization params, their page chrome shows inside the frame, and
@@ -88,14 +87,17 @@ export const PROVIDERS: EmbedProvider[] = [
       `https://peachify.top/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
   },
   {
-    id: "cinebit",
-    name: "CineBit",
-    /* per their docs (cinebit-api.vercel.app): /embed/movie/{tmdb} and
-     * /embed/tv/{tmdb}/{s}/{e}. NB: all routes returned 404 from our probes
-     * at integration time - wired to spec; rollback = restore the vidzy
-     * entry from git history if the API stays dead. */
-    movie: (id) => `https://cinebit-api.vercel.app/embed/movie/${id}`,
-    tv: (id, s, e) => `https://cinebit-api.vercel.app/embed/tv/${id}/${s}/${e}`,
+    id: "bingr",
+    name: "BingeR",
+    /* verified live: bingr.one/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}.
+     * Full site with an integrated multi-source player (FilmU engine;
+     * FilmU/Videasy/Cinezo/Vidbolt/Vidrift backends), subtitles, TV
+     * auto-next + built-in episode list. noScroll: their page has content
+     * below the player - crop it like PVRPlay so the iframe never shows
+     * its own scrollbar or swallows wheel events. */
+    noScroll: true,
+    movie: (id) => `https://bingr.one/watch/movie/${id}`,
+    tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
   },
   {
     id: "pvrplay",
@@ -137,7 +139,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "cinebit", "pvrplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
