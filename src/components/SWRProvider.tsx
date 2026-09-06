@@ -2,7 +2,8 @@
 
 import useSWR, { SWRConfig } from "swr";
 import { useEffect, useState } from "react";
-import { swrFetcher, getCached } from "@/lib/tmdb";
+import { swrFetcher, getCached, sanitizeForKids } from "@/lib/tmdb";
+import { isKidsActive } from "@/lib/storage";
 
 export default function SWRProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -37,8 +38,17 @@ export function useTmdbSnapshot<T = any>(key: string | null) {
   const fallbackData =
     snapshot && snapshot.key === key && snapshot.data !== undefined ? snapshot.data : undefined;
 
-  return useSWR<T, any, string | null>(key, {
+  const res = useSWR<T, any, string | null>(key, {
     fallbackData,
     keepPreviousData: true,
   });
+
+  /* Kids mode: sanitize on the RETURN path too - cached localStorage
+   * snapshots, SWR's in-memory cache and in-flight responses (fetched
+   * before a profile switch) can all carry unfiltered data; this makes
+   * it impossible for non-kids content to render in Kids mode. */
+  if (isKidsActive() && res.data) {
+    return { ...res, data: sanitizeForKids(res.data) as T };
+  }
+  return res;
 }

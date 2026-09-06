@@ -205,7 +205,7 @@ export function kidsSafeItem(item: any): boolean {
   return ids.some((id) => safe.has(id));
 }
 
-function sanitizeForKids(data: any): any {
+export function sanitizeForKids(data: any): any {
   if (!data || !Array.isArray(data.results)) return data;
   return { ...data, results: data.results.filter(kidsSafeItem) };
 }
