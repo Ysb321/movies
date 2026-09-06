@@ -191,3 +191,59 @@ body {
     min-height: 36px;
   }
 }
+
+/* ── Netflix-style intro splash (IntroSplash.tsx) ──────────────────────── */
+@keyframes intro-letter-in {
+  0%   { opacity: 0; transform: scale(2.6) translateY(6%); filter: blur(14px); }
+  55%  { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+@keyframes intro-glow-pulse {
+  0%, 100% { opacity: 0.2; transform: scale(0.75); }
+  50%      { opacity: 0.75; transform: scale(1.15); }
+}
+@keyframes intro-tag-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes intro-sweep {
+  0%   { transform: translateX(-130%); }
+  100% { transform: translateX(230%); }
+}
+@keyframes intro-zoom-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(1.22); }
+}
+@keyframes intro-overlay-out {
+  to { opacity: 0; visibility: hidden; }
+}
+.intro-letter {
+  display: inline-block;
+  opacity: 0;
+  animation: intro-letter-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  text-shadow: 0 0 22px rgba(229, 9, 20, 0.55);
+}
+.intro-glow {
+  position: absolute;
+  inset: -20%;
+  border-radius: 9999px;
+  background: rgba(229, 9, 20, 0.28);
+  filter: blur(70px);
+  animation: intro-glow-pulse 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+.intro-tag { opacity: 0; animation: intro-tag-in 0.6s ease-out 0.95s forwards; }
+.intro-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.16) 50%, transparent 65%);
+  transform: translateX(-130%);
+  animation: intro-sweep 1.1s ease-in-out 1.05s;
+}
+.intro-content.out { animation: intro-zoom-out 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.intro-overlay.out { animation: intro-overlay-out 0.45s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .intro-letter { animation-duration: 0.01s; animation-delay: 0s !important; }
+  .intro-glow, .intro-sweep { animation: none; }
+}

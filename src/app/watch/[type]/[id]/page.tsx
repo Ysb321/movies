@@ -31,7 +31,6 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
-  const fsRef = useRef<HTMLDivElement>(null); /* fullscreen target: player box */
   const [serverId, setServerId] = useState("vidzee");
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -216,7 +215,7 @@ function WatchContent() {
         </div>
 
         {/* ── VidCore player (mounts after resume position is resolved) ── */}
-        <div ref={fsRef} className="relative aspect-video max-h-[76vh] w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
+        <div className="relative aspect-video max-h-[76vh] w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
           {embed ? (
             <iframe
               key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
@@ -232,21 +231,6 @@ function WatchContent() {
           ) : (
             <div className="skeleton h-full w-full rounded-none opacity-50" />
           )}
-          <button
-            onClick={() => {
-              const el = fsRef.current;
-              if (!el) return;
-              if (document.fullscreenElement) document.exitFullscreen();
-              else el.requestFullscreen?.();
-            }}
-            aria-label="Toggle fullscreen"
-            title="Fullscreen"
-            className="absolute bottom-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/80 md:h-8 md:w-8"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5 md:h-4 md:w-4">
-              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
         </div>
 
         {/* ── Server switcher (below the player; wraps on small screens) ── */}

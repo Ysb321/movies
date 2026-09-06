@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import IntroSplash from "@/components/IntroSplash";
 import "@fontsource-variable/inter/wght.css";
 import "@fontsource/anton/latin-400.css";
 import "@fontsource/bebas-neue/latin-400.css";
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://www.youtube.com" />
       </head>
       <body className="min-h-screen bg-ink text-white antialiased">
+      <IntroSplash />
         <SWRProvider>{children}</SWRProvider>
         <ServiceWorker />
       </body>
