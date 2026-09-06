@@ -9,7 +9,8 @@ import Footer from "@/components/Footer";
 import Card from "@/components/Card";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { swrFetcher, img, titleOf, type Media } from "@/lib/tmdb";
+import { swrFetcher, img, titleOf, kidsSafeItem, type Media } from "@/lib/tmdb";
+import { isKidsActive } from "@/lib/storage";
 
 function SearchResults() {
   const params = useSearchParams();
@@ -47,7 +48,9 @@ function SearchResults() {
         }
       }
     }
-    return { titles, people, total: data?.[0]?.total_results ?? 0 };
+    /* kids mode: non-kids titles (incl. adult anime) never render, even from
+     * cached/in-memory pages - fresh fetches are filtered in swrFetcher */
+    return { titles: isKidsActive() ? titles.filter(kidsSafeItem) : titles, people, total: data?.[0]?.total_results ?? 0 };
   }, [q, data, trending.data]);
 
   const sentinel = useRef<HTMLDivElement>(null);
