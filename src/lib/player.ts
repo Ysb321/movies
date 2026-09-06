@@ -5,7 +5,11 @@
  *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
  *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
  *    ?t={seconds} start time (resume), autonext/auto-skip intros.
- *  - Vidzy: vidzy.org/movie/{tmdb} + /serie/{tmdb}/{s}/{e} (BOTH VERIFIED
+ *  - PVRPlay: pvrplay.online/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
+ *    (both resolve live). Full streaming SITE rather than an embed API - no
+ *    customization params, their page chrome shows inside the frame, and
+ *    framing permission is not guaranteed (Electron strips any frame-block
+ *    headers via FRAME_HOSTS; on the open web it depends on their headers).
  *    PLAYING LIVE). Iframe-first API (their tagline: point an iframe at a
  *    TMDB id), params: autoplay, autonext, color, hide. Replaced SuperEmbed
  *    whose server refuses cross-origin framing outright (403 + XFO +
@@ -81,6 +85,12 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) =>
       `https://vidzy.org/serie/${id}/${s}/${e}${qs({ color: "E50914", autoplay: "1", autonext: "1", hide: "volume" })}`,
   },
+  {
+    id: "pvrplay",
+    name: "PVRPlay",
+    movie: (id) => `https://pvrplay.online/watch/movie/${id}`,
+    tv: (id, s, e) => `https://pvrplay.online/watch/tv/${id}/${s}/${e}`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -113,7 +123,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "vidzy"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "vidzy", "pvrplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
