@@ -30,7 +30,7 @@ let site = "";
  * and gets blocked - popups never leave the app. */
 const POPUP_HOSTS = [
   "vidzee.wtf", "cinesrc.st", "peachify.top", "peachify.pro",
-  "bingr.one", "pvrplay.online",
+  "pvrplay.online",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];
@@ -82,7 +82,7 @@ const AD_URL_HINTS = ["popunder"];
  * its own network stack, so those headers can be stripped for the known
  * player hosts - making the frame load. (A plain website can never do
  * this: the headers come from the provider's server.) */
-const FRAME_HOSTS = ["pvrplay.online", "bingr.one"]; // full sites - strip any frame-block headers
+const FRAME_HOSTS = ["pvrplay.online", "embed.filmu.in", "megaplay.buzz"]; // full sites - strip any frame-block headers
 const stripFrameHeaders = (details, callback) => {
   try {
     const u = new URL(details.url);

@@ -11,6 +11,7 @@ import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
+import { findAniListId } from "@/lib/anilist";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -43,7 +44,6 @@ function WatchContent() {
     setServerId(id);
     try { localStorage.setItem("yetflix:server", id); } catch {}
   };
-const provider = getProvider(serverId);
   const playerRef = useRef<HTMLDivElement>(null); /* scroll target: page container */
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
   const lastSaved = useRef(0);
@@ -55,6 +55,17 @@ const provider = getProvider(serverId);
   const logoPath = bestLogo(d?.images);
   /* Kids mode: block non-kids content reached by direct URL */
   const kidsBlocked = !!d && isKidsActive() && !kidsSafeItem(d);
+
+  /* ── anime detection for the anime-only server (MegaPlay): animated AND
+   *    from an anime hub (ja/zh/ko) - western/Indian animation excluded */
+  const isAnime = useMemo(
+    () => !!d && (d.genres ?? []).some((g: any) => g.id === 16) && ["ja", "zh", "ko"].includes(d.original_language ?? ""),
+    [d]
+  );
+  const providers = useMemo(() => PROVIDERS.filter((p) => !p.animeOnly || isAnime), [isAnime]);
+  /* saved server not offered on this title (e.g. Anime 1 on non-anime) -> Server 1 */
+  const activeId = providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
+  const provider = getProvider(activeId);
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -68,6 +79,21 @@ const provider = getProvider(serverId);
   const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    /* MegaPlay (anime server) has no TMDB ids: resolve the title on
+     * AniList, then embed /stream/ani/{id}/{ep}/sub per their docs
+     * (megaplay.buzz/api - embed-only, direct nav is disabled). */
+    if (provider.id === "megaplay") {
+      const name = d?.original_title || d?.original_name || d?.title || d?.name;
+      if (!name) { setEmbed(null); return; }
+      setEmbed(null); /* resolving - skeleton shows */
+      findAniListId(name).then((aniId) => {
+        if (cancelled) return;
+        const ep = t === "tv" ? episode : 1;
+        setEmbed(aniId ? { src: `https://megaplay.buzz/stream/ani/${aniId}/${ep}/sub` } : { src: "" });
+      });
+      return () => { cancelled = true; };
+    }
     const rkey = resumeKeyFor(t, id, season, episode);
     const saved = getResume(rkey);
     const resume =
@@ -77,7 +103,7 @@ const provider = getProvider(serverId);
     setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, id, season, episode, provider.id, embedId]);
+  }, [t, id, season, episode, provider.id, embedId, d]);
 
   const startOver = () => {
     clearResume(resumeKeyFor(t, id, season, episode));
@@ -229,17 +255,25 @@ const provider = getProvider(serverId);
               </p>
             </div>
           ) : embed ? (
-            <iframe
-              key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
-              src={embed.src}
-              title={title}
-              className="h-full w-full"
-              allow={`autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer${provider.denyPopups ? "; popups 'none'" : ""}`}
-              sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
-              scrolling={provider.noScroll ? "no" : undefined}
-              allowFullScreen
-              referrerPolicy="origin"
-            />
+            embed.src ? (
+              <iframe
+                key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
+                src={embed.src}
+                title={title}
+                className="h-full w-full"
+                allow={`autoplay; encrypted-media; ${provider.denyFullscreen ? "" : "fullscreen; "}picture-in-picture; accelerometer${provider.denyPopups ? "; popups 'none'" : ""}`}
+                sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
+                scrolling={provider.noScroll ? "no" : undefined}
+                allowFullScreen={!provider.denyFullscreen}
+                referrerPolicy="origin"
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+                <span className="text-4xl">🌸</span>
+                <p className="text-sm font-bold">Couldn&rsquo;t match this title in the anime library</p>
+                <p className="text-[12.5px] text-neutral-400">Try another server below.</p>
+              </div>
+            )
           ) : (
             <div className="skeleton h-full w-full rounded-none opacity-50" />
           )}
@@ -252,16 +286,16 @@ const provider = getProvider(serverId);
           <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
             Servers
           </span>
-          {PROVIDERS.map((pv, i) => (
+          {providers.map((pv, i) => (
             <button
               key={pv.id}
               onClick={() => switchServer(pv.id)}
               className={clsx(
                 "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
-                serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
+                activeId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
               )}
             >
-              {`Server ${i + 1}`}
+              {pv.label ?? `Server ${i + 1}`}
             </button>
           ))}
           <button
