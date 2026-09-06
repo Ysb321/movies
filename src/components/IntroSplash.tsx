@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /** Netflix-style intro splash: animated YETFLIX logo over black, played
  *  EVERY time the home page opens (mounted in the home page). Pure CSS
@@ -11,35 +12,43 @@ const LETTERS = "YETFLIX".split("");
 export default function IntroSplash() {
   const [show, setShow] = useState(false);
   const [out, setOut] = useState(false);
+  const [mounted, setMounted] = useState(false); /* portal needs the client */
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    setMounted(true);
     setShow(true);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const total = reduced ? 800 : 2750; /* full sequence vs quick fade */
     /* lock page scroll while the intro plays: no scrollbar visible, no
-     * scrolling the page behind the overlay; restored on finish/skip */
+     * scrolling the page behind the overlay; restored on finish/skip.
+     * BOTH html and body are locked - whichever owns the scroller. */
     const root = document.documentElement;
-    const prevOverflow = root.style.overflow;
+    const body = document.body;
+    const prevR = root.style.overflow;
+    const prevB = body.style.overflow;
     root.style.overflow = "hidden";
+    body.style.overflow = "hidden";
     timers.current.push(setTimeout(() => setOut(true), Math.max(total - 450, 0)));
     timers.current.push(setTimeout(() => setShow(false), total));
     return () => {
       timers.current.forEach(clearTimeout);
-      root.style.overflow = prevOverflow;
+      root.style.overflow = prevR;
+      body.style.overflow = prevB;
     };
   }, []);
 
-  if (!show) return null;
+  if (!show || !mounted) return null;
 
   const skip = () => {
     timers.current.forEach(clearTimeout);
     document.documentElement.style.overflow = "";
+    document.body.style.overflow = "";
     setOut(true);
     timers.current.push(setTimeout(() => setShow(false), 380));
   };
 
-  return (
+  const overlay = (
     <div
       onClick={skip}
       className={`intro-overlay fixed inset-0 z-[300] flex cursor-pointer items-center justify-center bg-black ${out ? "out" : ""}`}
@@ -84,4 +93,7 @@ export default function IntroSplash() {
       </span>
     </div>
   );
+  /* portal to <body>: the overlay is measured against the VIEWPORT, never
+   * against a transformed page/transition container */
+  return createPortal(overlay, document.body);
 }
