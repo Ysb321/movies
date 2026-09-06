@@ -228,7 +228,7 @@ body {
   inset: -20%;
   border-radius: 9999px;
   background: rgba(229, 9, 20, 0.28);
-  filter: blur(70px);
+  filter: blur(clamp(26px, 8vw, 110px)); /* glow scales with screen size */
   animation: intro-glow-pulse 2.2s ease-in-out infinite;
   pointer-events: none;
 }

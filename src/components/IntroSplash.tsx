@@ -38,8 +38,14 @@ export default function IntroSplash() {
     >
       <div className={`intro-content relative select-none text-center ${out ? "out" : ""}`}>
         <div
-          className="font-display relative flex justify-center overflow-hidden tracking-tight text-brand"
-          style={{ fontSize: "clamp(3rem, 15vw, 10rem)" }}
+          className="font-display relative flex justify-center overflow-hidden px-[5vw] tracking-tight text-brand"
+          style={{
+            /* size by BOTH width and height: never overflows portrait
+             * phones, never exceeds a landscape phone's short height,
+             * keeps growing up to 11rem on 4K/ultrawide */
+            fontSize: "clamp(2.5rem, min(15vw, 20vh), 11rem)",
+            lineHeight: 1.1,
+          }}
         >
           {LETTERS.map((l, i) => (
             <span
@@ -54,7 +60,11 @@ export default function IntroSplash() {
         </div>
         <span
           className="intro-tag mt-3 block uppercase text-neutral-400"
-          style={{ fontSize: "clamp(0.55rem, 2vw, 0.95rem)", letterSpacing: "0.45em" }}
+          style={{
+            fontSize: "clamp(0.55rem, 2vw, 0.95rem)",
+            letterSpacing: "clamp(0.25em, 1.2vw, 0.45em)",
+            paddingLeft: "clamp(0.25em, 1.2vw, 0.45em)", /* optically centers tracked text */
+          }}
         >
           by Yashraj
         </span>
