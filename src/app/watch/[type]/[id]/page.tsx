@@ -234,7 +234,7 @@ function WatchContent() {
               src={embed.src}
               title={title}
               className="h-full w-full"
-              allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
+              allow={`autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer${provider.denyPopups ? "; popups 'none'" : ""}`}
               sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
               scrolling={provider.noScroll ? "no" : undefined}
               allowFullScreen

@@ -37,6 +37,10 @@ export type EmbedProvider = {
    *  scrolling of the host page). Inner page becomes unscrollable; wheel
    *  chains back to Yetflix. */
   noScroll?: boolean;
+  /** add "popups 'none'" to the iframe Permissions-Policy - for unsandboxed
+   *  providers (anti-sandbox players) so window.open dies without needing
+   *  the sandbox attribute they reject. */
+  denyPopups?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -70,6 +74,9 @@ export const PROVIDERS: EmbedProvider[] = [
     id: "peachify",
     name: "Peachify",
     startParam: "startAt",
+    /* unsandboxed + popups revoked: their player rejects any sandbox, so
+     * popup ads are killed via Permissions-Policy instead */
+    denyPopups: true,
     /* anti-sandbox detection: every sandbox token config was rejected -
      * this provider requires a fully unsandboxed iframe. Popup/top-nav
      * threats are handled OUTSIDE the iframe instead: Electron (EasyList

@@ -268,19 +268,10 @@ if (!app.requestSingleInstanceLock()) {
      * the system browser. Applied recursively to child windows too. */
     const popupGuard = (wc) => {
       try { wc.insertCSS(HIDE_PROMO_CSS, { cssOrigin: "user" }); } catch {}
-      wc.setWindowOpenHandler(({ url }) => {
-        if (isPopupHost(url)) {
-          return {
-            action: "allow",
-            overrideBrowserWindowOptions: {
-              width: 1050, height: 650, autoHideMenuBar: true,
-              backgroundColor: "#0b0b0f", title: "Yetflix Player",
-              parent: BrowserWindow.fromWebContents(wc) || win,
-            },
-          };
-        }
-        return { action: "deny" };
-      });
+      /* no in-app feature uses window.open anymore - every popup attempt
+       * from any frame (player iframes included, e.g. unsandboxed Server 3)
+       * is an ad: denied outright. Whitelisted hosts remain navigable. */
+      wc.setWindowOpenHandler(() => ({ action: "deny" }));
       wc.on("will-navigate", (e, url) => {
         if (!site || (!url.startsWith(site) && !isPopupHost(url))) e.preventDefault();
       });
