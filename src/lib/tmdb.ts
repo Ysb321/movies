@@ -191,7 +191,11 @@ function deduped(key: string, fn: () => Promise<any>) {
  * search, recommendations) is filtered: adult items dropped and only
  * kid-safe genres kept (Animation / Family / Kids). */
 const KIDS_SAFE_MOVIE = new Set([16, 10751]); // Animation, Family
-const KIDS_SAFE_TV = new Set([16, 10751, 10762]); // + Kids
+
+/** TV is stricter: bare Animation is NOT enough (most anime is genre 16,
+ *  including violent series). Kids-mode TV must be tagged Kids (10762) or
+ *  Family (10751) - so adult anime never passes the kids filter. */
+const KIDS_SAFE_TV = new Set([10762, 10751]);
 
 export function kidsSafeItem(item: any): boolean {
   if (!item || item.adult) return false;

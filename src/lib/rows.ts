@@ -138,13 +138,13 @@ export const KIDS_ROWS: RowDef[] = [
     key: "kids-cartoons",
     title: "Cartoons & Series",
     href: "/tv",
-    sources: [["discover/tv", { with_genres: "16|10762", "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+    sources: [["discover/tv", { with_genres: "10762|10751", "vote_count.gte": 20, sort_by: "popularity.desc" }]],
   },
   {
     key: "kids-family-tv",
     title: "Family Series",
     href: "/tv",
-    sources: [["discover/tv", { with_genres: "10751|16", "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+    sources: [["discover/tv", { with_genres: 10751, "vote_count.gte": 30, sort_by: "popularity.desc" }]],
   },
   {
     key: "kids-animated-classics",
@@ -300,3 +300,25 @@ export function interleave(lists: Media[][]): Media[] {
     }
   return out;
 }
+
+/* Kids anime (/anime in kids mode): JP AND (Kids or Family) tagged only */
+export const KIDS_ANIME_ROWS: RowDef[] = [
+  {
+    key: "kids-anime-tv",
+    title: "Anime for Kids",
+    href: "/anime",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: "16,10762", "vote_count.gte": 5, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-anime-family",
+    title: "Family Anime",
+    href: "/anime",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: "16,10751", "vote_count.gte": 5, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-anime-movies",
+    title: "Anime Movies for Kids",
+    variant: "poster",
+    sources: [["discover/movie", { with_original_language: "ja", with_genres: "16,10751", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
+  },
+];

@@ -12,8 +12,8 @@ export type BrowseOptions = {
   type: "movie" | "tv";
   genre?: number; // optional initial genre filter
   heading: string;
-  /** anime preset: locks JP + Animation (genre/language filters hidden) */
-  preset?: "anime";
+  /** anime presets: lock JP + Animation (kids variant adds Kids/Family) */
+  preset?: "anime" | "anime-kids";
 };
 
 const PAGE_CAP = 500; // TMDB discover caps at 500 pages
@@ -76,10 +76,14 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       p.set("with_genres", "16");
       if (type === "tv") p.set("with_origin_country", "JP");
       else p.set("with_original_language", "ja");
+    } else if (preset === "anime-kids") {
+      p.set("with_genres", type === "tv" ? "16,10762" : "16,10751");
+      if (type === "tv") p.set("with_origin_country", "JP");
+      else p.set("with_original_language", "ja");
     } else if (selGenres.length) {
       p.set("with_genres", selGenres.join("|")); // | = OR within genres
     }
-    if (preset !== "anime" && lang) p.set("with_original_language", lang);
+    if (preset !== "anime" && preset !== "anime-kids" && lang) p.set("with_original_language", lang);
     const eraDef = ERAS.find((x) => x.id === era);
     const dateKey = type === "movie" ? "primary_release_date" : "first_air_date";
     if (eraDef?.gte) p.set(`${dateKey}.gte`, eraDef.gte);
@@ -183,7 +187,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       </div>
 
       {/* genre chips (always visible; multi-select; hidden for the anime preset) */}
-      {preset !== "anime" && (
+      {preset === undefined && (
         <div className="no-scrollbar -mx-[4vw] mb-3 flex gap-1.5 overflow-x-auto px-[4vw] pb-1">
           <Chip active={selGenres.length === 0} onClick={() => setSelGenres([])}>
             All
@@ -199,7 +203,7 @@ export default function BrowseGrid({ options }: { options: BrowseOptions }) {
       {/* advanced filter panel */}
       {open && (
         <div className="mb-5 flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          {preset !== "anime" && (
+          {preset === undefined && (
             <FilterRow label="Language">
               <Chip active={!lang} onClick={() => setLang(undefined)}>Any</Chip>
               {LANGS.map((l) => (

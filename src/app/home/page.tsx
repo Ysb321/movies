@@ -14,13 +14,12 @@ import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { HOME_ROWS, KIDS_ROWS } from "@/lib/rows";
 import {
   getProgress, onProgressChange, removeProgress, clearProgress,
-  getList, onListChange, getActiveProfile, isKidsActive,
+  getList, onListChange, getActiveProfile, isKidsActive, onActiveProfileChange,
 } from "@/lib/storage";
 import type { ListItem, ProgressItem } from "@/lib/storage";
 
 export default function HomePage() {
   const [kids, setKids] = useState(false);
-  useEffect(() => setKids(isKidsActive()), []);
   const { data, isLoading, error } = useTmdbSnapshot<any>(
     kids
       ? "discover/movie?with_genres=16%7C10751&vote_count.gte=300&sort_by=popularity.desc&page=1"
@@ -41,7 +40,17 @@ export default function HomePage() {
     return () => { a(); b(); };
   }, []);
 
-  // continue-watching: distinct items keyed by id with their progress
+  /* live profile switching: the moment a profile changes (Navbar switch,
+   * PIN unlock, profile gate), rows/hero/name follow instantly - no
+   * reload needed */
+  useEffect(() => {
+    const sync = () => {
+      setKids(isKidsActive());
+      setProfileName(getActiveProfile()?.name ?? "you");
+    };
+    sync();
+    return onActiveProfileChange(sync);
+  }, []);
   // (media_type mapped from storage `type` so cards route correctly)
   const cwItems = useMemo(
     () => progress.slice(0, 14).map((p) => ({ ...p, media_type: p.type })),
