@@ -154,29 +154,39 @@ if (!app.requestSingleInstanceLock()) {
       callback({ cancel: isAdRequest(details.url) })
     );
 
-    if (ElectronBlocker) {
+    /* EasyList engine (ghostery/adblocker-electron). NB: Electron allows
+     * ONE webRequest listener per event - enableBlockingInSession REPLACES
+     * the static filter registered above (that is correct and intended).
+     * Never call onBeforeRequest(filter) to "clean up" afterwards: that
+     * unsubscribes the blocker itself, which is exactly the bug that let
+     * ads through before. On any failure the static filter simply stays. */
+    if (ElectronBlocker && typeof fetch === "function") {
       const cachePath = path.join(app.getPath("userData"), "easylist-cache.bin");
       (async () => {
         try {
-          let blocker = null;
-          let cacheMs = 0;
-          try { cacheMs = fs.statSync(cachePath).mtimeMs; } catch {}
-          if (cacheMs && Date.now() - cacheMs < 7 * 86400000) {
-            blocker = ElectronBlocker.deserialize(fs.readFileSync(cachePath));
-          } else {
-            blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
-            fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-            fs.writeFileSync(cachePath, blocker.serialize());
-          }
+          // refresh stale lists weekly
+          try {
+            if (Date.now() - fs.statSync(cachePath).mtimeMs > 7 * 86400000) fs.unlinkSync(cachePath);
+          } catch {}
+          const blocker = await ElectronBlocker.fromPrebuiltAdsOnly(fetch, {
+            path: cachePath,
+            read: (p) => fs.promises.readFile(p),
+            write: (p, buf) => fs.promises.writeFile(p, buf),
+          });
           blocker.enableBlockingInSession(session.defaultSession);
-          // EasyList covers the static list and far more - retire the static
-          // filter now that the full engine is active
-          try { session.defaultSession.webRequest.onBeforeRequest(AD_FILTER); } catch {}
-          console.log("[OK] EasyList ad blocker active (" + (cacheMs ? "cached" : "downloaded") + ")");
+          let blocked = 0;
+          blocker.on("request-blocked", ({ url }) => {
+            blocked++;
+            if (blocked === 1) console.log("[OK] first ad blocked: " + url);
+            else if (blocked % 25 === 0) console.log("[OK] ads blocked so far: " + blocked);
+          });
+          console.log("[OK] EasyList ad blocker ACTIVE (fromPrebuiltAdsOnly)");
         } catch (err) {
-          console.log("[WARN] EasyList blocker unavailable, static list only: " + (err && err.message));
+          console.log("[WARN] EasyList blocker unavailable, static filter only: " + (err && err.message));
         }
       })();
+    } else {
+      console.log("[WARN] ad-blocker package missing (run: cd desktop && npm install) - static filter only");
     }
 
     win = new BrowserWindow({
