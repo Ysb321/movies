@@ -35,6 +35,20 @@ const POPUP_HOSTS = [
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];
 
+/* Server 5 (PVRPlay) shows "Join Telegram" banners/popups from their own
+ * page inside the iframe. Cross-origin pages cannot be edited, but
+ * insertCSS reaches EVERY frame of a webContents (same mechanism
+ * Ghostery's cosmetic filters use), so we hide anything Telegram-shaped.
+ * Other servers have no t.me elements - selectors simply never match. */
+const HIDE_PROMO_CSS = `
+  a[href*="t.me" i], a[href*="telegram.me" i], a[href*="telegram.org" i] {
+    display: none !important;
+  }
+  [class*="telegram" i], [id*="telegram" i] {
+    display: none !important;
+  }
+`;
+
 const isPopupHost = (url) => {
   try {
     const u = new URL(url);
@@ -253,6 +267,7 @@ if (!app.requestSingleInstanceLock()) {
      * is an ad popup (popads etc.) and is denied outright - never sent to
      * the system browser. Applied recursively to child windows too. */
     const popupGuard = (wc) => {
+      try { wc.insertCSS(HIDE_PROMO_CSS, { cssOrigin: "user" }); } catch {}
       wc.setWindowOpenHandler(({ url }) => {
         if (isPopupHost(url)) {
           return {
