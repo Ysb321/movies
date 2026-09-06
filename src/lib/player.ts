@@ -57,11 +57,12 @@ export const PROVIDERS: EmbedProvider[] = [
     id: "peachify",
     name: "Peachify",
     startParam: "startAt",
-    /* their "sandbox detected" check probes window.open capability: keep the
-     * sandbox but grant allow-popups so the probe passes - top-navigation
-     * hijack and modals stay blocked (Electron kills the popups anyway) */
-    sandbox:
-      "allow-scripts allow-same-origin allow-popups allow-downloads allow-forms allow-pointer-lock",
+    /* anti-sandbox detection: every sandbox token config was rejected -
+     * this provider requires a fully unsandboxed iframe. Popup/top-nav
+     * threats are handled OUTSIDE the iframe instead: Electron (EasyList
+     * blocker + popup guard on every webContents); browsers use their own
+     * popup blockers. */
+    sandbox: false,
     movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
     tv: (id, s, e) =>
       `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
