@@ -17,6 +17,7 @@ const APP_ROOT = __dirname.includes("app.asar")
 const SERVER = path.join(APP_ROOT, "app", "server.js");
 let child = null;
 let win = null;
+let site = "";
 
 /* Player-friendly popup hosts (the "Open in browser" button / video CDNs).
  * Anything NOT on this list that tries to open a window is an ad popup
@@ -123,7 +124,7 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     const port = await freePort();
-    const site = `http://127.0.0.1:${port}`;
+    site = `http://127.0.0.1:${port}`;
 
     child = spawn(process.execPath, [SERVER], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", PORT: String(port), HOSTNAME: "127.0.0.1", NODE_ENV: "production" },
@@ -178,18 +179,20 @@ if (!app.requestSingleInstanceLock()) {
             overrideBrowserWindowOptions: {
               width: 1050, height: 650, autoHideMenuBar: true,
               backgroundColor: "#0b0b0f", title: "Yetflix Player",
-              parent: win,
+              parent: BrowserWindow.fromWebContents(wc) || win,
             },
           };
         }
         return { action: "deny" };
       });
       wc.on("will-navigate", (e, url) => {
-        if (!url.startsWith(site) && !isPopupHost(url)) e.preventDefault();
+        if (!site || (!url.startsWith(site) && !isPopupHost(url))) e.preventDefault();
       });
-      wc.on("did-create-window", (child) => popupGuard(child.webContents));
     };
-    popupGuard(win.webContents);
+    /* every webContents ever created - the main window, child windows AND
+     * iframes (players run unsandboxed when they demand it; their popups
+     * still cannot escape the whitelist) */
+    app.on("web-contents-created", (_e, wc) => popupGuard(wc));
   });
 
   app.on("window-all-closed", () => app.quit());

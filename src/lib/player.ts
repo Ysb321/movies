@@ -9,7 +9,8 @@
  *    (docs + both verified live). ?startAt= resume, autoNext TV episode
  *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
  *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
- *    existing resume tracker.
+ *    existing resume tracker. NB: anti-sandbox detection - runs unsandboxed
+ *    (Electron's global popup guard covers the popup hole instead).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -20,6 +21,10 @@ export type EmbedProvider = {
   prefersImdb?: boolean;
   /** query param name that sets the start time in seconds, if supported */
   startParam?: string;
+  /** set false ONLY when a provider refuses to play in a sandboxed iframe
+   *  (anti-sandbox detection); the Electron app still popup-proofs it via
+   *  its global window guard */
+  sandbox?: false;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -49,6 +54,8 @@ export const PROVIDERS: EmbedProvider[] = [
     id: "peachify",
     name: "Peachify",
     startParam: "startAt",
+    /* their player refuses to run sandboxed ("sandbox detected") */
+    sandbox: false,
     movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
     tv: (id, s, e) =>
       `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
