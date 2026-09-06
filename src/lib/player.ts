@@ -5,7 +5,11 @@
  *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
  *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
  *    ?t={seconds} start time (resume), autonext/auto-skip intros.
- *  - Peachify: peachify.pro/embed/movie/{tmdb} and /embed/tv/{tmdb}/{s}/{e}
+ *  - SuperEmbed (multiembed.mov): ?video_id={tmdb}&tmdb=1[&s=&e=] - the
+ *    tmdb=1 flag is REQUIRED for TMDB ids. Redirects to streamingnow.mov
+ *    behind an invisible Cloudflare Turnstile that auto-passes in real
+ *    browsers. VIP directstream.php endpoint was flaky ("File not found")
+ *    so the standard route is used (verified: title resolves).
  *    (docs + both verified live). ?startAt= resume, autoNext TV episode
  *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
  *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
@@ -52,6 +56,12 @@ export const PROVIDERS: EmbedProvider[] = [
     startParam: "t",
     movie: (id) => `https://cinesrc.st/embed/movie/${id}`,
     tv: (id, s, e) => `https://cinesrc.st/embed/tv/${id}${qs({ s, e })}`,
+  },
+  {
+    id: "superembed",
+    name: "SuperEmbed",
+    movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+    tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
   },
   {
     id: "peachify",
