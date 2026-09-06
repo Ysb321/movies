@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** Netflix-style intro splash: animated YETFLIX logo over black, played once
- *  per browser before the homepage opens (localStorage flag). Pure CSS
+/** Netflix-style intro splash: animated YETFLIX logo over black, played
+ *  EVERY time the home page opens (mounted in the home page). Pure CSS
  *  keyframes (see globals.css) - no JS animation libs, respects
  *  prefers-reduced-motion, tap/click to skip, fully responsive via clamp(). */
-const KEY = "yetflix:intro-shown";
 const LETTERS = "YETFLIX".split("");
 
 export default function IntroSplash() {
@@ -15,10 +14,6 @@ export default function IntroSplash() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
-    let seen = false;
-    try { seen = localStorage.getItem(KEY) === "1"; } catch {}
-    if (seen) return;
-    try { localStorage.setItem(KEY, "1"); } catch {}
     setShow(true);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const total = reduced ? 800 : 2750; /* full sequence vs quick fade */

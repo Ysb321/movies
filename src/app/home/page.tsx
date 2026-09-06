@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import PullRefresh from "@/components/PullRefresh";
 import Footer from "@/components/Footer";
 import HeroBillboard from "@/components/HeroBillboard";
+import IntroSplash from "@/components/IntroSplash";
 import Row from "@/components/Row";
 import RowLazy from "@/components/RowLazy";
 import TmdbRow from "@/components/TmdbRow";
@@ -51,6 +52,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-ink">
+      <IntroSplash />
       <Navbar />
 
       <PullRefresh>
