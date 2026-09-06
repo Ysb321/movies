@@ -5,11 +5,11 @@
  *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
  *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
  *    ?t={seconds} start time (resume), autonext/auto-skip intros.
- *  - SuperEmbed (multiembed.mov): ?video_id={tmdb}&tmdb=1[&s=&e=] - the
- *    tmdb=1 flag is REQUIRED for TMDB ids. Redirects to streamingnow.mov
- *    behind an invisible Cloudflare Turnstile that auto-passes in real
- *    browsers. VIP directstream.php endpoint was flaky ("File not found")
- *    so the standard route is used (verified: title resolves).
+ *  - Vidzy: vidzy.org/movie/{tmdb} + /serie/{tmdb}/{s}/{e} (BOTH VERIFIED
+ *    PLAYING LIVE). Iframe-first API (their tagline: point an iframe at a
+ *    TMDB id), params: autoplay, autonext, color, hide. Replaced SuperEmbed
+ *    whose server refuses cross-origin framing outright (403 + XFO +
+ *    referer gates) - unfixable even with app-side header stripping.
  *    (docs + both verified live). ?startAt= resume, autoNext TV episode
  *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
  *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
@@ -72,10 +72,11 @@ export const PROVIDERS: EmbedProvider[] = [
       `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
   },
   {
-    id: "superembed",
-    name: "SuperEmbed",
-    movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-    tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
+    id: "vidzy",
+    name: "Vidzy",
+    movie: (id) => `https://vidzy.org/movie/${id}${qs({ color: "E50914", autoplay: "1" })}`,
+    tv: (id, s, e) =>
+      `https://vidzy.org/serie/${id}/${s}/${e}${qs({ color: "E50914", autoplay: "1", autonext: "1" })}`,
   },
 ];
 
@@ -109,7 +110,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "vidzy"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
