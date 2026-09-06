@@ -13,8 +13,8 @@
  *    (both verified live). Full site wrapping the FilmU multi-source
  *    engine (FilmU/Videasy/Cinezo/Vidbolt/Vidrift), subtitles, TV
  *    auto-next; noScroll crops their page chrome. Anti-sandbox ->
- *    unsandboxed + popups revoked; fullscreen denied (auto-fullscreen
- *    on play was removed at user request and stays removed).
+ *    unsandboxed + popups revoked. Fullscreen must stay ALLOWED: their
+ *    player requests it during playback startup and breaks without it.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -117,10 +117,10 @@ export const PROVIDERS: EmbedProvider[] = [
      * Permissions-Policy + in the exe the EasyList blocker and the
      * deny-all window.open guard on every frame. */
     denyPopups: true,
-    /* RESTORED by user request (FilmU-direct embed undone); the
-     * no-auto-fullscreen fix stays: fullscreen is denied to this frame
-     * so the player can't takeover on play. */
-    denyFullscreen: true,
+    /* NB: fullscreen MUST stay allowed - their FilmU engine requests it
+     * as part of its playback startup; denying it (denyFullscreen test)
+     * broke playback outright. The auto-fullscreen-on-play behavior is
+     * inherent to this player. */
     sandbox: false,
     movie: (id) => `https://bingr.one/watch/movie/${id}`,
     tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
