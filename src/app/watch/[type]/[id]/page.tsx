@@ -235,6 +235,7 @@ function WatchContent() {
               title={title}
               className="h-full w-full"
               allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
+              sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock"
               allowFullScreen
               referrerPolicy="origin"
             />

@@ -34,6 +34,34 @@ const isPopupHost = (url) => {
   } catch { return false; }
 };
 
+/* Ad/tracker request blocker: cancels matching requests in EVERY frame
+ * (main page + player iframes + child windows) before they load, which
+ * kills banner ads, popunder scripts and trackers at the network level.
+ * Curated to ad networks only - player CDNs (vidzee.wtf, cinesrc.st,
+ * googlevideo, tmdb, wsrv.nl) are never matched. */
+const AD_HOSTS = [
+  "popads.net", "popcash.net", "adcash.com", "admaven.com", "clickadu.com",
+  "hilltopads.net", "propellerads.com", "propellerclick.com", "adsterra.com",
+  "adsterranetwork.com", "exoclick.com", "exosrv.com", "realsrv.com",
+  "juicyads.com", "trafficjunky.com", "trafficstars.com", "galaksion.com",
+  "clickaine.com", "onsrvr.com", "onclckds.com", "wyvars.com",
+  "mgid.com", "revcontent.com", "taboola.com", "outbrain.com",
+  "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+  "google-analytics.com", "googletagmanager.com", "googletagservices.com",
+  "adnxs.com", "rubiconproject.com", "pubmatic.com", "criteo.com",
+  "criteo.net", "smartadserver.net", "adskeeper.com", "adsupply.com",
+  "popunder.net", "popunderads.com", "adcron.com", "adspyglass.com",
+  "adplexity.com",
+];
+const AD_URL_HINTS = ["popunder"];
+const isAdRequest = (url) => {
+  try {
+    const u = new URL(url);
+    if (AD_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) return true;
+    return AD_URL_HINTS.some((p) => u.href.includes(p));
+  } catch { return false; }
+};
+
 const freePort = () =>
   new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -111,6 +139,12 @@ if (!app.requestSingleInstanceLock()) {
       app.quit();
       return;
     }
+
+    // cancel ad/tracker requests across all frames of the default session
+    session.defaultSession.webRequest.onBeforeRequest(
+      { urls: ["http://*/*", "https://*/*"] },
+      (details, callback) => callback({ cancel: isAdRequest(details.url) })
+    );
 
     win = new BrowserWindow({
       width: 1280,
