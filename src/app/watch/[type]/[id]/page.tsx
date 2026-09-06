@@ -161,7 +161,7 @@ function WatchContent() {
       <Navbar />
 
       <div ref={playerRef} className="mx-auto w-full max-w-[1500px] scroll-mt-16 px-[2vw] pt-20 md:pt-24">
-        <div className="mb-3 flex items-center justify-between gap-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
             <Link href={`/title/${t}/${id}`} className="group flex items-center gap-2 text-[13px] text-neutral-400 hover:text-white">
               <ChevronIcon dir="left" className="h-4 w-4" /> Back to details
@@ -194,28 +194,6 @@ function WatchContent() {
                 </button>
               </div>
             ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {PROVIDERS.length > 1 &&
-              PROVIDERS.map((pv, i) => (
-              <button
-                key={pv.id}
-                onClick={() => switchServer(pv.id)}
-                className={clsx(
-                  "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
-                  serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
-                )}
-              >
-                {`Server ${i + 1}`}
-              </button>
-            ))}
-            <button
-              onClick={() => setReloadKey((k) => k + 1)}
-              title="Reload player"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white md:h-7 md:w-7"
-            >
-              <RotateCcwIcon className="h-3.5 w-3.5" />
-            </button>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {d && (
@@ -268,6 +246,32 @@ function WatchContent() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5 md:h-4 md:w-4">
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+          </button>
+        </div>
+
+        {/* ── Server switcher (below the player; wraps on small screens) ── */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            Servers
+          </span>
+          {PROVIDERS.map((pv, i) => (
+            <button
+              key={pv.id}
+              onClick={() => switchServer(pv.id)}
+              className={clsx(
+                "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
+                serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
+              )}
+            >
+              {`Server ${i + 1}`}
+            </button>
+          ))}
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            title="Reload player"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white md:h-7 md:w-7"
+          >
+            <RotateCcwIcon className="h-3.5 w-3.5" />
           </button>
         </div>
 
