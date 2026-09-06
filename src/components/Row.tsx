@@ -126,8 +126,7 @@ export default function Row({
   return (
     <section className="group/row relative z-0 py-2.5 hover:z-30">
       <div className="mb-1.5 flex items-baseline gap-3 px-[4vw]">
-        <h2 className="cursor-default font-display2 text-lg tracking-wider text-neutral-200 transition-colors md:text-[22px]">
-          {title}
+        <h2 className="min-w-0 truncate cursor-default font-display2 text-lg tracking-wider text-neutral-200 transition-colors md:text-[22px]">{title}
         </h2>
         {href && (
           <Link

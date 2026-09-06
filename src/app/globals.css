@@ -266,3 +266,16 @@ body {
     margin-bottom: 0;
   }
 }
+
+/* ── overflow-proof reset (systemic: no text/media can push past any
+ *    screen edge on any page — the component-library baseline) ────────── */
+html, body {
+  overflow-x: clip;            /* no horizontal page scroll, ever */
+  max-width: 100vw;
+}
+body, h1, h2, h3, h4, p, span, a, button, li {
+  overflow-wrap: break-word;   /* long words wrap instead of poking out */
+}
+img, video, iframe, svg {
+  max-width: 100%;             /* media can never exceed its container */
+}

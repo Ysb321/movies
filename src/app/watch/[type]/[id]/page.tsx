@@ -165,19 +165,21 @@ function WatchContent() {
             <Link href={`/title/${t}/${id}`} className="group flex items-center gap-2 text-[13px] text-neutral-400 hover:text-white">
               <ChevronIcon dir="left" className="h-4 w-4" /> Back to details
             </Link>
-            <h1 className="mt-1 truncate text-xl font-bold md:text-2xl">
+            {/* wrap-safe on every width: title clamps to 2 lines, the S/E
+             *  badge sits on its own line on phones (inline on md+) */}
+            <h1 className="mt-1 line-clamp-2 break-words text-lg font-bold leading-snug md:text-2xl">
               {logoPath ? (
                 <img
                   src={img(logoPath, "w500") ?? undefined}
                   alt={title}
                   draggable={false}
-                  className="inline-block max-h-12 w-auto max-w-full object-contain align-middle md:max-h-14"
+                  className="inline-block max-h-10 w-auto max-w-full object-contain align-middle sm:max-h-12 md:max-h-14"
                 />
               ) : (
                 title
               )}
               {t === "tv" && (
-                <span className="ml-2 text-sm font-medium text-neutral-400">
+                <span className="mt-0.5 block truncate text-[13px] font-medium text-neutral-400 md:ml-2 md:inline md:truncate md:text-sm">
                   S{season}:E{episode}
                   {seasonData?.episodes?.[episode - 1]?.name ? ` — ${seasonData.episodes[episode - 1].name}` : ""}
                 </span>
