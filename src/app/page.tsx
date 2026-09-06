@@ -45,6 +45,7 @@ export default function ProfileGate() {
   };
 
   const remove = (id: string) => {
+    if (id === "kids") return; // built-in Kids profile: non-removable
     const next = getProfiles().filter((p) => p.id !== id);
     setProfiles(next);
     setLocal(next);
@@ -83,13 +84,18 @@ export default function ProfileGate() {
               <span className="text-[13px] text-neutral-400 transition group-hover:text-white md:text-[15px]">
                 {p.name}
               </span>
-              {manage && (
+              {manage && !p.fixed && (
                 <button
                   onClick={(e) => { e.stopPropagation(); remove(p.id); }}
                   className="text-[11px] font-semibold text-brand hover:underline"
                 >
                   DELETE
                 </button>
+              )}
+              {manage && p.fixed && (
+                <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+                  locked
+                </span>
               )}
             </button>
           ))}

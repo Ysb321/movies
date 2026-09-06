@@ -11,16 +11,20 @@ import RowLazy from "@/components/RowLazy";
 import TmdbRow from "@/components/TmdbRow";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { HOME_ROWS } from "@/lib/rows";
+import { HOME_ROWS, KIDS_ROWS } from "@/lib/rows";
 import {
   getProgress, onProgressChange, removeProgress, clearProgress,
-  getList, onListChange, getActiveProfile,
+  getList, onListChange, getActiveProfile, isKidsActive,
 } from "@/lib/storage";
 import type { ListItem, ProgressItem } from "@/lib/storage";
 
 export default function HomePage() {
+  const [kids, setKids] = useState(false);
+  useEffect(() => setKids(isKidsActive()), []);
   const { data, isLoading, error } = useTmdbSnapshot<any>(
-    "discover/movie?with_original_language=hi%7Cta%7Cte&region=IN&sort_by=popularity.desc&vote_count.gte=30&page=1"
+    kids
+      ? "discover/movie?with_genres=16%7C10751&vote_count.gte=300&sort_by=popularity.desc&page=1"
+      : "discover/movie?with_original_language=hi%7Cta%7Cte&region=IN&sort_by=popularity.desc&vote_count.gte=30&page=1"
   );
   const heroes = useMemo(() => (data?.results ?? []).slice(0, 6), [data]);
 
@@ -93,7 +97,7 @@ export default function HomePage() {
           />
         )}
         {listItems.length > 0 && <Row title="My List" items={listItems} />}
-        {HOME_ROWS.map((def, i) => (
+        {(kids ? KIDS_ROWS : HOME_ROWS).map((def, i) => (
           <RowLazy key={def.key} reserve={i < 6 ? 340 : 320}>
             <TmdbRow def={def} />
           </RowLazy>

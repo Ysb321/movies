@@ -8,12 +8,12 @@ import Navbar from "@/components/Navbar";
 import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { img, titleOf, yearOf, bestLogo } from "@/lib/tmdb";
+import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
-  getResume, saveResume, clearResume, resumeKeyFor,
+  getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
 } from "@/lib/storage";
 import { ChevronIcon, PlayIcon, PlusIcon, CheckIcon, StarIcon, RotateCcwIcon } from "@/components/Icons";
 
@@ -43,7 +43,7 @@ function WatchContent() {
     setServerId(id);
     try { localStorage.setItem("yetflix:server", id); } catch {}
   };
-    const provider = getProvider(serverId);
+const provider = getProvider(serverId);
   const playerRef = useRef<HTMLDivElement>(null); /* scroll target: page container */
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
   const lastSaved = useRef(0);
@@ -53,6 +53,8 @@ function WatchContent() {
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
   const logoPath = bestLogo(d?.images);
+  /* Kids mode: block non-kids content reached by direct URL */
+  const kidsBlocked = !!d && isKidsActive() && !kidsSafeItem(d);
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -218,7 +220,15 @@ function WatchContent() {
 
         {/* ── VidCore player (mounts after resume position is resolved) ── */}
         <div className="relative aspect-video max-h-[76vh] w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
-          {embed ? (
+          {kidsBlocked ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+              <span className="text-4xl">🧒</span>
+              <p className="text-lg font-bold">Not available in Kids profile</p>
+              <p className="max-w-sm text-[13px] text-neutral-400">
+                This title isn&rsquo;t suitable for kids. Ask a parent to enter the PIN to switch profiles.
+              </p>
+            </div>
+          ) : embed ? (
             <iframe
               key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
               src={embed.src}
@@ -236,6 +246,8 @@ function WatchContent() {
         </div>
 
         {/* ── Server switcher (below the player; wraps on small screens) ── */}
+
+        {!kidsBlocked && (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
             Servers
@@ -260,6 +272,7 @@ function WatchContent() {
             <RotateCcwIcon className="h-3.5 w-3.5" />
           </button>
         </div>
+        )}
 
         {!d && error && (
           <div className="mt-6">

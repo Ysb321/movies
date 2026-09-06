@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
+import { createPortal } from "react-dom";
+import { isKidsActive } from "@/lib/storage";
 import SearchBox from "./SearchBox";
 import BottomNav from "./BottomNav";
 import Avatar from "./Avatar";
@@ -24,6 +26,10 @@ export default function Navbar() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const [afterPin, setAfterPin] = useState<null | (() => void)>(null);
   const pathname = usePathname();
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -33,6 +39,24 @@ export default function Navbar() {
     setProfile(getActiveProfile());
     return onActiveProfileChange(setProfile);
   }, []);
+
+  /** Kids mode: sensitive actions (switch profile / manage / sign out)
+   *  require the parent PIN (1234) before running. */
+  const guarded = (action: () => void) => {
+    if (!profile?.kids) { action(); return; }
+    setPin(""); setPinError(false);
+    setAfterPin(() => action);
+    setPinOpen(true);
+  };
+  const submitPin = () => {
+    if (pin === "1234") {
+      setPinOpen(false);
+      const fn = afterPin; setAfterPin(null);
+      fn?.();
+    } else {
+      setPinError(true);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -131,12 +155,12 @@ export default function Navbar() {
                   .map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => {
+                      onClick={() => guarded(() => {
                         setActiveProfile(p);
                         setProfile(p);
                         setMenuOpen(false);
                         router.refresh();
-                      }}
+                      })}
                       className="flex w-full items-center gap-3 px-4 py-2 hover:underline"
                     >
                       <Avatar color={p.color} kids={p.kids} className="h-7 w-7" />
@@ -147,14 +171,14 @@ export default function Navbar() {
                 <Link href="/my-list" onClick={() => setMenuOpen(false)} className="block px-4 py-1.5 hover:underline">
                   My List
                 </Link>
-                <Link href="/" onClick={() => setMenuOpen(false)} className="block px-4 py-1.5 hover:underline">
+                <Link href="/" onClick={(e) => { e.preventDefault(); guarded(() => { setMenuOpen(false); router.push("/"); }); }} className="block px-4 py-1.5 hover:underline">
                   Manage Profiles
                 </Link>
                 <button
-                  onClick={() => {
+                  onClick={() => guarded(() => {
                     setActiveProfile(null);
                     router.push("/");
-                  }}
+                  })}
                   className="block w-full px-4 py-1.5 text-left hover:underline"
                 >
                   Sign out of Yetflix
@@ -165,6 +189,45 @@ export default function Navbar() {
         </div>
       </nav>
           <BottomNav />
+      {pinOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            onClick={() => setPinOpen(false)}
+          >
+            <div
+              className="w-[min(92vw,340px)] rounded-xl border border-white/10 bg-[#141414] p-6 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="mb-1 text-lg font-bold">Parental control</p>
+              <p className="mb-4 text-[13px] text-neutral-400">Enter the PIN to continue</p>
+              <input
+                autoFocus
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => { setPin(e.target.value.replace(/\D/g, "")); setPinError(false); }}
+                onKeyDown={(e) => e.key === "Enter" && submitPin()}
+                placeholder="••••"
+                className={clsx(
+                  "w-full rounded-md border bg-black/60 px-4 py-3 text-center text-2xl tracking-[0.6em] text-white outline-none",
+                  pinError ? "border-brand" : "border-white/15 focus:border-white/40"
+                )}
+              />
+              {pinError && <p className="mt-2 text-[12px] font-semibold text-brand">Wrong PIN. Try again.</p>}
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => setPinOpen(false)} className="flex-1 rounded-md bg-white/10 py-2.5 text-sm font-semibold text-neutral-300 transition hover:bg-white/20">
+                  Cancel
+                </button>
+                <button onClick={submitPin} className="flex-1 rounded-md bg-brand py-2.5 text-sm font-bold text-white transition hover:bg-brand-dark">
+                  Unlock
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </header>
   );
 }

@@ -2,7 +2,10 @@
 
 /* localStorage-backed stores for profiles, My List and Continue Watching */
 
-export type Profile = { id: string; name: string; color: string; kids?: boolean };
+export type Profile = { id: string; name: string; color: string; kids?: boolean; fixed?: boolean };
+
+/** Built-in KIDS profile: always present, non-removable, under-13 content only */
+export const KIDS_PROFILE: Profile = { id: "kids", name: "Kids", color: "#1a9c5b", kids: true, fixed: true };
 export type ListItem = {
   id: number;
   type: "movie" | "tv";
@@ -51,9 +54,20 @@ export const defaultProfiles: Profile[] = [
   { id: "kids", name: "Kids", color: "#f5a623", kids: true },
 ];
 
-export const getProfiles = () => read<Profile[]>(PROFILE_KEY, defaultProfiles);
+export const getProfiles = (): Profile[] => {
+  const list = read<Profile[]>(PROFILE_KEY, defaultProfiles);
+  if (!list.some((p) => p.id === KIDS_PROFILE.id)) {
+    const next = [KIDS_PROFILE, ...list];
+    write(PROFILE_KEY, next);
+    return next;
+  }
+  return list;
+};
 export const setProfiles = (p: Profile[]) => write(PROFILE_KEY, p);
 export const getActiveProfile = () => read<Profile | null>(ACTIVE_KEY, null);
+
+/** true while the fixed Kids profile is the active one */
+export const isKidsActive = () => getActiveProfile()?.kids === true;
 export const setActiveProfile = (p: Profile | null) => write(ACTIVE_KEY, p);
 export const onProfilesChange = (cb: (p: Profile[]) => void) => sub<Profile[]>(PROFILE_KEY, cb);
 export const onActiveProfileChange = (cb: (p: Profile | null) => void) => sub<Profile | null>(ACTIVE_KEY, cb);

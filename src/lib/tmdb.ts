@@ -1,3 +1,4 @@
+import { isKidsActive } from "./storage";
 /* ── TMDB data layer ────────────────────────────────────────────────────────
  * Strategy (mirrors how NetOut on Cloudflare Pages works, plus a backend):
  *   1. Try our backend proxy /api/tmdb/... (key stays server-side, HTTP-cached)
@@ -185,12 +186,36 @@ function deduped(key: string, fn: () => Promise<any>) {
   return inflight.get(key)!;
 }
 
+/* ── Kids mode: under-13 content filtering (central choke point) ───────────
+ * While the Kids profile is active, EVERY list response (rows, trending,
+ * search, recommendations) is filtered: adult items dropped and only
+ * kid-safe genres kept (Animation / Family / Kids). */
+const KIDS_SAFE_MOVIE = new Set([16, 10751]); // Animation, Family
+const KIDS_SAFE_TV = new Set([16, 10751, 10762]); // + Kids
+
+export function kidsSafeItem(item: any): boolean {
+  if (!item || item.adult) return false;
+  const ids: number[] = item.genre_ids ?? item.genres?.map((g: any) => g.id) ?? [];
+  const media = item.media_type ?? (item.first_air_date ? "tv" : "movie");
+  const safe = media === "tv" ? KIDS_SAFE_TV : KIDS_SAFE_MOVIE;
+  return ids.some((id) => safe.has(id));
+}
+
+function sanitizeForKids(data: any): any {
+  if (!data || !Array.isArray(data.results)) return data;
+  return { ...data, results: data.results.filter(kidsSafeItem) };
+}
+
 export function swrFetcher(key: string): Promise<any> {
   return deduped(key, async () => {
     const [path, qs] = key.split("?");
     const params: Record<string, string> = {};
     if (qs) new URLSearchParams(qs).forEach((v, k) => (params[k] = v));
-    const data = await tmdbFetch(path, params);
+    let data = await tmdbFetch(path, params);
+    // kids mode: filter every list response at the source
+    try {
+      if (isKidsActive()) data = sanitizeForKids(data);
+    } catch {}
     // fire-and-forget persistence (never block paint)
     queueMicrotask(() => persistSnapshot(key, data));
     return data;

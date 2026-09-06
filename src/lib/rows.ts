@@ -119,6 +119,40 @@ export const HOME_ROWS: RowDef[] = [
 
 const daysAgoIso = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
+/* Kids home (under-13): only Animation / Family / Kids content */
+export const KIDS_ROWS: RowDef[] = [
+  {
+    key: "kids-movies",
+    title: "Movies for Kids",
+    href: "/movies",
+    sources: [["discover/movie", { with_genres: "16|10751", "vote_count.gte": 200, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-top10",
+    title: "Top 10 for Kids",
+    top10: true,
+    href: "/movies",
+    sources: [["discover/movie", { with_genres: "16|10751", "vote_count.gte": 300, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-cartoons",
+    title: "Cartoons & Series",
+    href: "/tv",
+    sources: [["discover/tv", { with_genres: "16|10762", "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-family-tv",
+    title: "Family Series",
+    href: "/tv",
+    sources: [["discover/tv", { with_genres: "10751|16", "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "kids-animated-classics",
+    title: "Animated Classics",
+    sources: [["discover/movie", { with_genres: 16, "vote_count.gte": 1000, "vote_average.gte": 7, sort_by: "popularity.desc" }]],
+  },
+];
+
 /* TV section (/tv) */
 export const TV_ROWS: RowDef[] = [
   {
