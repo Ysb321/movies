@@ -236,6 +236,7 @@ function WatchContent() {
               className="h-full w-full"
               allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
               sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
+              scrolling={provider.noScroll ? "no" : undefined}
               allowFullScreen
               referrerPolicy="origin"
             />

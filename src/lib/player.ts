@@ -32,6 +32,11 @@ export type EmbedProvider = {
   /** sandbox token list; overrides PLAYER_SANDBOX for this provider.
    *  false = no sandbox at all (last resort for anti-sandbox players). */
   sandbox?: false | string;
+  /** render the iframe with scrolling="no" - for full-site providers whose
+   *  inner page shows its own scrollbar and swallows wheel events (breaks
+   *  scrolling of the host page). Inner page becomes unscrollable; wheel
+   *  chains back to Yetflix. */
+  noScroll?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -88,6 +93,8 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     id: "pvrplay",
     name: "PVRPlay",
+    /* full site: their page scrollbar + wheel capture breaks host scrolling */
+    noScroll: true,
     movie: (id) => `https://pvrplay.online/watch/movie/${id}`,
     tv: (id, s, e) => `https://pvrplay.online/watch/tv/${id}/${s}/${e}`,
   },
