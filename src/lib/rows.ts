@@ -117,8 +117,103 @@ export const HOME_ROWS: RowDef[] = [
   },
 ];
 
-/* Anime section (/anime) — Japanese animation (genre 16 + JP origin) */
 const daysAgoIso = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+/* TV section (/tv) */
+export const TV_ROWS: RowDef[] = [
+  {
+    key: "tv-popular",
+    title: "Popular TV Shows",
+    sources: [["discover/tv", { "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-top10",
+    title: "Top 10 TV Shows in India",
+    top10: true,
+    sources: [["discover/tv", { region: "IN", "vote_count.gte": 50, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-toprated",
+    title: "Top Rated TV Shows",
+    sources: [["discover/tv", { "vote_count.gte": 2000, sort_by: "vote_average.desc" }]],
+  },
+  {
+    key: "tv-indian",
+    title: "Indian TV Shows",
+    sources: [["discover/tv", { with_origin_country: "IN", "vote_count.gte": 10, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-korean",
+    title: "Korean TV Shows",
+    sources: [["discover/tv", { with_origin_country: "KR", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-new",
+    title: "New Seasons & Premieres",
+    sources: [["discover/tv", { "vote_count.gte": 5, "first_air_date.gte": daysAgoIso(120), sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-crime",
+    title: "Crime & Drama",
+    sources: [["discover/tv", { with_genres: "80,18", "vote_count.gte": 200, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "tv-scifi",
+    title: "Sci-Fi & Fantasy",
+    sources: [["discover/tv", { with_genres: 10765, "vote_count.gte": 100, sort_by: "popularity.desc" }]],
+  },
+];
+
+/* Movies section (/movies) */
+export const MOVIE_ROWS: RowDef[] = [
+  {
+    key: "mov-popular",
+    title: "Popular Movies",
+    sources: [["discover/movie", { "vote_count.gte": 100, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "mov-top10",
+    title: "Top 10 Movies in India",
+    top10: true,
+    sources: [["discover/movie", { region: "IN", "vote_count.gte": 100, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "mov-toprated",
+    title: "Top Rated Movies",
+    sources: [["discover/movie", { "vote_count.gte": 2000, sort_by: "vote_average.desc" }]],
+  },
+  {
+    key: "mov-bollywood",
+    title: "Bollywood Movies",
+    sources: [["discover/movie", { with_original_language: "hi", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "mov-south",
+    title: "South Indian Cinema",
+    sources: [
+      ["discover/movie", { with_original_language: "ta", "vote_count.gte": 20, sort_by: "popularity.desc" }],
+      ["discover/movie", { with_original_language: "te", "vote_count.gte": 20, sort_by: "popularity.desc" }],
+      ["discover/movie", { with_original_language: "ml", "vote_count.gte": 15, sort_by: "popularity.desc" }],
+    ],
+  },
+  {
+    key: "mov-new",
+    title: "New Releases",
+    sources: [["discover/movie", { "vote_count.gte": 20, "primary_release_date.gte": daysAgoIso(90), sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "mov-hollywood",
+    title: "Hollywood Blockbusters",
+    sources: [["discover/movie", { with_original_language: "en", with_origin_country: "US", "vote_count.gte": 400, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "mov-action",
+    title: "Action & Adventure",
+    sources: [["discover/movie", { with_genres: "28,12", "vote_count.gte": 200, sort_by: "popularity.desc" }]],
+  },
+];
+
+/* Anime section (/anime) — Japanese animation (genre 16 + JP origin) */
 
 export const ANIME_ROWS: RowDef[] = [
   {
