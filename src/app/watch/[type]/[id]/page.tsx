@@ -31,6 +31,7 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
+  const fsRef = useRef<HTMLDivElement>(null); /* fullscreen target: player box */
   const [serverId, setServerId] = useState("vidzee");
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -44,7 +45,7 @@ function WatchContent() {
     try { localStorage.setItem("yetflix:server", id); } catch {}
   };
     const provider = getProvider(serverId);
-  const playerRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<HTMLDivElement>(null); /* scroll target: page container */
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
   const lastSaved = useRef(0);
 
@@ -201,7 +202,7 @@ function WatchContent() {
                 key={pv.id}
                 onClick={() => switchServer(pv.id)}
                 className={clsx(
-                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                  "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
                   serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
                 )}
               >
@@ -211,7 +212,7 @@ function WatchContent() {
             <button
               onClick={() => setReloadKey((k) => k + 1)}
               title="Reload player"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white md:h-7 md:w-7"
             >
               <RotateCcwIcon className="h-3.5 w-3.5" />
             </button>
@@ -237,7 +238,7 @@ function WatchContent() {
         </div>
 
         {/* ── VidCore player (mounts after resume position is resolved) ── */}
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
+        <div ref={fsRef} className="relative aspect-video max-h-[76vh] w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
           {embed ? (
             <iframe
               key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
@@ -253,6 +254,21 @@ function WatchContent() {
           ) : (
             <div className="skeleton h-full w-full rounded-none opacity-50" />
           )}
+          <button
+            onClick={() => {
+              const el = fsRef.current;
+              if (!el) return;
+              if (document.fullscreenElement) document.exitFullscreen();
+              else el.requestFullscreen?.();
+            }}
+            aria-label="Toggle fullscreen"
+            title="Fullscreen"
+            className="absolute bottom-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/80 md:h-8 md:w-8"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5 md:h-4 md:w-4">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
 
         {!d && error && (

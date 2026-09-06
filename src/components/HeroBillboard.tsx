@@ -57,9 +57,9 @@ export default function HeroBillboard({ heroes }: { heroes: Media[] }) {
       <div className="absolute inset-x-0 bottom-[16%] px-[4vw]">
         <div key={active.id} className="hero-text-in max-w-[36rem]">
             {logo ? (
-              <img src={logo} alt={titleOf(active)} className="mb-4 max-h-28 max-w-[78%] object-contain drop-shadow-lg md:max-h-36" draggable={false} />
+              <img src={logo} alt={titleOf(active)} className="mb-4 max-h-16 max-w-[80%] object-contain drop-shadow-lg sm:max-h-24 md:max-h-36" draggable={false} />
             ) : (
-              <h1 className="font-display mb-4 text-5xl leading-[1.05] tracking-wide drop-shadow-lg md:text-7xl">{titleOf(active)}</h1>
+              <h1 className="font-display mb-4 text-[32px] leading-[1.05] tracking-wide drop-shadow-lg sm:text-4xl md:text-6xl lg:text-7xl">{titleOf(active)}</h1>
             )}
 
             <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-200">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
+import PullRefresh from "@/components/PullRefresh";
 import Footer from "@/components/Footer";
 import HeroBillboard from "@/components/HeroBillboard";
 import Row from "@/components/Row";
@@ -52,6 +53,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-ink">
       <Navbar />
 
+      <PullRefresh>
       {heroes.length > 0 ? (
         <HeroBillboard heroes={heroes} />
       ) : isLoading ? (
@@ -96,6 +98,7 @@ export default function HomePage() {
         ))}
       </div>
 
+      </PullRefresh>
       <Footer />
     </main>
   );

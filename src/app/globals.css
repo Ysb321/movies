@@ -176,3 +176,18 @@ html {
     animation-duration: 0.01s !important;
   }
 }
+
+/* ── touch / mobile polish ─────────────────────────────────────────────── */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  -webkit-overflow-scrolling: touch; /* momentum scrolling on iOS */
+  overscroll-behavior-y: none; /* browser PTR off - app has its own */
+}
+/* slightly roomier tap targets on touch-only devices */
+@media (hover: none) {
+  button, a[role="button"] {
+    min-height: 36px;
+  }
+}

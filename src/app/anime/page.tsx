@@ -1,6 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
+import PullRefresh from "@/components/PullRefresh";
 import Footer from "@/components/Footer";
 import RowLazy from "@/components/RowLazy";
 import TmdbRow from "@/components/TmdbRow";
@@ -11,6 +12,7 @@ export default function AnimePage() {
   return (
     <main className="min-h-screen bg-ink">
       <Navbar />
+      <PullRefresh>
       <div className="px-[4vw] pb-2 pt-24 md:pt-28">
         <h1 className="font-display text-4xl tracking-wide md:text-5xl">
           Anime<span className="text-brand">.</span>
@@ -26,6 +28,7 @@ export default function AnimePage() {
           </RowLazy>
         ))}
       </div>
+      </PullRefresh>
       <Footer />
     </main>
   );

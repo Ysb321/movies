@@ -1,6 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
+import PullRefresh from "@/components/PullRefresh";
 import Footer from "@/components/Footer";
 import BrowseGrid from "@/components/BrowseGrid";
 import RowLazy from "@/components/RowLazy";
@@ -12,6 +13,7 @@ export default function MoviesPage() {
   return (
     <main className="min-h-screen bg-ink">
       <Navbar />
+      <PullRefresh>
       <div className="px-[4vw] pb-2 pt-24 md:pt-28">
         <h1 className="font-display text-4xl tracking-wide md:text-5xl">
           Movies<span className="text-brand">.</span>
@@ -27,6 +29,7 @@ export default function MoviesPage() {
           </RowLazy>
         ))}
       </div>
+      </PullRefresh>
       <BrowseGrid options={{ type: "movie", heading: "Browse All Movies" }} />
       <Footer />
     </main>
