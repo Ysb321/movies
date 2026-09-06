@@ -9,7 +9,7 @@ import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf } from "@/lib/tmdb";
-import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime } from "@/lib/player";
+import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
@@ -235,7 +235,7 @@ function WatchContent() {
               title={title}
               className="h-full w-full"
               allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer"
-              sandbox={provider.sandbox === false ? undefined : "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock"}
+              sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
               allowFullScreen
               referrerPolicy="origin"
             />

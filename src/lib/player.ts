@@ -21,10 +21,9 @@ export type EmbedProvider = {
   prefersImdb?: boolean;
   /** query param name that sets the start time in seconds, if supported */
   startParam?: string;
-  /** set false ONLY when a provider refuses to play in a sandboxed iframe
-   *  (anti-sandbox detection); the Electron app still popup-proofs it via
-   *  its global window guard */
-  sandbox?: false;
+  /** sandbox token list; overrides PLAYER_SANDBOX for this provider.
+   *  false = no sandbox at all (last resort for anti-sandbox players). */
+  sandbox?: false | string;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -35,6 +34,10 @@ const qs = (params: Record<string, string | number | undefined>) => {
   const s = p.toString();
   return s ? `?${s}` : "";
 };
+
+/** default iframe armor: no popups, no modals, no top-navigation hijack */
+export const PLAYER_SANDBOX =
+  "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock";
 
 export const PROVIDERS: EmbedProvider[] = [
   {
@@ -54,8 +57,11 @@ export const PROVIDERS: EmbedProvider[] = [
     id: "peachify",
     name: "Peachify",
     startParam: "startAt",
-    /* their player refuses to run sandboxed ("sandbox detected") */
-    sandbox: false,
+    /* their "sandbox detected" check probes window.open capability: keep the
+     * sandbox but grant allow-popups so the probe passes - top-navigation
+     * hijack and modals stay blocked (Electron kills the popups anyway) */
+    sandbox:
+      "allow-scripts allow-same-origin allow-popups allow-downloads allow-forms allow-pointer-lock",
     movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
     tv: (id, s, e) =>
       `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,

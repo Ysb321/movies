@@ -3,6 +3,12 @@
  * app window. The server runs as a child process using Electron's own
  * binary in Node mode (ELECTRON_RUN_AS_NODE), so no system Node is needed. */
 const { app, BrowserWindow, shell, session } = require("electron");
+/* uBlock-grade blocking: Ghostery adblocker on EasyList + EasyPrivacy
+ * filter lists (github.com/ghostery/adblocker). Optional at runtime - if
+ * the package is missing or lists cannot download, the built-in static
+ * AD_HOSTS filter below keeps protecting the app. */
+let ElectronBlocker = null;
+try { ({ ElectronBlocker } = require("@ghostery/adblocker-electron")); } catch {}
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -142,10 +148,36 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     // cancel ad/tracker requests across all frames of the default session
-    session.defaultSession.webRequest.onBeforeRequest(
-      { urls: ["http://*/*", "https://*/*"] },
-      (details, callback) => callback({ cancel: isAdRequest(details.url) })
+    // (static baseline; superseded by the EasyList blocker when it loads)
+    const AD_FILTER = { urls: ["http://*/*", "https://*/*"] };
+    session.defaultSession.webRequest.onBeforeRequest(AD_FILTER, (details, callback) =>
+      callback({ cancel: isAdRequest(details.url) })
     );
+
+    if (ElectronBlocker) {
+      const cachePath = path.join(app.getPath("userData"), "easylist-cache.bin");
+      (async () => {
+        try {
+          let blocker = null;
+          let cacheMs = 0;
+          try { cacheMs = fs.statSync(cachePath).mtimeMs; } catch {}
+          if (cacheMs && Date.now() - cacheMs < 7 * 86400000) {
+            blocker = ElectronBlocker.deserialize(fs.readFileSync(cachePath));
+          } else {
+            blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
+            fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+            fs.writeFileSync(cachePath, blocker.serialize());
+          }
+          blocker.enableBlockingInSession(session.defaultSession);
+          // EasyList covers the static list and far more - retire the static
+          // filter now that the full engine is active
+          try { session.defaultSession.webRequest.onBeforeRequest(AD_FILTER); } catch {}
+          console.log("[OK] EasyList ad blocker active (" + (cacheMs ? "cached" : "downloaded") + ")");
+        } catch (err) {
+          console.log("[WARN] EasyList blocker unavailable, static list only: " + (err && err.message));
+        }
+      })();
+    }
 
     win = new BrowserWindow({
       width: 1280,

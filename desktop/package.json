@@ -2,7 +2,7 @@
   "name": "yetflix-desktop",
   "productName": "Yetflix",
   "version": "1.0.0",
-  "description": "Yetflix by Yashraj \u2014 Netflix-style streaming desktop app",
+  "description": "Yetflix by Yashraj — Netflix-style streaming desktop app",
   "author": "Yashraj",
   "license": "MIT",
   "main": "index.js",
@@ -56,5 +56,8 @@
     "asarUnpack": [
       "app/**/*"
     ]
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.2"
   }
 }
