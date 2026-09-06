@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
 import SearchBox from "./SearchBox";
+import BottomNav from "./BottomNav";
 import Avatar from "./Avatar";
 import { getActiveProfile, getProfiles, onActiveProfileChange, setActiveProfile, type Profile } from "@/lib/storage";
 import { ChevronIcon } from "./Icons";
@@ -69,11 +70,14 @@ export default function Navbar() {
               key={l.href}
               href={l.href}
               className={clsx(
-                "transition-colors hover:text-neutral-300",
+                "relative transition-colors hover:text-neutral-300",
                 pathname.startsWith(l.href) ? "font-semibold text-white" : "text-neutral-200"
               )}
             >
               {l.label}
+              {pathname.startsWith(l.href) && (
+                <span className="absolute -bottom-[9px] left-0 h-[2.5px] w-full rounded-full bg-brand" />
+              )}
             </Link>
           ))}
         </div>
@@ -160,6 +164,7 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+          <BottomNav />
     </header>
   );
 }

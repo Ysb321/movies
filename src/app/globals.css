@@ -247,3 +247,22 @@ body {
   .intro-letter { animation-duration: 0.01s; animation-delay: 0s !important; }
   .intro-glow, .intro-sweep { animation: none; }
 }
+
+/* ── accessibility: visible keyboard focus (WAI-ARIA / web.dev pattern) ── */
+:focus-visible {
+  outline: 2px solid #e50914;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── mobile bottom navigation spacing (Material Design 3 nav bar) ──────── */
+@media (max-width: 767px) {
+  body[data-bottomnav] main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 767px) {
+  body[data-bottomnav] footer {
+    margin-bottom: 0;
+  }
+}
