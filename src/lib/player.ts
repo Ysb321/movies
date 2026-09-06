@@ -58,12 +58,6 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://cinesrc.st/embed/tv/${id}${qs({ s, e })}`,
   },
   {
-    id: "superembed",
-    name: "SuperEmbed",
-    movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-    tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
-  },
-  {
     id: "peachify",
     name: "Peachify",
     startParam: "startAt",
@@ -76,6 +70,12 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
     tv: (id, s, e) =>
       `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
+  },
+  {
+    id: "superembed",
+    name: "SuperEmbed",
+    movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+    tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
   },
 ];
 
