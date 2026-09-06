@@ -37,18 +37,7 @@ export type RowDef = {
 };
 
 export const HOME_ROWS: RowDef[] = [
-  {
-    key: "trending-movies",
-    title: "Trending Movies",
-    href: "/movies",
-    sources: [["trending/movie/week", { page: 1 }]],
-  },
-  {
-    key: "trending-tv",
-    title: "Trending TV Shows",
-    href: "/tv",
-    sources: [["trending/tv/week", { page: 1 }]],
-  },
+  /* India-first home: Indian content dominates, a few global rows at the end */
   {
     key: "trending-india",
     title: "Trending in India",
@@ -66,14 +55,6 @@ export const HOME_ROWS: RowDef[] = [
     sources: [["discover/movie", { region: "IN", sort_by: "popularity.desc", "vote_count.gte": 80 }]],
   },
   {
-    key: "hollywood",
-    title: "Hollywood Movies",
-    href: "/movies",
-    sources: [
-      ["discover/movie", { with_original_language: "en", with_origin_country: "US", "vote_count.gte": 400, sort_by: "popularity.desc" }],
-    ],
-  },
-  {
     key: "bollywood",
     title: "Bollywood Movies",
     href: "/movies",
@@ -82,11 +63,31 @@ export const HOME_ROWS: RowDef[] = [
   {
     key: "south-indian",
     title: "South Indian Cinema",
+    href: "/movies",
     sources: [
       ["discover/movie", { with_original_language: "ta", "vote_count.gte": 20, sort_by: "popularity.desc" }],
       ["discover/movie", { with_original_language: "te", "vote_count.gte": 20, sort_by: "popularity.desc" }],
       ["discover/movie", { with_original_language: "ml", "vote_count.gte": 15, sort_by: "popularity.desc" }],
     ],
+  },
+  {
+    key: "indian-tv",
+    title: "Indian TV Shows",
+    href: "/tv",
+    sources: [["discover/tv", { with_origin_country: "IN", "vote_count.gte": 10, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "dubbed-hits",
+    title: "Blockbusters Dubbed in Hindi",
+    href: "/movies",
+    sources: [["discover/movie", { region: "IN", with_original_language: "en", "vote_count.gte": 400, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "anime",
+    title: "Anime",
+    variant: "poster",
+    href: "/anime",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 20, sort_by: "popularity.desc" }]],
   },
   {
     key: "korean-tv",
@@ -95,43 +96,63 @@ export const HOME_ROWS: RowDef[] = [
     sources: [["discover/tv", { with_origin_country: "KR", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
   },
   {
-    key: "anime",
-    title: "Anime",
-    variant: "poster",
-    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 20, sort_by: "popularity.desc" }]],
-  },
-  {
-    key: "chinese-tv",
-    title: "Chinese TV Shows",
-    variant: "poster",
-    sources: [["discover/tv", { with_origin_country: "CN", "vote_count.gte": 10, sort_by: "popularity.desc" }]],
-  },
-  {
-    key: "indian-tv",
-    title: "Indian TV Shows",
-    sources: [["discover/tv", { with_origin_country: "IN", "vote_count.gte": 10, sort_by: "popularity.desc" }]],
-  },
-  {
-    key: "us-tv",
-    title: "US TV Shows",
-    sources: [["discover/tv", { with_origin_country: "US", "vote_count.gte": 200, sort_by: "popularity.desc" }]],
+    key: "hollywood",
+    title: "Hollywood Movies",
+    href: "/movies",
+    sources: [
+      ["discover/movie", { with_original_language: "en", with_origin_country: "US", "vote_count.gte": 400, sort_by: "popularity.desc" }],
+    ],
   },
   {
     key: "marvel",
     title: "Marvel Collection",
+    href: "/movies",
     sources: [["discover/movie", { with_companies: "420|38679", sort_by: "popularity.desc" }]],
   },
   {
-    key: "animated",
-    title: "Animated Movies",
-    variant: "poster",
-    sources: [["discover/movie", { with_genres: 16, "vote_count.gte": 300, sort_by: "popularity.desc" }]],
+    key: "trending-movies",
+    title: "Trending Worldwide",
+    href: "/movies",
+    sources: [["trending/movie/week", { page: 1 }]],
+  },
+];
+
+/* Anime section (/anime) — Japanese animation (genre 16 + JP origin) */
+const daysAgoIso = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+export const ANIME_ROWS: RowDef[] = [
+  {
+    key: "anime-popular",
+    title: "Popular Anime",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 50, sort_by: "popularity.desc" }]],
   },
   {
-    key: "wwe",
-    title: "WWE",
-    sources: [["search/multi", { query: "WWE" }]],
-    pick: (items) => items.filter((i) => i.media_type === "tv" || i.media_type === "movie"),
+    key: "anime-top10",
+    title: "Top 10 Anime Today",
+    top10: true,
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 20, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "anime-toprated",
+    title: "Top Rated Anime",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 500, sort_by: "vote_average.desc" }]],
+  },
+  {
+    key: "anime-simulcast",
+    title: "New Seasons & Simulcasts",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: 16, "vote_count.gte": 5, "first_air_date.gte": daysAgoIso(120), sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "anime-action",
+    title: "Action Anime",
+    variant: "poster",
+    sources: [["discover/tv", { with_origin_country: "JP", with_genres: "16,10759", "vote_count.gte": 30, sort_by: "popularity.desc" }]],
+  },
+  {
+    key: "anime-movies",
+    title: "Anime Movies",
+    variant: "poster",
+    sources: [["discover/movie", { with_original_language: "ja", with_genres: 16, "vote_count.gte": 100, sort_by: "popularity.desc" }]],
   },
 ];
 

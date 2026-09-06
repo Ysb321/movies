@@ -17,7 +17,9 @@ import {
 import type { ListItem, ProgressItem } from "@/lib/storage";
 
 export default function HomePage() {
-  const { data, isLoading, error } = useTmdbSnapshot<any>("trending/movie/week?page=1");
+  const { data, isLoading, error } = useTmdbSnapshot<any>(
+    "discover/movie?with_original_language=hi%7Cta%7Cte&region=IN&sort_by=popularity.desc&vote_count.gte=30&page=1"
+  );
   const heroes = useMemo(() => (data?.results ?? []).slice(0, 6), [data]);
 
   const [progress, setProgress] = useState<ProgressItem[]>([]);

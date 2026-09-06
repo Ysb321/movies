@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/home", label: "Home" },
   { href: "/tv", label: "TV Shows" },
   { href: "/movies", label: "Movies" },
+  { href: "/anime", label: "Anime" },
   { href: "/categories", label: "Categories" },
   { href: "/my-list", label: "My List" },
 ];
