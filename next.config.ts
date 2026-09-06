@@ -6,9 +6,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   images: { unoptimized: true }, // TMDB CDN serves pre-optimized sizes; we use direct lazy <img>
-  // always emit the self-contained server bundle (used by desktop packaging;
-  // harmless for dev / next start / Vercel)
-  output: "standalone",
+  // self-contained server bundle for desktop packaging. Skipped on
+  // Cloudflare Pages (CF_PAGES is auto-set there and never on a dev PC):
+  // @cloudflare/next-on-pages needs the default server output.
+  output: process.env.CF_PAGES ? undefined : "standalone",
   // pin tracing root to THIS project: a stray lockfile in a parent folder
   // must not move the standalone output into a nested layout
   outputFileTracingRoot: __dirname,

@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
  * reach TMDB (e.g. restricted network), respond 503 + {fallback:true} so the
  * client transparently switches to direct TMDB calls. */
 
+export const runtime = "edge"; // Cloudflare Pages
+
 const ALLOWED = [
   "trending/",
   "discover/",

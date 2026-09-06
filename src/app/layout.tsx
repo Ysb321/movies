@@ -15,6 +15,9 @@ export const metadata: Metadata = {
   creator: "Yashraj",
 };
 
+/* Cloudflare Pages (next-on-pages) requires the Edge runtime on all routes */
+export const runtime = "edge";
+
 export const viewport: Viewport = {
   themeColor: "#0b0b0f",
   width: "device-width",
