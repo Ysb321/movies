@@ -76,9 +76,9 @@ export const PROVIDERS: EmbedProvider[] = [
      * blocker + popup guard on every webContents); browsers use their own
      * popup blockers. */
     sandbox: false,
-    movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
+    movie: (id) => `https://peachify.top/embed/movie/${id}${qs({ color: "E50914" })}`,
     tv: (id, s, e) =>
-      `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
+      `https://peachify.top/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
   },
   {
     id: "vidzy",

@@ -29,7 +29,7 @@ let site = "";
  * Anything NOT on this list that tries to open a window is an ad popup
  * and gets blocked - popups never leave the app. */
 const POPUP_HOSTS = [
-  "vidzee.wtf", "cinesrc.st", "peachify.pro",
+  "vidzee.wtf", "cinesrc.st", "peachify.top", "peachify.pro",
   "vidzy.org", "vidzy.cc", "pvrplay.online",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
