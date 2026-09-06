@@ -5,6 +5,11 @@
  *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
  *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
  *    ?t={seconds} start time (resume), autonext/auto-skip intros.
+ *  - Peachify: peachify.pro/embed/movie/{tmdb} and /embed/tv/{tmdb}/{s}/{e}
+ *    (docs + both verified live). ?startAt= resume, autoNext TV episode
+ *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
+ *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
+ *    existing resume tracker.
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -40,6 +45,14 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: (id) => `https://cinesrc.st/embed/movie/${id}`,
     tv: (id, s, e) => `https://cinesrc.st/embed/tv/${id}${qs({ s, e })}`,
   },
+  {
+    id: "peachify",
+    name: "Peachify",
+    startParam: "startAt",
+    movie: (id) => `https://peachify.pro/embed/movie/${id}${qs({ color: "E50914" })}`,
+    tv: (id, s, e) =>
+      `https://peachify.pro/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -72,7 +85,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
