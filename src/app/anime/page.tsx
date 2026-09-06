@@ -5,6 +5,7 @@ import PullRefresh from "@/components/PullRefresh";
 import Footer from "@/components/Footer";
 import RowLazy from "@/components/RowLazy";
 import TmdbRow from "@/components/TmdbRow";
+import BrowseGrid from "@/components/BrowseGrid";
 import { ANIME_ROWS } from "@/lib/rows";
 
 /** Anime section — multiple rows of Japanese animation (JP + genre 16). */
@@ -29,6 +30,7 @@ export default function AnimePage() {
         ))}
       </div>
       </PullRefresh>
+      <BrowseGrid options={{ type: "tv", heading: "Browse All Anime", preset: "anime" }} />
       <Footer />
     </main>
   );
