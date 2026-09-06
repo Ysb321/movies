@@ -31,22 +31,22 @@ body {
    Visible thin "netflix-style" bars on the page + vertical panels; horizontal
    carousels keep theirs hidden (.no-scrollbar). Native CSS — no JS lib cost. */
 html {
-  scrollbar-width: thin;
-  scrollbar-color: #3f3f48 transparent;
+  scrollbar-width: auto;
+  scrollbar-color: #707082 transparent;
 }
 html::-webkit-scrollbar {
-  width: 10px;
+  width: 12px;
 }
 html::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
 }
 html::-webkit-scrollbar-thumb {
-  background: #2e2e36;
+  background: #707082; /* clearly visible on the dark page */
   border-radius: 8px;
   border: 2px solid #0b0b0f;
 }
 html::-webkit-scrollbar-thumb:hover {
-  background: #4b4b57;
+  background: #9d9db3;
 }
 
 .styled-scroll {
