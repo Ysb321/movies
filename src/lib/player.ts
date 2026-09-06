@@ -5,20 +5,20 @@
  *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
  *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
  *    ?t={seconds} start time (resume), autonext/auto-skip intros.
+ *  - Peachify: peachify.top/embed/movie/{tmdb} + /embed/tv/{tmdb}/{s}/{e}
+ *    (verified live). ?startAt= resume, autoNext, multi-source fallback.
+ *    Anti-sandbox detection: MUST run unsandboxed; popups revoked via
+ *    Permissions-Policy instead (denyPopups flag).
+ *  - CineBit: cinebit-api.vercel.app/embed/movie/{tmdb} +
+ *    /embed/tv/{tmdb}/{s}/{e} per their docs. NB: all routes returned 404
+ *    from our probes at integration time - wired to spec; rollback =
+ *    restore the vidzy entry from git history. Full sandbox kept (popup
+ *    ads die at the engine level; app layers cover the rest).
  *  - PVRPlay: pvrplay.online/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
  *    (both resolve live). Full streaming SITE rather than an embed API - no
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
- *    PLAYING LIVE). Iframe-first API (their tagline: point an iframe at a
- *    TMDB id), params: autoplay, autonext, color, hide. Replaced SuperEmbed
- *    whose server refuses cross-origin framing outright (403 + XFO +
- *    referer gates) - unfixable even with app-side header stripping.
- *    (docs + both verified live). ?startAt= resume, autoNext TV episode
- *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
- *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
- *    existing resume tracker. NB: anti-sandbox detection - MUST run
- *    unsandboxed (see note at the provider entry).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -88,14 +88,14 @@ export const PROVIDERS: EmbedProvider[] = [
       `https://peachify.top/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
   },
   {
-    id: "vidzy",
-    name: "Vidzy",
-    /* hide=volume: their wheel-to-change-volume gesture swallows mouse-wheel
-     * events over the player, blocking page scrolling - hiding the volume
-     * control disables the gesture (documented hide param) */
-    movie: (id) => `https://vidzy.org/movie/${id}${qs({ color: "E50914", autoplay: "1", hide: "volume" })}`,
-    tv: (id, s, e) =>
-      `https://vidzy.org/serie/${id}/${s}/${e}${qs({ color: "E50914", autoplay: "1", autonext: "1", hide: "volume" })}`,
+    id: "cinebit",
+    name: "CineBit",
+    /* per their docs (cinebit-api.vercel.app): /embed/movie/{tmdb} and
+     * /embed/tv/{tmdb}/{s}/{e}. NB: all routes returned 404 from our probes
+     * at integration time - wired to spec; rollback = restore the vidzy
+     * entry from git history if the API stays dead. */
+    movie: (id) => `https://cinebit-api.vercel.app/embed/movie/${id}`,
+    tv: (id, s, e) => `https://cinebit-api.vercel.app/embed/tv/${id}/${s}/${e}`,
   },
   {
     id: "pvrplay",
@@ -137,7 +137,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "vidzy", "pvrplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "cinebit", "pvrplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
