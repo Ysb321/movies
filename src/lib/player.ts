@@ -15,6 +15,10 @@
  *    auto-next; noScroll crops their page chrome. Anti-sandbox ->
  *    unsandboxed + popups revoked. Fullscreen must stay ALLOWED: their
  *    player requests it during playback startup and breaks without it.
+ *  - VidBolt: vidbolt.xyz/movie/{tmdb} + /tv/{tmdb}/{s}/{e} (verified;
+ *    embed-only by design). Multi-AUDIO (Hindi/Tamil/English + more)
+ *    switchable in-player; postMessage events feed resume tracking.
+ *    FilmU-family -> unsandboxed + popups revoked, fullscreen allowed.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -134,6 +138,23 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://pvrplay.online/watch/tv/${id}/${s}/${e}`,
   },
   {
+    id: "vidbolt",
+    name: "VidBolt",
+    /* docs: vidbolt.xyz - /movie/{tmdb} + /tv/{tmdb}/{s}/{e} (both routes
+     * verified; embed-only by design - direct-tab playback is refused on
+     * their side, which is exactly our use). Multi-AUDIO player: Hindi,
+     * Tamil, English and more switchable inside the player - perfect for
+     * the India-first catalog. Documented postMessage events
+     * (ready/play/pause/timeupdate/ended) feed the resume tracker.
+     * Same player family as BingeR's FilmU engine (it was one of its
+     * backends) -> ships unsandboxed + popups revoked, the config that
+     * family needs; fullscreen allowed (their startup uses it). */
+    denyPopups: true,
+    sandbox: false,
+    movie: (id) => `https://vidbolt.xyz/movie/${id}`,
+    tv: (id, s, e) => `https://vidbolt.xyz/tv/${id}/${s}/${e}`,
+  },
+  {
     id: "megaplay",
     name: "MegaPlay",
     /* anime-only server (pill label: "Anime 1", shown only on anime
@@ -185,7 +206,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "megaplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "megaplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

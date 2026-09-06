@@ -30,7 +30,7 @@ let site = "";
  * and gets blocked - popups never leave the app. */
 const POPUP_HOSTS = [
   "vidzee.wtf", "cinesrc.st", "peachify.top", "peachify.pro",
-  "bingr.one", "pvrplay.online",
+  "bingr.one", "pvrplay.online", "vidbolt.xyz",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];
