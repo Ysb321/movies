@@ -17,15 +17,24 @@ export default function IntroSplash() {
     setShow(true);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const total = reduced ? 800 : 2750; /* full sequence vs quick fade */
+    /* lock page scroll while the intro plays: no scrollbar visible, no
+     * scrolling the page behind the overlay; restored on finish/skip */
+    const root = document.documentElement;
+    const prevOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
     timers.current.push(setTimeout(() => setOut(true), Math.max(total - 450, 0)));
     timers.current.push(setTimeout(() => setShow(false), total));
-    return () => timers.current.forEach(clearTimeout);
+    return () => {
+      timers.current.forEach(clearTimeout);
+      root.style.overflow = prevOverflow;
+    };
   }, []);
 
   if (!show) return null;
 
   const skip = () => {
     timers.current.forEach(clearTimeout);
+    document.documentElement.style.overflow = "";
     setOut(true);
     timers.current.push(setTimeout(() => setShow(false), 380));
   };
