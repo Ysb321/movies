@@ -22,7 +22,7 @@ let win = null;
  * Anything NOT on this list that tries to open a window is an ad popup
  * and gets blocked - popups never leave the app. */
 const POPUP_HOSTS = [
-  "vidzee.wtf",
+  "vidzee.wtf", "cinesrc.st",
   "youtube.com", "youtube-nocookie.com",
   "googlevideo.com", "google.com", "tmdb.org", "themoviedb.org",
 ];

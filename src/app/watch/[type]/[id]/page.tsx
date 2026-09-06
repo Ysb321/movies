@@ -186,7 +186,7 @@ function WatchContent() {
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             {PROVIDERS.length > 1 &&
-              PROVIDERS.map((pv) => (
+              PROVIDERS.map((pv, i) => (
               <button
                 key={pv.id}
                 onClick={() => switchServer(pv.id)}
@@ -195,7 +195,7 @@ function WatchContent() {
                   serverId === pv.id ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
                 )}
               >
-                {pv.name}
+                {`Server ${i + 1}`}
               </button>
             ))}
             <button
@@ -204,20 +204,6 @@ function WatchContent() {
               className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-neutral-300 transition hover:bg-white/20 hover:text-white"
             >
               <RotateCcwIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() =>
-                embed &&
-                window.open(
-                  embedUrl(provider, t, embedId, { s: season, e: episode }),
-                  "_blank",
-                  "noopener,noreferrer"
-                )
-              }
-              title="Open this server in your browser"
-              className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition hover:bg-white/20 hover:text-white"
-            >
-              Open ↗
             </button>
           </div>
           <div className="flex shrink-0 items-center gap-2">

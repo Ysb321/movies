@@ -1,9 +1,11 @@
-/** Streaming embed provider: VidZee (single server).
- *  Routes verified live: player.vidzee.wtf/embed/movie/{tmdbId} and
- *  /embed/tv/{tmdbId}/{season}/{episode}. TMDB ids native.
- *  No URL params are documented on their landing page; their internal API
- *  takes id/sr (server)/ss/ep, so playback params stay unset.
- *  To add a fallback server later, append an entry to PROVIDERS — the watch
+/** Streaming embed providers (shown to users as generic "Server 1/2/..." —
+ *  brand names are never displayed).
+ *  - VidZee: player.vidzee.wtf/embed/movie/{tmdb} + /embed/tv/{tmdb}/{s}/{e}
+ *    (both verified live). No URL params documented.
+ *  - CineSrc: cinesrc.st/embed/movie/{tmdb} and query-style
+ *    /embed/tv/{tmdb}?s={s}&e={e} (docs + both verified live). Supports
+ *    ?t={seconds} start time (resume), autonext/auto-skip intros.
+ *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
 export type EmbedProvider = {
@@ -31,6 +33,13 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: (id) => `https://player.vidzee.wtf/embed/movie/${id}`,
     tv: (id, s, e) => `https://player.vidzee.wtf/embed/tv/${id}/${s}/${e}`,
   },
+  {
+    id: "cinesrc",
+    name: "CineSrc",
+    startParam: "t",
+    movie: (id) => `https://cinesrc.st/embed/movie/${id}`,
+    tv: (id, s, e) => `https://cinesrc.st/embed/tv/${id}${qs({ s, e })}`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -50,7 +59,8 @@ export function embedUrl(
 }
 
 /* ── Player postMessage events ──────────────────────────────────────────────
- * VidZee does not document postMessage progress events; the parser stays
+ * CineSrc documents loadedmetadata/ended/etc events (no periodic time
+ * event); VidZee documents none. The parser stays
  * generic (JSON string or object, deep time-field scan) so continue-watching
  * tracking works automatically if/when they emit them.
  * NB: "progress" (%-fields) and epoch-ms "timestamp" fields are never read
@@ -62,7 +72,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
