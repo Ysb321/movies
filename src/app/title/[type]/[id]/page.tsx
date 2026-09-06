@@ -8,7 +8,7 @@ import Footer from "@/components/Footer";
 import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { img, titleOf, yearOf } from "@/lib/tmdb";
+import { img, titleOf, yearOf, bestLogo } from "@/lib/tmdb";
 import { toggleList, inList } from "@/lib/storage";
 import { PlayIcon, PlusIcon, CheckIcon, StarIcon, XIcon } from "@/components/Icons";
 
@@ -68,6 +68,7 @@ export default function TitlePage() {
   }
 
   const backdrop = img(d.backdrop_path, "w1280");
+  const logoPath = bestLogo(d?.images);
   const poster = img(d.poster_path, "w500");
   const title = titleOf(d);
 
@@ -96,7 +97,18 @@ export default function TitlePage() {
               />
             )}
             <div className="max-w-2xl pb-1">
-              <h1 className="font-display mb-2 text-4xl leading-tight tracking-wide drop-shadow-lg md:text-6xl">{title}</h1>
+              {logoPath ? (
+                <h1 className="mb-2">
+                  <img
+                    src={img(logoPath, "w500") ?? undefined}
+                    alt={title}
+                    draggable={false}
+                    className="max-h-24 w-auto max-w-full object-contain drop-shadow-lg md:max-h-36"
+                  />
+                </h1>
+              ) : (
+                <h1 className="font-display mb-2 text-4xl leading-tight tracking-wide drop-shadow-lg md:text-6xl">{title}</h1>
+              )}
               {d.tagline && <p className="mb-2 text-sm italic text-neutral-300">&ldquo;{d.tagline}&rdquo;</p>}
               <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-200">
                 <span className="flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-amber-400">

@@ -211,3 +211,14 @@ export const getDetails = (type: "movie" | "tv", id: string | number) =>
     `${type}/${id}?append_to_response=credits,videos,similar,recommendations,images` +
       `&include_image_language=en,null`
   );
+
+/** Best official title-logo artwork from TMDB images.logos (en preferred,
+ *  then votes). Returns a file_path or undefined - callers fall back to the
+ *  plain text title. */
+export function bestLogo(images: any): string | undefined {
+  const logos = images?.logos;
+  if (!Array.isArray(logos) || logos.length === 0) return undefined;
+  const score = (l: any) => (l.iso_639_1 === "en" ? 1000 : 0) + (l.vote_count ?? 0);
+  const best = [...logos].sort((a, b) => score(b) - score(a))[0];
+  return best?.file_path;
+}

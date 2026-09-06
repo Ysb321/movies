@@ -8,7 +8,7 @@ import Navbar from "@/components/Navbar";
 import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
-import { img, titleOf, yearOf } from "@/lib/tmdb";
+import { img, titleOf, yearOf, bestLogo } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import {
@@ -43,7 +43,7 @@ function WatchContent() {
     setServerId(id);
     try { localStorage.setItem("yetflix:server", id); } catch {}
   };
-  const provider = getProvider(serverId);
+    const provider = getProvider(serverId);
   const playerRef = useRef<HTMLDivElement>(null);
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
   const lastSaved = useRef(0);
@@ -52,7 +52,8 @@ function WatchContent() {
     `${t}/${id}?append_to_response=credits,recommendations,similar,images,external_ids&include_image_language=en,null`
   );
   const { data: seasonData } = useTmdbSnapshot<any>(t === "tv" ? `tv/${id}/season/${season}` : null);
-  /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
+  const logoPath = bestLogo(d?.images);
+    /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
   const title = d ? titleOf(d) : "Loading…";
@@ -165,7 +166,16 @@ function WatchContent() {
               <ChevronIcon dir="left" className="h-4 w-4" /> Back to details
             </Link>
             <h1 className="mt-1 truncate text-xl font-bold md:text-2xl">
-              {title}
+              {logoPath ? (
+                <img
+                  src={img(logoPath, "w500") ?? undefined}
+                  alt={title}
+                  draggable={false}
+                  className="inline-block max-h-12 w-auto max-w-full object-contain align-middle md:max-h-14"
+                />
+              ) : (
+                title
+              )}
               {t === "tv" && (
                 <span className="ml-2 text-sm font-medium text-neutral-400">
                   S{season}:E{episode}
