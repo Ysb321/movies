@@ -62,6 +62,41 @@ const AD_HOSTS = [
   "adplexity.com",
 ];
 const AD_URL_HINTS = ["popunder"];
+
+/* Some embed providers send X-Frame-Options / CSP frame-ancestors that
+ * forbid iframing (e.g. multiembed.mov / SuperEmbed). The app controls
+ * its own network stack, so those headers can be stripped for the known
+ * player hosts - making the frame load. (A plain website can never do
+ * this: the headers come from the provider's server.) */
+const FRAME_HOSTS = ["multiembed.mov", "streamingnow.mov", "superembed.stream"];
+const stripFrameHeaders = (details, callback) => {
+  try {
+    const u = new URL(details.url);
+    if (FRAME_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) {
+      const headers = details.responseHeaders || {};
+      let changed = false;
+      for (const k of Object.keys(headers)) {
+        const kl = k.toLowerCase();
+        if (kl === "x-frame-options") { delete headers[k]; changed = true; }
+        else if (kl === "content-security-policy" || kl === "content-security-policy-report-only") {
+          const kept = headers[k].filter((v) => !String(v).includes("frame-ancestors"));
+          if (kept.length !== headers[k].length) {
+            if (kept.length) headers[k] = kept; else delete headers[k];
+            changed = true;
+          }
+        }
+      }
+      if (changed) return callback({ responseHeaders: headers });
+    }
+  } catch {}
+  callback({});
+};
+const enableFrameHeaderStrip = () => {
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: ["http://*/*", "https://*/*"] },
+    stripFrameHeaders
+  );
+};
 const isAdRequest = (url) => {
   try {
     const u = new URL(url);
@@ -181,12 +216,15 @@ if (!app.requestSingleInstanceLock()) {
             if (blocked === 1) console.log("[OK] first ad blocked: " + url);
             else if (blocked % 25 === 0) console.log("[OK] ads blocked so far: " + blocked);
           });
+          enableFrameHeaderStrip(); // replaces blocker's inert CSP listener
           console.log("[OK] EasyList ad blocker ACTIVE (fromPrebuiltAdsOnly)");
         } catch (err) {
+          enableFrameHeaderStrip();
           console.log("[WARN] EasyList blocker unavailable, static filter only: " + (err && err.message));
         }
       })();
     } else {
+      enableFrameHeaderStrip();
       console.log("[WARN] ad-blocker package missing (run: cd desktop && npm install) - static filter only");
     }
 
