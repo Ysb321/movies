@@ -12,7 +12,8 @@
  *  - BingeR: bingr.one/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
  *    (both verified live). Integrated multi-source player (FilmU engine),
  *    built-in episode list + auto-next; full site -> noScroll crops their
- *    page chrome; full sandbox kept (popup ads die at engine level).
+ *    page chrome. Anti-sandbox ("Playback blocked") -> unsandboxed like
+ *    Peachify, popups revoked via Permissions-Policy + app layers.
  *  - PVRPlay: pvrplay.online/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
  *    (both resolve live). Full streaming SITE rather than an embed API - no
  *    customization params, their page chrome shows inside the frame, and
@@ -96,6 +97,13 @@ export const PROVIDERS: EmbedProvider[] = [
      * below the player - crop it like PVRPlay so the iframe never shows
      * its own scrollbar or swallows wheel events. */
     noScroll: true,
+    /* their FilmU engine shows "Playback blocked" under ANY sandbox
+     * (same anti-sandbox class as Peachify) - must run unsandboxed.
+     * Popup ads are still killed: "popups 'none'" on the iframe
+     * Permissions-Policy + in the exe the EasyList blocker and the
+     * deny-all window.open guard on every frame. */
+    denyPopups: true,
+    sandbox: false,
     movie: (id) => `https://bingr.one/watch/movie/${id}`,
     tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
   },
