@@ -29,6 +29,27 @@ export default function IntroSplash() {
     return () => timers.current.forEach(clearTimeout);
   }, []);
 
+  /* while the splash is up: block ALL scrolling (wheel / touch / scroll
+   * keys) - but WITHOUT overflow:hidden, so the page scrollbar stays
+   * visible; everything unlocks the moment the splash finishes or is
+   * skipped */
+  useEffect(() => {
+    if (!show) return;
+    const prevent = (e: Event) => e.preventDefault();
+    const blockKey = (e: KeyboardEvent) => {
+      if ([" ", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(e.key))
+        e.preventDefault();
+    };
+    window.addEventListener("wheel", prevent, { passive: false });
+    window.addEventListener("touchmove", prevent, { passive: false });
+    window.addEventListener("keydown", blockKey);
+    return () => {
+      window.removeEventListener("wheel", prevent);
+      window.removeEventListener("touchmove", prevent);
+      window.removeEventListener("keydown", blockKey);
+    };
+  }, [show]);
+
   if (!show || !mounted) return null;
 
   const skip = () => {
