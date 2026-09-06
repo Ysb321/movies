@@ -9,14 +9,17 @@
  *    (verified live). ?startAt= resume, autoNext, multi-source fallback.
  *    Anti-sandbox detection: MUST run unsandboxed; popups revoked via
  *    Permissions-Policy instead (denyPopups flag).
- *  - FilmU: embed.filmu.in/movie/{tmdb} + /tv/{tmdb}/{s}/{e} (both verified
- *    live). The multi-source engine BingeR wrapped in their heavy full
- *    site - embedded directly = a fraction of the bytes (lag fix).
- *    Unsandboxed (anti-sandbox DRM player) + popups revoked; fullscreen
- *    denied to the frame (the player auto-fullscreened on play).
+ *  - BingeR: bingr.one/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
+ *    (both verified live). Full site wrapping the FilmU multi-source
+ *    engine (FilmU/Videasy/Cinezo/Vidbolt/Vidrift), subtitles, TV
+ *    auto-next; noScroll crops their page chrome. Anti-sandbox ->
+ *    unsandboxed + popups revoked; fullscreen denied (auto-fullscreen
+ *    on play was removed at user request and stays removed).
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
- *    title at watch time (src/lib/anilist.ts). Embed-only on their side.
+ *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
+ *    their player rejects the sandbox attr -> unsandboxed + popups
+ *    revoked, same as the other anti-sandbox players.
  *  - PVRPlay: pvrplay.online/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}
  *    (both resolve live). Full streaming SITE rather than an embed API - no
  *    customization params, their page chrome shows inside the frame, and
@@ -99,24 +102,28 @@ export const PROVIDERS: EmbedProvider[] = [
       `https://peachify.top/embed/tv/${id}/${s}/${e}${qs({ color: "E50914", autoNext: "true" })}`,
   },
   {
-    id: "filmu",
-    name: "FilmU",
-    /* LAG FIX: was bingr.one/watch/* - their FULL site (heavy SPA + poster
-     * walls) wrapped this same FilmU engine and stuttered on low-end PCs.
-     * embed.filmu.in is the bare player (both routes verified live):
-     * multi-server failover (4+ sources), subtitles, up to 4K - a
-     * fraction of the bytes, no site chrome, no inner scrollbar. */
-    /* anti-sandbox DRM player ("Playback blocked" under ANY sandbox - saw
-     * it through the BingeR wrapper first) -> unsandboxed + popups
-     * revoked, same treatment as Peachify. */
+    id: "bingr",
+    name: "BingeR",
+    /* verified live: bingr.one/watch/movie/{tmdb} + /watch/tv/{tmdb}/{s}/{e}.
+     * Full site with an integrated multi-source player (FilmU engine;
+     * FilmU/Videasy/Cinezo/Vidbolt/Vidrift backends), subtitles, TV
+     * auto-next + built-in episode list. noScroll: their page has content
+     * below the player - crop it like PVRPlay so the iframe never shows
+     * its own scrollbar or swallows wheel events. */
+    noScroll: true,
+    /* their FilmU engine shows "Playback blocked" under ANY sandbox
+     * (same anti-sandbox class as Peachify) - must run unsandboxed.
+     * Popup ads are still killed: "popups 'none'" on the iframe
+     * Permissions-Policy + in the exe the EasyList blocker and the
+     * deny-all window.open guard on every frame. */
     denyPopups: true,
-    /* auto-fullscreen: the player fullscreened the moment you hit play;
-     * "fullscreen" is denied to this frame (removed from the iframe allow
-     * list) so playback stays inline in the page. */
+    /* RESTORED by user request (FilmU-direct embed undone); the
+     * no-auto-fullscreen fix stays: fullscreen is denied to this frame
+     * so the player can't takeover on play. */
     denyFullscreen: true,
     sandbox: false,
-    movie: (id) => `https://embed.filmu.in/movie/${id}`,
-    tv: (id, s, e) => `https://embed.filmu.in/tv/${id}/${s}/${e}`,
+    movie: (id) => `https://bingr.one/watch/movie/${id}`,
+    tv: (id, s, e) => `https://bingr.one/watch/tv/${id}/${s}/${e}`,
   },
   {
     id: "pvrplay",
@@ -138,6 +145,11 @@ export const PROVIDERS: EmbedProvider[] = [
      * which is exactly our use. */
     animeOnly: true,
     label: "Anime 1",
+    /* their player hard-rejects the sandbox attribute ("Opss! Sandboxed
+     * our player is not allowed. Remove sandbox to use it.") ->
+     * unsandboxed + popups revoked, same treatment as Peachify/BingeR. */
+    denyPopups: true,
+    sandbox: false,
     movie: () => "",
     tv: () => "",
   },
@@ -173,7 +185,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "filmu", "pvrplay", "megaplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "megaplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
