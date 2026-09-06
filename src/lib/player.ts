@@ -74,9 +74,12 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     id: "vidzy",
     name: "Vidzy",
-    movie: (id) => `https://vidzy.org/movie/${id}${qs({ color: "E50914", autoplay: "1" })}`,
+    /* hide=volume: their wheel-to-change-volume gesture swallows mouse-wheel
+     * events over the player, blocking page scrolling - hiding the volume
+     * control disables the gesture (documented hide param) */
+    movie: (id) => `https://vidzy.org/movie/${id}${qs({ color: "E50914", autoplay: "1", hide: "volume" })}`,
     tv: (id, s, e) =>
-      `https://vidzy.org/serie/${id}/${s}/${e}${qs({ color: "E50914", autoplay: "1", autonext: "1" })}`,
+      `https://vidzy.org/serie/${id}/${s}/${e}${qs({ color: "E50914", autoplay: "1", autonext: "1", hide: "volume" })}`,
   },
 ];
 
