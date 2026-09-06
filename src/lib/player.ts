@@ -9,8 +9,8 @@
  *    (docs + both verified live). ?startAt= resume, autoNext TV episode
  *    flow, multi-source smart fallback (Wolf/Spider/Multi/Iron), documented
  *    PLAYER_EVENT postMessages (currentTime/duration) that feed the
- *    existing resume tracker. NB: anti-sandbox detection - runs unsandboxed
- *    (Electron's global popup guard covers the popup hole instead).
+ *    existing resume tracker. NB: anti-sandbox detection - MUST run
+ *    unsandboxed (see note at the provider entry).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
