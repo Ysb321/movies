@@ -20,30 +20,19 @@ export default function IntroSplash() {
     setShow(true);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const total = reduced ? 800 : 2750; /* full sequence vs quick fade */
-    /* lock page scroll while the intro plays: no scrollbar visible, no
-     * scrolling the page behind the overlay; restored on finish/skip.
-     * BOTH html and body are locked - whichever owns the scroller. */
-    const root = document.documentElement;
-    const body = document.body;
-    const prevR = root.style.overflow;
-    const prevB = body.style.overflow;
-    root.style.overflow = "hidden";
-    body.style.overflow = "hidden";
+    /* NB: the page is NEVER scroll-locked - the home page keeps its own
+     * scrollbar and layout completely untouched. The splash is a pure
+     * overlay ABOVE the page (portaled to body, viewport-fixed), so it
+     * adds no height and never creates a scrollbar of its own. */
     timers.current.push(setTimeout(() => setOut(true), Math.max(total - 450, 0)));
     timers.current.push(setTimeout(() => setShow(false), total));
-    return () => {
-      timers.current.forEach(clearTimeout);
-      root.style.overflow = prevR;
-      body.style.overflow = prevB;
-    };
+    return () => timers.current.forEach(clearTimeout);
   }, []);
 
   if (!show || !mounted) return null;
 
   const skip = () => {
     timers.current.forEach(clearTimeout);
-    document.documentElement.style.overflow = "";
-    document.body.style.overflow = "";
     setOut(true);
     timers.current.push(setTimeout(() => setShow(false), 380));
   };
@@ -51,7 +40,7 @@ export default function IntroSplash() {
   const overlay = (
     <div
       onClick={skip}
-      className={`intro-overlay fixed inset-0 z-[300] flex cursor-pointer items-center justify-center bg-black ${out ? "out" : ""}`}
+      className={`intro-overlay fixed inset-0 z-[300] flex cursor-pointer items-center justify-center overflow-hidden bg-black ${out ? "out" : ""}`}
       role="presentation"
     >
       <div className={`intro-content relative select-none text-center ${out ? "out" : ""}`}>
