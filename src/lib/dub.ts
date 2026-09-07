@@ -12,6 +12,7 @@ export type DubStream = {
   isHls: boolean;       // .m3u8 -> hls.js (true multi-audio switching)
   webSafe: boolean;     // H.264/AAC/MP4/HLS - plays everywhere
   isDirect?: boolean;   // playable as-is (PenguPlay proxied links)
+  codec: string;        // "H.264" (light) | "HEVC" (needs hw decode / strong CPU)
 };
 
 const LANG_WORDS: [RegExp, string][] = [
@@ -72,22 +73,27 @@ export async function fetchDubStreams(
     const isHls = /\.m3u8(\?|$)/i.test(s.url) || /\/hls\//i.test(s.url);
     const mkv = /\.mkv|\bMKV\b/i.test(blob);
     const webSafe = isHls || (!dolby && !mkv);
-    void hevc;
     out.push({
       url: s.url,
       quality, langs, size, host,
+      codec: hevc ? "HEVC" : "H.264",
       codecNote: dolby ? "Dolby audio may be silent in-browser" : mkv && !isPengu ? "MKV container" : hevc ? "HEVC needs a modern PC" : "",
       isHls, webSafe,
       isDirect: isPengu,
     });
   }
 
-  /* sort: web-safe first, then 1080p sweet-spot, then smaller files */
+  /* sort: web-safe first, then SMOOTHNESS (H.264 1080p leads - light
+   * decode on any PC; HEVC and >1080p sink, they need hardware decode
+   * or a strong CPU and stutter on low-end machines), then quality */
   const qOrder = (q: string) => (q.includes("1080") ? 0 : q.includes("2160") || /4k/i.test(q) ? 1 : q.includes("720") ? 2 : 3);
   const sizeNum = (s: string) => parseFloat(s) || 0;
+  const hgt = (q: string) => parseInt(q, 10) || 0;
+  const smooth = (d: DubStream) => (d.codec === "HEVC" ? 10 : 0) + (hgt(d.quality) > 1080 ? 1 : 0);
   return out.sort((a, b) =>
     Number(b.isDirect ?? false) - Number(a.isDirect ?? false) ||
     Number(b.webSafe) - Number(a.webSafe) ||
+    smooth(a) - smooth(b) ||
     qOrder(a.quality) - qOrder(b.quality) ||
     sizeNum(a.size) - sizeNum(b.size)
   );

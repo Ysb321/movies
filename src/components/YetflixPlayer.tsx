@@ -91,13 +91,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* every PenguPlay stream is a direct proxied link - instant play */
   const pick = (i: number) => {
     if (!streams?.[i]) return;
-    setError(""); setPlayUrl(proxyDubUrl(streams[i].url)); setMenu(null); setCurrent(i);
+    setError(""); setPlayUrl(streams[i].url); setMenu(null); setCurrent(i);
   };
 
   const playPasted = () => {
     const u = paste.trim();
     if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
-    setError(""); setPlayUrl(proxyDubUrl(u)); setMenu(null);
+    setError(""); setPlayUrl(u); setMenu(null);
   };
 
   /* ── subtitle loading ── */
@@ -128,6 +128,18 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
 
     /* Pengu links are time-signed (psig) and EXPIRE - when one dies,
      * refetch the list and hop to the same source seamlessly */
+    /* direct pengu playback is the FAST path (no double proxy hop);
+     * the edge proxy is the fallback route when direct fails/stalls */
+    const tryProxyRoute = (): boolean => {
+      const raw = unwrapDubUrl(playUrl);
+      if (/^https:\/\/pengu\.uk\//i.test(raw) && !playUrl.includes("/api/dub/proxy?")) {
+        try { if (artRef.current) artRef.current.notice.show = "Switching route..."; } catch {}
+        setPlayUrl(proxyDubUrl(raw));
+        return true;
+      }
+      return false;
+    };
+
     let recovering = false;
     const recover = async (): Promise<boolean> => {
       if (recovering) return true; /* already on it */
@@ -146,8 +158,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           fresh.find((f) => f.quality === S.quality && f.host === S.host) ??
           fresh.find((f) => f.quality === S.quality);
         setStreams(fresh); /* chips get fresh links either way */
-        if (match && match.url !== cur) { setCurrent(fresh.indexOf(match)); setPlayUrl(proxyDubUrl(match.url)); return true; }
-        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(proxyDubUrl(match.url)); return true; }
+        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(match.url); return true; }
       } catch {}
       return false;
     };
@@ -181,6 +192,9 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
                * conservative initial estimate so 4K doesn't lock in and
                * stall; retry flaky proxy segments before giving up */
               maxBufferLength: 60,
+              /* never fetch levels bigger than the on-screen player -
+               * huge waste of bandwidth/CPU (4K in a 900px box) */
+              capLevelToPlayerSize: true,
               maxMaxBufferLength: 120,
               maxBufferSize: 90 * 1000 * 1000,
               backBufferLength: 30,
@@ -222,6 +236,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
         setError("This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link.");
         return;
       }
+      if (tryProxyRoute()) return;
       const handled = await recover();
       if (!handled) setError("This link failed (expired or unsupported) - pick another chip or paste a link.");
     });
@@ -232,6 +247,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const armStall = () => {
       clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
+        if (tryProxyRoute()) return;
         recover().then((ok) => {
           if (!ok) { try { art.notice.show = "Source too slow - pick another chip"; } catch {} }
         });
@@ -422,7 +438,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
                         : "bg-amber-900/40 text-amber-300 hover:bg-amber-900/60")
                   }
                 >
-                  {s.quality} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}{s.host && s.host !== "PenguPlay" ? ` · ${s.host}` : ""}
+                  {s.quality}{s.codec === "HEVC" ? " HEVC" : ""} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}{s.host && s.host !== "PenguPlay" ? ` · ${s.host}` : ""}
                 </button>
               ))}
             </div>
