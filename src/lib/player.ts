@@ -19,8 +19,9 @@
  *    embed-only by design). Multi-AUDIO (Hindi/Tamil/English + more)
  *    switchable in-player; postMessage events feed resume tracking.
  *    FilmU-family -> unsandboxed + popups revoked, fullscreen allowed.
- *  - NetOut: netout.pages.dev/watch/movie/{tmdb} + /watch/tv/{tmdb}?s&e=
- *    (the ORIGINAL this clone came from; full-site server, user pick).
+ *  - NetOut: netout.pages.dev/watch/movie/{tmdb} for movies and
+ *    /watch/{tmdb}/{season}/{episode} for series/anime (routes per user,
+ *    matched to their site; the ORIGINAL this clone came from).
  *    Runs VidCore inside with in-player server options; one-time profile
  *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
  *    revoked; noScroll crops their chrome.
@@ -172,13 +173,15 @@ export const PROVIDERS: EmbedProvider[] = [
      * nested VidCore iframe, which was always embedded unsandboxed (see
      * git history); popups revoked via Permissions-Policy + exe layers.
      * noScroll crops their page chrome like the other full-site servers.
-     * TV route is query-style (?s=&e=) - shared lineage with our routes.
+     * Routes per user (verified against their site):
+     *   movie: /watch/movie/{tmdb_id}
+     *   series/anime: /watch/{tmdb_id}/{season}/{episode}
      * Fallback if the gate ever annoys: embed vidcore.io directly. */
     denyPopups: true,
     sandbox: false,
     noScroll: true,
     movie: (id) => `https://netout.pages.dev/watch/movie/${id}`,
-    tv: (id, s, e) => `https://netout.pages.dev/watch/tv/${id}?s=${s}&e=${e}`,
+    tv: (id, s, e) => `https://netout.pages.dev/watch/${id}/${s}/${e}`,
   },
   {
     id: "megaplay",
