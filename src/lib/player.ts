@@ -19,6 +19,11 @@
  *    embed-only by design). Multi-AUDIO (Hindi/Tamil/English + more)
  *    switchable in-player; postMessage events feed resume tracking.
  *    FilmU-family -> unsandboxed + popups revoked, fullscreen allowed.
+ *  - NetOut: netout.pages.dev/watch/movie/{tmdb} + /watch/tv/{tmdb}?s&e=
+ *    (the ORIGINAL this clone came from; full-site server, user pick).
+ *    Runs VidCore inside with in-player server options; one-time profile
+ *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
+ *    revoked; noScroll crops their chrome.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -155,6 +160,27 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://vidbolt.xyz/tv/${id}/${s}/${e}`,
   },
   {
+    id: "netout",
+    name: "NetOut",
+    /* The ORIGINAL site this project was cloned from - full-site server
+     * (BingeR/PVRPlay pattern), user-requested. Their watch page runs
+     * VidCore (vidcore.io - the clone's original engine) with in-player
+     * server options + subtitles. FIRST LOAD ONLY: their "Who's
+     * watching?" gate shows inside the frame - tap any profile once;
+     * the choice persists in their origin's localStorage (app session
+     * in the exe). Unsandboxed because sandbox flags cascade into their
+     * nested VidCore iframe, which was always embedded unsandboxed (see
+     * git history); popups revoked via Permissions-Policy + exe layers.
+     * noScroll crops their page chrome like the other full-site servers.
+     * TV route is query-style (?s=&e=) - shared lineage with our routes.
+     * Fallback if the gate ever annoys: embed vidcore.io directly. */
+    denyPopups: true,
+    sandbox: false,
+    noScroll: true,
+    movie: (id) => `https://netout.pages.dev/watch/movie/${id}`,
+    tv: (id, s, e) => `https://netout.pages.dev/watch/tv/${id}?s=${s}&e=${e}`,
+  },
+  {
     id: "megaplay",
     name: "MegaPlay",
     /* anime-only server (pill label: "Anime 1", shown only on anime
@@ -206,7 +232,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "megaplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "megaplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
