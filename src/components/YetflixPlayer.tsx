@@ -238,13 +238,16 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }, 20000);
     };
     const clearStall = () => clearTimeout(stallTimer);
-    const on = art.on as unknown as (e: string, fn: () => void) => void;
-    on("video:waiting", armStall);
-    on("waiting", armStall);
-    on("video:playing", clearStall);
-    on("playing", clearStall);
-    on("video:canplay", clearStall);
-    on("canplay", clearStall);
+    /* NOTE: call art.on(...) DIRECTLY - detaching the method
+     * (const on = art.on; on(...)) loses `this`, and ArtPlayer's
+     * emitter reads this.e -> "Cannot read properties of undefined
+     * (reading 'e')" crash on every playback. */
+    art.on("video:waiting", armStall);
+    art.on("waiting", armStall);
+    art.on("video:playing", clearStall);
+    art.on("playing", clearStall);
+    art.on("video:canplay", clearStall);
+    art.on("canplay", clearStall);
 
     artRef.current = art;
     return () => {
