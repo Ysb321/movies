@@ -266,12 +266,37 @@ if (!app.requestSingleInstanceLock()) {
      * open as in-app child windows). Every other window.open / target=_blank
      * is an ad popup (popads etc.) and is denied outright - never sent to
      * the system browser. Applied recursively to child windows too. */
+    /* Multi Dub capture: while the watch page shows the embedded download
+     * site (app sets window.__dubCapture), any navigation/download of a
+     * DIRECT media file is bounced to the page as a {yetflixDubUrl}
+     * postMessage; the Yetflix player takes over and plays it.
+     * IMPORTANT: iframe downloads/navigations are attributed to the
+     * IFRAME's own webContents - window.__dubCapture lives on the APP
+     * window, so the postMessage must ALWAYS be executed on
+     * win.webContents; the flag itself is the gate. */
+    const DUB_MEDIA = /googleusercontent|drive\.usercontent|videoplayback|\.(m3u8|mp4|mkv|webm|m4v|avi|mov|mpd)(\?|$)/i;
+    const dubCapture = (url) => {
+      try {
+        if (typeof url === "string" && DUB_MEDIA.test(url) && !(site && url.startsWith(site)) && win && !win.isDestroyed()) {
+          win.webContents.executeJavaScript(
+            "if (window.__dubCapture) window.postMessage({yetflixDubUrl:" + JSON.stringify(url) + "}, '*')",
+            false
+          ).catch(() => {});
+        }
+      } catch {}
+    };
     const popupGuard = (wc) => {
       try { wc.insertCSS(HIDE_PROMO_CSS, { cssOrigin: "user" }); } catch {}
       /* no in-app feature uses window.open anymore - every popup attempt
        * from any frame (player iframes included, e.g. unsandboxed Server 3)
        * is an ad: denied outright. Whitelisted hosts remain navigable. */
-      wc.setWindowOpenHandler(() => ({ action: "deny" }));
+      wc.setWindowOpenHandler(({ url }) => {
+        dubCapture(url); /* a media link opened as a popup -> play it */
+        return { action: "deny" };
+      });
+      /* the embedded source site navigates cross-origin (generators,
+       * hosts); if a frame lands on the final media file -> capture */
+      wc.on("did-frame-navigate", (_e, url) => dubCapture(url));
       wc.on("will-navigate", (e, url) => {
         if (!site || (!url.startsWith(site) && !isPopupHost(url))) e.preventDefault();
       });
@@ -280,6 +305,16 @@ if (!app.requestSingleInstanceLock()) {
      * iframes (players run unsandboxed when they demand it; their popups
      * still cannot escape the whitelist) */
     app.on("web-contents-created", (_e, wc) => popupGuard(wc));
+
+    /* Multi Dub: the embedded download site triggers real downloads
+     * (mp4/mkv/...) - cancel the save dialog and play the URL instead */
+    session.defaultSession.on("will-download", (e, item) => {
+      try {
+        const url = item.getURL();
+        e.preventDefault();
+        dubCapture(url);
+      } catch {}
+    });
 
   });
 

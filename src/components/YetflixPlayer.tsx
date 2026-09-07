@@ -1,18 +1,21 @@
 "use client";
 
-/** Yetflix Player (Multi Dub) - full control set:
- * - AUDIO button: switch language on multi-audio HLS; otherwise jumps to
- *   the language source chips (each chip = a different language file)
- * - QUALITY button: HLS level switching; otherwise the chips
- * - SUBTITLES: load .srt/.vtt from disk or a URL (SRT auto-converted);
- *   multiple tracks switchable, Off supported
- * - codec-limited sources (MKV/Dolby = silent audio in Chromium) are
- *   hidden behind a toggle so what's offered by default actually plays */
+/** Yetflix Player (Multi Dub) - powered by an embedded download site
+ * (downloadeverythingfromeverywhere.com, TMDB-keyed: /m/{id} /s/{id}).
+ * Flow: the site loads INSIDE the player area -> the user taps "find
+ * downloads" and picks a link -> the final video URL is captured and
+ * plays here automatically.
+ *  - exe: desktop hooks catch download attempts / media navigations from
+ *    the frame and postMessage them here (window.__dubCapture gates it)
+ *  - web: one manual step - open the tab, copy the link, paste it below
+ * Also plays ANY pasted link (mp4 / m3u8 / direct).
+ * - AUDIO button: switch language on multi-audio HLS
+ * - QUALITY button: HLS level switching (capped to player size)
+ * - SUBTITLES: .srt/.vtt from disk or a URL (SRT auto-converted) */
 
 import { useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
 import Hls from "hls.js";
-import { fetchDubStreams, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -40,22 +43,12 @@ function srtToVtt(srt: string): string {
   );
 }
 
-/* Pengu links play through our edge proxy (/api/dub/proxy): same-origin
- * kills the hls.js CORS problem, Cloudflare's backbone routes to
- * pengu.uk, Range passes through so MP4s stay seekable. */
-const proxyDubUrl = (u: string) =>
-  /^https:\/\/pengu\.uk\//i.test(u) ? `/api/dub/proxy?u=${encodeURIComponent(u)}` : u;
-/* the raw media URL behind a (possibly proxied) playUrl */
-const unwrapDubUrl = (u: string) => {
-  try {
-    const p = new URL(u, typeof location !== "undefined" ? location.href : "https://yetflixbyyashraj.pages.dev").searchParams.get("u");
-    return p ?? u;
-  } catch {
-    return u;
-  }
-};
-
 const BLANK_VTT = URL.createObjectURL(new Blob(["WEBVTT\n\n"], { type: "text/vtt" }));
+
+/* the embedded download site - TMDB-keyed pages: /m/{id} for movies,
+ * /s/{id} for shows (episode picked on their page) */
+const frameUrlFor = (type: "movie" | "tv", tmdbId: string) =>
+  `https://downloadeverythingfromeverywhere.com/${type === "movie" ? "m" : "s"}/${tmdbId}`;
 
 export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -63,41 +56,42 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const hlsRef = useRef<Hls | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const lastSaved = useRef(0);
-  const recoverCount = useRef(0);
-  const [streams, setStreams] = useState<DubStream[] | null>(null);
-  const [current, setCurrent] = useState(-1);
-  const [showAll, setShowAll] = useState(false);
+  const inApp = useRef(/electron/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "")).current;
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [paste, setPaste] = useState("");
   const [menu, setMenu] = useState<null | "audio" | "quality" | "subs">(null);
   const [subs, setSubs] = useState<SubTrack[]>([]);
   const [subUrl, setSubUrl] = useState<string>("");
-  const [subInput, setSubInput] = useState("");
+  const [subInput, setSubInput] = useState<string>("");
   const [tick, setTick] = useState(0); /* re-render menus on hls changes */
-  const [reload, setReload] = useState(0); /* manual retry of the source list */
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
+  const frameUrl = frameUrlFor(type, tmdbId);
 
+  /* the exe posts captured media links here (desktop dubCapture hooks) */
   useEffect(() => {
-    let dead = false;
-    setStreams(null);
-    setError("");
-    fetchDubStreams(type, tmdbId, season, episode)
-      .then((s) => { if (!dead) setStreams(s); })
-      .catch(() => { if (!dead) setStreams([]); });
-    return () => { dead = true; };
-  }, [type, tmdbId, season, episode, reload]);
+    const onMsg = (e: MessageEvent) => {
+      const u = (e.data as any)?.yetflixDubUrl;
+      if (typeof u === "string" && /^https?:\/\//.test(u)) {
+        setError("");
+        setPlayUrl(u);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
 
-  /* every PenguPlay stream is a direct proxied link - instant play */
-  const pick = (i: number) => {
-    if (!streams?.[i]) return;
-    setError(""); setPlayUrl(streams[i].url); setMenu(null); setCurrent(i);
-  };
+  /* gate flag read by the desktop capture hooks - live while the source
+   * frame is on screen and nothing is playing */
+  useEffect(() => {
+    (window as any).__dubCapture = !playUrl;
+    return () => { (window as any).__dubCapture = false; };
+  }, [playUrl]);
 
   const playPasted = () => {
     const u = paste.trim();
-    if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
+    if (!/^https?:\/\//i.test(u)) { setError("Paste the video link (it starts with http)"); return; }
     setError(""); setPlayUrl(u); setMenu(null);
   };
 
@@ -122,52 +116,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* ── the player ── */
   useEffect(() => {
     if (!boxRef.current || !playUrl) return;
-    const S = streams?.[current];
     const resumeAt = getResume(rkey)?.positionSec ?? 0;
     lastSaved.current = resumeAt;
-    recoverCount.current = 0;
-
-    /* Pengu links are time-signed (psig) and EXPIRE - when one dies,
-     * refetch the list and hop to the same source seamlessly */
-    /* direct pengu playback is the FAST path (no double proxy hop);
-     * the edge proxy is the fallback route when direct fails/stalls */
-    const tryProxyRoute = (): boolean => {
-      const raw = unwrapDubUrl(playUrl);
-      if (/^https:\/\/pengu\.uk\//i.test(raw) && !playUrl.includes("/api/dub/proxy?")) {
-        try { if (artRef.current) artRef.current.notice.show = "Switching route..."; } catch {}
-        setPlayUrl(proxyDubUrl(raw));
-        return true;
-      }
-      return false;
-    };
-
-    let recovering = false;
-    const recover = async (): Promise<boolean> => {
-      if (recovering) return true; /* already on it */
-      if (!S) return false; /* pasted link - nothing to match */
-      if (recoverCount.current >= 2) return false; /* don't loop forever */
-      recoverCount.current++;
-      recovering = true;
-      try { if (artRef.current) artRef.current.notice.show = "Refreshing source..."; } catch {}
-      try {
-        const fresh = await fetchDubStreams(type, tmdbId, season, episode);
-        const cur = unwrapDubUrl(playUrl);
-        const samePath = (u: string) => u.split("?")[0];
-        const match =
-          fresh.find((f) => samePath(f.url) === samePath(cur)) ??
-          fresh.find((f) => f.quality === S.quality && f.host === S.host && f.langs.join() === S.langs.join()) ??
-          fresh.find((f) => f.quality === S.quality && f.host === S.host) ??
-          fresh.find((f) => f.quality === S.quality);
-        setStreams(fresh); /* chips get fresh links either way */
-        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(match.url); return true; }
-      } catch {}
-      return false;
-    };
 
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
-      type: /\.m3u8(\?|$)/i.test(unwrapDubUrl(playUrl)) || /format=m3u8/i.test(unwrapDubUrl(playUrl)) || /\/hls\//i.test(unwrapDubUrl(playUrl)) ? "m3u8" : "",
+      type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) || /\/hls\//i.test(playUrl) ? "m3u8" : "",
       autoplay: true,
       autoOrientation: true,
       setting: true,
@@ -188,17 +143,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
         m3u8: (video: HTMLVideoElement, url: string, art: Artplayer) => {
           if (Hls.isSupported()) {
             const hls = new Hls({
-              /* buffer 60s ahead (was 30) but cap at ~90MB / 120s so
-               * low-end PCs stay smooth; free watched data after 30s;
-               * conservative initial estimate so 4K doesn't lock in and
-               * stall; retry flaky proxy segments before giving up */
+              /* buffer 60s ahead but cap at ~90MB / 120s for low-end PCs;
+               * never fetch levels bigger than the on-screen player;
+               * retry flaky segments before giving up */
               maxBufferLength: 60,
-              /* never fetch levels bigger than the on-screen player -
-               * huge waste of bandwidth/CPU (4K in a 900px box) */
-              capLevelToPlayerSize: true,
               maxMaxBufferLength: 120,
               maxBufferSize: 90 * 1000 * 1000,
               backBufferLength: 30,
+              capLevelToPlayerSize: true,
               abrEwmaDefaultEstimate: 1_000_000,
               fragLoadingMaxRetry: 6,
               fragLoadingRetryDelay: 800,
@@ -207,10 +159,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => setTick((t) => t + 1));
             hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => setTick((t) => t + 1));
-            hls.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
-              if (!data?.fatal) return;
-              recover().then((ok) => { if (!ok) art.notice.show = "Stream failed - pick another chip"; });
-            });
             hlsRef.current = hls;
             art.hls = hls;
             art.on("destroy", () => { hls.destroy(); hlsRef.current = null; });
@@ -232,33 +180,26 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     });
     art.on("ended", () => clearResume(rkey));
-    art.on("error", async () => {
-      if (/\.mkv|matroska/i.test(unwrapDubUrl(playUrl)) || S?.codecNote) {
-        setError("This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link.");
-        return;
-      }
-      if (tryProxyRoute()) return;
-      const handled = await recover();
-      if (!handled) setError("This link failed (expired or unsupported) - pick another chip or paste a link.");
+    art.on("error", () => {
+      setError(
+        /\.mkv|matroska/i.test(playUrl)
+          ? "MKV / Dolby files can't play in-app - grab an MP4 / WebM / HLS link instead."
+          : "That link failed (expired or unsupported) - grab another one from the source site."
+      );
+      setPlayUrl(null);
     });
-    /* watchdog: a source that just buffers forever (dead/slow upstream,
-     * throttled link) - after 20s without a frame, refresh it; after two
-     * failed refreshes tell the user to pick another chip */
+    /* stall notice: nothing to auto-switch to (the user picks the
+     * source) - just say it after 20s without a frame */
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
     const armStall = () => {
       clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        if (tryProxyRoute()) return;
-        recover().then((ok) => {
-          if (!ok) { try { art.notice.show = "Source too slow - pick another chip"; } catch {} }
-        });
+        try { art.notice.show = "Still buffering - file may be slow or dead. Use 'Change source' below."; } catch {}
       }, 20000);
     };
     const clearStall = () => clearTimeout(stallTimer);
-    /* NOTE: call art.on(...) DIRECTLY - detaching the method
-     * (const on = art.on; on(...)) loses `this`, and ArtPlayer's
-     * emitter reads this.e -> "Cannot read properties of undefined
-     * (reading 'e')" crash on every playback. */
+    /* NOTE: call art.on(...) DIRECTLY on the instance - detaching the
+     * method loses `this` (ArtPlayer's emitter reads this.e) */
     art.on("video:waiting", armStall);
     art.on("waiting", armStall);
     art.on("video:playing", clearStall);
@@ -276,9 +217,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   }, [playUrl, rkey]);
 
   const hls = hlsRef.current;
-  const S = streams?.[current];
-  const visible = streams ? (showAll ? streams : streams.filter((s) => s.webSafe)) : [];
-  const hiddenCount = streams ? streams.length - visible.length : 0;
 
   const MenuItem = ({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) => (
     <button
@@ -319,16 +257,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
                     ))
                   ) : (
                     <div className="px-2 pb-1.5 text-[11.5px] leading-relaxed text-neutral-400">
-                      {S?.codecNote ? <p className="mb-1.5 text-amber-400">{S.codecNote} - this source may be silent.</p> : null}
-                      <p className="mb-1.5">This file has one audio track. To change language, pick another source (each chip is a different language/quality):</p>
-                      <div className="flex flex-wrap gap-1">
-                        {visible.slice(0, 6).map((s, i) => (
-                          <button key={i} onClick={() => pick(streams!.indexOf(s))}
-                            className="rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-200 hover:bg-white/20">
-                            {s.quality} · {s.langs.join("+")}
-                          </button>
-                        ))}
-                      </div>
+                      <p className="mb-1.5">This file has one audio track. To change language, grab a dual-audio or HLS (multi-track) link from the source site.</p>
                     </div>
                   )
                 ) : null}
@@ -348,8 +277,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
                     </>
                   ) : (
                     <div className="px-2 pb-1.5 text-[11.5px] leading-relaxed text-neutral-400">
-                      <p className="mb-1">Current source: <span className="font-semibold text-white">{S?.quality ?? "unknown"}</span></p>
-                      <p>File links are fixed quality - switch via the source chips below the player.</p>
+                      <p>File links are fixed quality - grab another quality from the source site.</p>
                     </div>
                   )
                 ) : null}
@@ -385,26 +313,38 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             {error ? <div className="absolute inset-x-0 top-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
             <input ref={fileInput} type="file" accept=".srt,.vtt,.txt" className="hidden" onChange={(e) => onSubFile(e.target.files?.[0])} />
           </>
-        ) : streams === null ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-[13px] text-neutral-400">Finding multi-language sources…</span>
-          </div>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-            <span className="text-3xl">🌐</span>
-            <p className="mt-2 text-sm font-bold">No Multi Dub sources right now</p>
-            <p className="text-[12.5px] text-neutral-400">The list server may be busy (rate limit) - wait a minute and retry.</p>
-            <button onClick={() => setReload((r) => r + 1)}
-              className="mt-3 rounded bg-white px-4 py-1.5 text-[12px] font-bold text-black transition hover:bg-neutral-300">
-              Retry
-            </button>
-          </div>
+          <>
+            {/* ── embedded source site: user picks a download; the link
+             *     plays here automatically (exe) / gets pasted (web) ── */}
+            <iframe
+              key={frameUrl}
+              src={frameUrl}
+              title="Multi Dub sources"
+              className="absolute inset-0 h-full w-full border-0 bg-white"
+              sandbox={`allow-scripts allow-same-origin allow-forms allow-popups${inApp ? " allow-downloads" : ""}`}
+            />
+            <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
+              {inApp ? (
+                <>Tap <span className="font-bold text-white">Find downloads</span> and pick a link — the video plays here automatically</>
+              ) : (
+                <>Pick a download, copy the video link and <span className="font-bold text-white">paste it below</span> — or open the site in a tab</>
+              )}
+            </div>
+            {!inApp && (
+              <button onClick={() => window.open(frameUrl, "_blank", "noopener")}
+                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25">
+                Open tab ↗
+              </button>
+            )}
+            {error ? <div className="absolute inset-x-0 bottom-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
+          </>
         )}
       </div>
 
-      {/* paste box + source chips (stay available while playing) */}
-      <div className="styled-scroll max-h-44 shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 px-2 py-2">
-        <div className="mb-2 flex items-center gap-1.5">
+      {/* paste box + change-source (stay available while playing) */}
+      <div className="shrink-0 border-t border-white/10 bg-black/40 px-2 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <input
             value={paste}
             onChange={(e) => setPaste(e.target.value)}
@@ -415,40 +355,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           <button onClick={playPasted} className="shrink-0 rounded bg-brand px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand/85">
             ▶ Play link
           </button>
+          {playUrl ? (
+            <button onClick={() => { setPlayUrl(null); setError(""); setMenu(null); }}
+              className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
+              ⇄ Change source
+            </button>
+          ) : null}
         </div>
-        {streams && streams.length > 0 ? (
-          <>
-            <div className="mb-1 flex items-center justify-between px-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-                Multi Dub sources ({visible.length}{hiddenCount ? ` of ${streams.length}` : ""})
-              </span>
-              {hiddenCount > 0 ? (
-                <button onClick={() => setShowAll((v) => !v)} className="text-[10px] font-semibold text-amber-500/90 hover:text-amber-400">
-                  {showAll ? "hide codec-limited" : `+${hiddenCount} codec-limited (may be silent)`}
-                </button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {visible.map((s) => (
-                <button
-                  key={s.url}
-                  onClick={() => pick(streams!.indexOf(s))}
-                  title={`${s.quality} - ${s.langs.join("+")} - ${s.host}${s.codecNote ? " - " + s.codecNote : ""}`}
-                  className={
-                    "rounded-full px-2.5 py-1 text-[11px] font-semibold transition " +
-                    (streams!.indexOf(s) === current
-                      ? "bg-brand text-white"
-                      : s.webSafe
-                        ? "bg-white/10 text-neutral-200 hover:bg-white/20"
-                        : "bg-amber-900/40 text-amber-300 hover:bg-amber-900/60")
-                  }
-                >
-                  {s.quality}{s.codec === "HEVC" ? " HEVC" : ""} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}{s.host && s.host !== "PenguPlay" ? ` · ${s.host}` : ""}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : null}
       </div>
     </div>
   );
