@@ -40,6 +40,21 @@ function srtToVtt(srt: string): string {
   );
 }
 
+/* Pengu links play through our edge proxy (/api/dub/proxy): same-origin
+ * kills the hls.js CORS problem, Cloudflare's backbone routes to
+ * pengu.uk, Range passes through so MP4s stay seekable. */
+const proxyDubUrl = (u: string) =>
+  /^https:\/\/pengu\.uk\//i.test(u) ? `/api/dub/proxy?u=${encodeURIComponent(u)}` : u;
+/* the raw media URL behind a (possibly proxied) playUrl */
+const unwrapDubUrl = (u: string) => {
+  try {
+    const p = new URL(u, typeof location !== "undefined" ? location.href : "https://yetflixbyyashraj.pages.dev").searchParams.get("u");
+    return p ?? u;
+  } catch {
+    return u;
+  }
+};
+
 const BLANK_VTT = URL.createObjectURL(new Blob(["WEBVTT\n\n"], { type: "text/vtt" }));
 
 export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) {
@@ -48,6 +63,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const hlsRef = useRef<Hls | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const lastSaved = useRef(0);
+  const recoverCount = useRef(0);
   const [streams, setStreams] = useState<DubStream[] | null>(null);
   const [current, setCurrent] = useState(-1);
   const [showAll, setShowAll] = useState(false);
@@ -75,13 +91,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* every PenguPlay stream is a direct proxied link - instant play */
   const pick = (i: number) => {
     if (!streams?.[i]) return;
-    setError(""); setPlayUrl(streams[i].url); setMenu(null); setCurrent(i);
+    setError(""); setPlayUrl(proxyDubUrl(streams[i].url)); setMenu(null); setCurrent(i);
   };
 
   const playPasted = () => {
     const u = paste.trim();
     if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
-    setError(""); setPlayUrl(u); setMenu(null);
+    setError(""); setPlayUrl(proxyDubUrl(u)); setMenu(null);
   };
 
   /* ── subtitle loading ── */
@@ -108,6 +124,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const S = streams?.[current];
     const resumeAt = getResume(rkey)?.positionSec ?? 0;
     lastSaved.current = resumeAt;
+    recoverCount.current = 0;
 
     /* Pengu links are time-signed (psig) and EXPIRE - when one dies,
      * refetch the list and hop to the same source seamlessly */
@@ -115,17 +132,22 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const recover = async (): Promise<boolean> => {
       if (recovering) return true; /* already on it */
       if (!S) return false; /* pasted link - nothing to match */
+      if (recoverCount.current >= 2) return false; /* don't loop forever */
+      recoverCount.current++;
       recovering = true;
-      try { if (artRef.current) artRef.current.notice.show = "Link expired - refreshing..."; } catch {}
+      try { if (artRef.current) artRef.current.notice.show = "Refreshing source..."; } catch {}
       try {
         const fresh = await fetchDubStreams(type, tmdbId, season, episode);
+        const cur = unwrapDubUrl(playUrl);
         const samePath = (u: string) => u.split("?")[0];
         const match =
-          fresh.find((f) => f.url !== playUrl && samePath(f.url) === samePath(playUrl)) ??
-          fresh.find((f) => f.url !== playUrl && f.quality === S.quality && f.host === S.host && f.langs.join() === S.langs.join()) ??
-          fresh.find((f) => f.url !== playUrl && f.quality === S.quality && f.host === S.host);
+          fresh.find((f) => samePath(f.url) === samePath(cur)) ??
+          fresh.find((f) => f.quality === S.quality && f.host === S.host && f.langs.join() === S.langs.join()) ??
+          fresh.find((f) => f.quality === S.quality && f.host === S.host) ??
+          fresh.find((f) => f.quality === S.quality);
         setStreams(fresh); /* chips get fresh links either way */
-        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(match.url); return true; }
+        if (match && match.url !== cur) { setCurrent(fresh.indexOf(match)); setPlayUrl(proxyDubUrl(match.url)); return true; }
+        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(proxyDubUrl(match.url)); return true; }
       } catch {}
       return false;
     };
@@ -133,7 +155,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
-      type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) || /\/hls\//i.test(playUrl) ? "m3u8" : "",
+      type: /\.m3u8(\?|$)/i.test(unwrapDubUrl(playUrl)) || /format=m3u8/i.test(unwrapDubUrl(playUrl)) || /\/hls\//i.test(unwrapDubUrl(playUrl)) ? "m3u8" : "",
       autoplay: true,
       autoOrientation: true,
       setting: true,
@@ -196,15 +218,40 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     });
     art.on("ended", () => clearResume(rkey));
     art.on("error", async () => {
-      if (/\.mkv|matroska/i.test(playUrl) || S?.codecNote) {
+      if (/\.mkv|matroska/i.test(unwrapDubUrl(playUrl)) || S?.codecNote) {
         setError("This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link.");
         return;
       }
       const handled = await recover();
       if (!handled) setError("This link failed (expired or unsupported) - pick another chip or paste a link.");
     });
+    /* watchdog: a source that just buffers forever (dead/slow upstream,
+     * throttled link) - after 20s without a frame, refresh it; after two
+     * failed refreshes tell the user to pick another chip */
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        recover().then((ok) => {
+          if (!ok) { try { art.notice.show = "Source too slow - pick another chip"; } catch {} }
+        });
+      }, 20000);
+    };
+    const clearStall = () => clearTimeout(stallTimer);
+    const on = art.on as unknown as (e: string, fn: () => void) => void;
+    on("video:waiting", armStall);
+    on("waiting", armStall);
+    on("video:playing", clearStall);
+    on("playing", clearStall);
+    on("video:canplay", clearStall);
+    on("canplay", clearStall);
+
     artRef.current = art;
-    return () => { art.destroy(false); artRef.current = null; };
+    return () => {
+      clearTimeout(stallTimer);
+      art.destroy(false);
+      artRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playUrl, rkey]);
 
