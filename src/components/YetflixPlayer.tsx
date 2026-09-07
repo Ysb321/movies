@@ -1,13 +1,13 @@
 "use client";
 
-/** Yetflix Player (Multi Dub) - user-designed generate-link flow:
- * 1. user picks a source chip -> the real "Generate Link" page loads
- *    SAME-ORIGIN inside our player (via /api/dub/page proxy)
- * 2. user clicks Generate / waits - the page behaves normally
- * 3. the proxy's watcher script detects the generated DIRECT link and
- *    postMessages it up -> we swap the page for ArtPlayer and play it.
- * No server-side guessing about the generator - the user does the
- * click, we do the capture. */
+/** Yetflix Player (Multi Dub) - full control set:
+ * - AUDIO button: switch language on multi-audio HLS; otherwise jumps to
+ *   the language source chips (each chip = a different language file)
+ * - QUALITY button: HLS level switching; otherwise the chips
+ * - SUBTITLES: load .srt/.vtt from disk or a URL (SRT auto-converted);
+ *   multiple tracks switchable, Off supported
+ * - codec-limited sources (MKV/Dolby = silent audio in Chromium) are
+ *   hidden behind a toggle so what's offered by default actually plays */
 
 import { useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
@@ -22,27 +22,49 @@ type Props = {
   episode?: number;
 };
 
+type SubTrack = { name: string; url: string };
+
+const ICONS = {
+  audio: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/></svg>',
+  gear: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  cc: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></svg>',
+};
+
+function srtToVtt(srt: string): string {
+  return (
+    "WEBVTT\n\n" +
+    srt
+      .replace(/\r+/g, "")
+      .replace(/^\d+\n/gm, "")
+      .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
+  );
+}
+
+const BLANK_VTT = URL.createObjectURL(new Blob(["WEBVTT\n\n"], { type: "text/vtt" }));
+
 export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<Artplayer | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const lastSaved = useRef(0);
   const [streams, setStreams] = useState<DubStream[] | null>(null);
   const [current, setCurrent] = useState(-1);
+  const [showAll, setShowAll] = useState(false);
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState("");
   const [paste, setPaste] = useState("");
-  /* the exe captures generated links automatically (navigation hooks);
-   * in a plain browser Cloudflare challenges can't run inside a
-   * cross-origin iframe - there the user opens the generator in a
-   * normal tab (check passes) and pastes the generated link back. */
+  const [menu, setMenu] = useState<null | "audio" | "quality" | "subs">(null);
+  const [subs, setSubs] = useState<SubTrack[]>([]);
+  const [subUrl, setSubUrl] = useState<string>("");
+  const [subInput, setSubInput] = useState("");
+  const [tick, setTick] = useState(0); /* re-render menus on hls changes */
   const inApp = useRef(/electron/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "")).current;
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
 
-  /* load the source list */
   useEffect(() => {
     let dead = false;
     setStreams(null);
@@ -53,7 +75,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => { dead = true; };
   }, [type, tmdbId, season, episode]);
 
-  /* the generator page (same-origin proxy) reports the generated link */
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const u = (e.data as any)?.yetflixDubUrl;
@@ -66,17 +87,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
+  useEffect(() => {
+    (window as any).__dubCapture = !!pageUrl && !playUrl;
+    return () => { (window as any).__dubCapture = false; };
+  }, [pageUrl, playUrl]);
+
   const pick = async (i: number) => {
     if (!streams?.[i] || resolving) return;
-    setError("");
-    setPlayUrl(null);
-    setPageUrl(null);
-    setCurrent(i);
-    /* FAST PATH - server generates the link itself (no iframe, no click,
-     * no download dialog) and the player starts right away. Verified
-     * route: extract -> dl.php?link=<direct file>. If the chain is
-     * Cloudflare-walled / busy, fall back to the generator page:
-     * exe = auto-capture hooks; browser = open-tab + paste box. */
+    setError(""); setPlayUrl(null); setPageUrl(null); setMenu(null); setCurrent(i);
     setResolving(true);
     const direct = await resolveDubStream(streams[i].url);
     setResolving(false);
@@ -87,31 +105,37 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const playPasted = () => {
     const u = paste.trim();
     if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
-    setError("");
-    setPlayUrl(u);
-    setPageUrl(null);
+    setError(""); setPlayUrl(u); setPageUrl(null); setMenu(null);
   };
 
-  /* flag for the desktop capture hooks: while the generator page is
-   * open, any navigation to a direct media file gets postMessaged here
-   * as {yetflixDubUrl} (Electron did-frame-navigate / open-handler) */
-  useEffect(() => {
-    (window as any).__dubCapture = !!pageUrl && !playUrl;
-    return () => { (window as any).__dubCapture = false; };
-  }, [pageUrl, playUrl]);
+  /* ── subtitle loading ── */
+  const addSub = (name: string, url: string) => {
+    setSubs((prev) => [...prev.filter((s) => s.name !== name), { name, url }]);
+    setSubUrl(url);
+    try { artRef.current?.subtitle.switch(url, { type: "vtt" }); } catch {}
+    setMenu(null);
+  };
+  const onSubFile = async (f: File | undefined) => {
+    if (!f) return;
+    const text = await f.text();
+    const vtt = /\.(vtt|txt)$/i.test(f.name) ? text : srtToVtt(text);
+    addSub(f.name.replace(/\.[^.]+$/, ""), URL.createObjectURL(new Blob([vtt], { type: "text/vtt" })));
+  };
+  const offSub = () => {
+    setSubUrl("");
+    try { artRef.current?.subtitle.switch(BLANK_VTT, { type: "vtt" }); } catch {}
+  };
 
-  /* build the player once a generated link exists */
+  /* ── the player ── */
   useEffect(() => {
     if (!boxRef.current || !playUrl) return;
-    const src = streams![current];
+    const S = streams?.[current];
     const resumeAt = getResume(rkey)?.positionSec ?? 0;
     lastSaved.current = resumeAt;
 
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
-      /* extensionless direct links: tell ArtPlayer when it's HLS so the
-       * hls.js customType kicks in (flexible for ALL link types) */
       type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) ? "m3u8" : "",
       autoplay: true,
       autoOrientation: true,
@@ -124,30 +148,19 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       fullscreenWeb: true,
       theme: "#e50914",
       moreVideoAttr: { playsInline: true },
+      controls: [
+        { position: "right", index: 10, html: ICONS.audio, tooltip: "Audio / Language", click: () => setMenu((m) => (m === "audio" ? null : "audio")) },
+        { position: "right", index: 11, html: ICONS.gear, tooltip: "Quality", click: () => setMenu((m) => (m === "quality" ? null : "quality")) },
+        { position: "right", index: 12, html: ICONS.cc, tooltip: "Subtitles", click: () => setMenu((m) => (m === "subs" ? null : "subs")) },
+      ],
       customType: {
         m3u8: (video: HTMLVideoElement, url: string, art: Artplayer) => {
           if (Hls.isSupported()) {
             const hls = new Hls({ maxBufferLength: 30 });
             hls.loadSource(url);
             hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              const tracks = hls.audioTracks ?? [];
-              if (tracks.length > 1) {
-                art.setting.update({
-                  name: "audio",
-                  width: 200,
-                  html: "Audio Track",
-                  tooltip: tracks[hls.audioTrack]?.name ?? "",
-                  icon: '<svg width="22" height="22" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" fill="currentColor"/></svg>',
-                  selector: tracks.map((t: any, i: number) => ({ html: `${t.name || t.lang || "Track " + (i + 1)}`, url: "", default: i === hls.audioTrack })),
-                  onSelect(item: any) {
-                    const idx = tracks.findIndex((t: any, i: number) => `${t.name || t.lang || "Track " + (i + 1)}` === item.html);
-                    if (idx >= 0) hls.audioTrack = idx;
-                    return item.html;
-                  },
-                });
-              }
-            });
+            hls.on(Hls.Events.MANIFEST_PARSED, () => setTick((t) => t + 1));
+            hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => setTick((t) => t + 1));
             hlsRef.current = hls;
             art.hls = hls;
             art.on("destroy", () => { hls.destroy(); hlsRef.current = null; });
@@ -172,7 +185,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     art.on("error", () =>
       setError(
         /\.mkv|matroska/i.test(playUrl) || S?.codecNote
-          ? "This file's codec can't play in the app (MKV/Dolby). Pick a WHITE chip (H.264+AAC) or paste an mp4/m3u8 link."
+          ? "This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link."
           : "This link failed to play (expired or unsupported) - generate again or paste another link."
       )
     );
@@ -181,13 +194,116 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playUrl, rkey]);
 
+  const hls = hlsRef.current;
   const S = streams?.[current];
+  const visible = streams ? (showAll ? streams : streams.filter((s) => s.webSafe)) : [];
+  const hiddenCount = streams ? streams.length - visible.length : 0;
+
+  const MenuItem = ({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+      onClick={onClick}
+      className={
+        "flex w-full items-center justify-between gap-3 rounded px-2.5 py-1.5 text-left text-[12px] transition " +
+        (active ? "bg-brand text-white" : "text-neutral-200 hover:bg-white/10")
+      }
+    >
+      {children}
+    </button>
+  );
 
   return (
     <div className="flex h-full w-full flex-col">
       <div className="relative min-h-0 w-full flex-1 bg-black">
         {playUrl ? (
-          <div ref={boxRef} className="absolute inset-0" />
+          <>
+            <div ref={boxRef} className="absolute inset-0" />
+
+            {/* ── overlay menus (audio / quality / subtitles) ── */}
+            {menu ? (
+              <div className="styled-scroll absolute bottom-14 right-2 z-20 max-h-64 w-64 overflow-y-auto rounded-lg border border-white/10 bg-black/95 p-1.5 shadow-2xl">
+                <div className="flex items-center justify-between px-2 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                    {menu === "audio" ? "Audio / Language" : menu === "quality" ? "Quality" : "Subtitles"}
+                  </span>
+                  <button onClick={() => setMenu(null)} className="text-[11px] text-neutral-500 hover:text-white">✕</button>
+                </div>
+
+                {menu === "audio" ? (
+                  hls && (hls.audioTracks?.length ?? 0) > 1 ? (
+                    hls.audioTracks.map((t: any, i: number) => (
+                      <MenuItem key={i} active={hls.audioTrack === i} onClick={() => { hls.audioTrack = i; setTick((x) => x + 1); }}>
+                        <span>{t.name || t.lang || `Track ${i + 1}`}</span>
+                        {hls.audioTrack === i ? <span className="text-brand">✓</span> : null}
+                      </MenuItem>
+                    ))
+                  ) : (
+                    <div className="px-2 pb-1.5 text-[11.5px] leading-relaxed text-neutral-400">
+                      {S?.codecNote ? <p className="mb-1.5 text-amber-400">{S.codecNote} - this source may be silent.</p> : null}
+                      <p className="mb-1.5">This file has one audio track. To change language, pick another source (each chip is a different language/quality):</p>
+                      <div className="flex flex-wrap gap-1">
+                        {visible.slice(0, 6).map((s, i) => (
+                          <button key={i} onClick={() => pick(streams!.indexOf(s))}
+                            className="rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-200 hover:bg-white/20">
+                            {s.quality} · {s.langs.join("+")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                ) : null}
+
+                {menu === "quality" ? (
+                  hls && (hls.levels?.length ?? 0) > 1 ? (
+                    <>
+                      <MenuItem active={hls.currentLevel === -1} onClick={() => { hls.currentLevel = -1; setTick((x) => x + 1); }}>
+                        <span>Auto</span>{hls.currentLevel === -1 ? <span className="text-brand">✓</span> : null}
+                      </MenuItem>
+                      {hls.levels.map((l: any, i: number) => (
+                        <MenuItem key={i} active={hls.currentLevel === i} onClick={() => { hls.currentLevel = i; setTick((x) => x + 1); }}>
+                          <span>{l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}kbps`}</span>
+                          {hls.currentLevel === i ? <span className="text-brand">✓</span> : null}
+                        </MenuItem>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="px-2 pb-1.5 text-[11.5px] leading-relaxed text-neutral-400">
+                      <p className="mb-1">Current source: <span className="font-semibold text-white">{S?.quality ?? "unknown"}</span></p>
+                      <p>File links are fixed quality - switch via the source chips below the player.</p>
+                    </div>
+                  )
+                ) : null}
+
+                {menu === "subs" ? (
+                  <div data-tick={tick}>
+                    <MenuItem active={!subUrl} onClick={offSub}>
+                      <span>Off</span>{!subUrl ? <span className="text-brand">✓</span> : null}
+                    </MenuItem>
+                    {subs.map((s) => (
+                      <MenuItem key={s.name} active={subUrl === s.url} onClick={() => addSub(s.name, s.url)}>
+                        <span className="truncate">{s.name}</span>{subUrl === s.url ? <span className="text-brand">✓</span> : null}
+                      </MenuItem>
+                    ))}
+                    <div className="mt-1 border-t border-white/10 pt-1.5">
+                      <button onClick={() => fileInput.current?.click()} className="w-full rounded px-2.5 py-1.5 text-left text-[12px] text-neutral-200 hover:bg-white/10">
+                        📁 Load .srt / .vtt from disk…
+                      </button>
+                      <div className="flex items-center gap-1 px-1 pt-1">
+                        <input value={subInput} onChange={(e) => setSubInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && /^https?:\/\//i.test(subInput.trim())) addSub("URL subtitle", subInput.trim()); }}
+                          placeholder="or paste a subtitle URL"
+                          className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1 text-[11px] text-white outline-none placeholder:text-neutral-500" />
+                        <button onClick={() => { const u = subInput.trim(); if (/^https?:\/\//i.test(u)) addSub("URL subtitle", u); }}
+                          className="shrink-0 rounded bg-white/15 px-2 py-1 text-[11px] font-semibold hover:bg-white/25">Add</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {error ? <div className="absolute inset-x-0 top-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
+            <input ref={fileInput} type="file" accept=".srt,.vtt,.txt" className="hidden" onChange={(e) => onSubFile(e.target.files?.[0])} />
+          </>
         ) : resolving ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
@@ -210,10 +326,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               )}
             </div>
             {!inApp && (
-              <button
-                onClick={() => window.open(pageUrl, "_blank", "noopener")}
-                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25"
-              >
+              <button onClick={() => window.open(pageUrl, "_blank", "noopener")}
+                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25">
                 Open tab ↗
               </button>
             )}
@@ -226,63 +340,59 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
             <span className="text-3xl">🌐</span>
             <p className="mt-2 text-sm font-bold">No Multi Dub sources found</p>
-            <p className="text-[12.5px] text-neutral-400">Try another server below.</p>
+            <p className="text-[12.5px] text-neutral-400">Paste a video link below, or try another server.</p>
           </div>
         )}
-        {playUrl && error ? (
-          <div className="absolute inset-x-0 top-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div>
-        ) : null}
       </div>
 
-      {/* manual link box (always available) + source picker */}
-      {!playUrl ? (
-        <div className="styled-scroll max-h-44 shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 px-2 py-2">
-          <div className="mb-2 flex items-center gap-1.5">
-            <input
-              value={paste}
-              onChange={(e) => setPaste(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && playPasted()}
-              placeholder="paste any video link (mp4 · m3u8 · direct) — Enter to play"
-              className="min-w-0 flex-1 rounded bg-white/10 px-2.5 py-1.5 text-[11.5px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
-            />
-            <button
-              onClick={playPasted}
-              className="shrink-0 rounded bg-brand px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand/85"
-            >
-              ▶ Play link
-            </button>
-          </div>
-          {streams && streams.length > 0 ? (
-            <>
-          <div className="mb-1 flex items-center justify-between px-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-              Multi Dub sources ({streams.length})
-            </span>
-            <span className="text-[10px] text-neutral-600">tap a chip → generate → plays here</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {streams.map((s, i) => (
-              <button
-                key={s.url + i}
-                onClick={() => pick(i)}
-                title={`${s.quality} - ${s.langs.join("+")} - ${s.host}${s.codecNote ? " - " + s.codecNote : ""}`}
-                className={
-                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition " +
-                  (i === current
-                    ? "bg-brand text-white"
-                    : s.webSafe
-                      ? "bg-white/10 text-neutral-200 hover:bg-white/20"
-                      : "bg-amber-900/40 text-amber-300 hover:bg-amber-900/60")
-                }
-              >
-                {s.quality} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}
-              </button>
-            ))}
-          </div>
-            </>
-          ) : null}
+      {/* paste box + source chips (stay available while playing) */}
+      <div className="styled-scroll max-h-44 shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 px-2 py-2">
+        <div className="mb-2 flex items-center gap-1.5">
+          <input
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && playPasted()}
+            placeholder="paste any video link (mp4 · m3u8 · direct) — Enter to play"
+            className="min-w-0 flex-1 rounded bg-white/10 px-2.5 py-1.5 text-[11.5px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
+          />
+          <button onClick={playPasted} className="shrink-0 rounded bg-brand px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand/85">
+            ▶ Play link
+          </button>
         </div>
-      ) : null}
+        {streams && streams.length > 0 ? (
+          <>
+            <div className="mb-1 flex items-center justify-between px-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                Multi Dub sources ({visible.length}{hiddenCount ? ` of ${streams.length}` : ""})
+              </span>
+              {hiddenCount > 0 ? (
+                <button onClick={() => setShowAll((v) => !v)} className="text-[10px] font-semibold text-amber-500/90 hover:text-amber-400">
+                  {showAll ? "hide codec-limited" : `+${hiddenCount} codec-limited (may be silent)`}
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {visible.map((s) => (
+                <button
+                  key={s.url}
+                  onClick={() => pick(streams!.indexOf(s))}
+                  title={`${s.quality} - ${s.langs.join("+")} - ${s.host}${s.codecNote ? " - " + s.codecNote : ""}`}
+                  className={
+                    "rounded-full px-2.5 py-1 text-[11px] font-semibold transition " +
+                    (streams!.indexOf(s) === current
+                      ? "bg-brand text-white"
+                      : s.webSafe
+                        ? "bg-white/10 text-neutral-200 hover:bg-white/20"
+                        : "bg-amber-900/40 text-amber-300 hover:bg-amber-900/60")
+                  }
+                >
+                  {s.quality} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
