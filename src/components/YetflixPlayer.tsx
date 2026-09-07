@@ -1,15 +1,18 @@
 "use client";
 
-/** Yetflix Player - the FOSS in-house player (ArtPlayer + hls.js, both
- * MIT/Apache). Plays direct file links + HLS from the "Multi Dub"
- * sources with a language/quality picker; switches audio tracks when the
- * stream is multi-audio HLS; tracks resume via the same storage keys as
- * the embedded players. */
+/** Yetflix Player (Multi Dub) - user-designed generate-link flow:
+ * 1. user picks a source chip -> the real "Generate Link" page loads
+ *    SAME-ORIGIN inside our player (via /api/dub/page proxy)
+ * 2. user clicks Generate / waits - the page behaves normally
+ * 3. the proxy's watcher script detects the generated DIRECT link and
+ *    postMessages it up -> we swap the page for ArtPlayer and play it.
+ * No server-side guessing about the generator - the user does the
+ * click, we do the capture. */
 
 import { useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
 import Hls from "hls.js";
-import { fetchDubStreams, resolveDubStream, DubStream } from "@/lib/dub";
+import { fetchDubStreams, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -26,8 +29,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const lastSaved = useRef(0);
   const [streams, setStreams] = useState<DubStream[] | null>(null);
   const [current, setCurrent] = useState(-1);
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
@@ -43,27 +46,28 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => { dead = true; };
   }, [type, tmdbId, season, episode]);
 
-  /* user picks a source -> GENERATE the direct link (server-side via
-   * the HubCloud chain) -> then play it. This is the Multi Dub flow:
-   * chip click = "generate link", the player opens the generated URL. */
+  /* the generator page (same-origin proxy) reports the generated link */
   useEffect(() => {
-    if (current < 0 || !streams?.[current]) return;
-    let dead = false;
-    const src = streams[current];
-    setGenerating(true);
+    const onMsg = (e: MessageEvent) => {
+      const u = (e.data as any)?.yetflixDubUrl;
+      if (typeof u === "string" && /^https?:\/\//.test(u)) {
+        setPlayUrl(u);
+        setPageUrl(null);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  const pick = (i: number) => {
+    if (!streams?.[i]) return;
     setError("");
     setPlayUrl(null);
-    resolveDubStream(src.url).then((generated) => {
-      if (dead) return;
-      setGenerating(false);
-      if (generated) setPlayUrl(generated);
-      else setError("Couldn't generate the link for this source - try another chip.");
-    });
-    return () => { dead = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, streams]);
+    setPageUrl(`/api/dub/page?u=${encodeURIComponent(streams[i].url)}`);
+    setCurrent(i);
+  };
 
-  /* build/refresh the player once a generated link exists */
+  /* build the player once a generated link exists */
   useEffect(() => {
     if (!boxRef.current || !playUrl) return;
     const src = streams![current];
@@ -83,8 +87,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       fullscreen: true,
       fullscreenWeb: true,
       theme: "#e50914",
-      /* no crossOrigin: direct file hosts don't send CORS headers and
-       * video elements only need CORS for canvas/texttrack ops */
       moreVideoAttr: { playsInline: true },
       customType: {
         m3u8: (video: HTMLVideoElement, url: string, art: Artplayer) => {
@@ -93,7 +95,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             hls.loadSource(url);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              /* multi-audio HLS -> audio-track switcher in settings */
               const tracks = hls.audioTracks ?? [];
               if (tracks.length > 1) {
                 art.setting.update({
@@ -123,7 +124,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       },
     });
 
-    /* resume + progress persistence (same keys as embedded players) */
     art.on("ready", () => { if (resumeAt > 10) art.currentTime = resumeAt; });
     art.on("timeupdate", () => {
       const t = art.currentTime;
@@ -133,7 +133,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     });
     art.on("ended", () => clearResume(rkey));
-    art.on("error", () => setError("This source failed to play - pick another one below."));
+    art.on("error", () => setError("This file failed to play (usually a codec or expired link) - generate another chip."));
     artRef.current = art;
     return () => { art.destroy(false); artRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,30 +143,34 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="relative min-h-0 w-full flex-1">
+      <div className="relative min-h-0 w-full flex-1 bg-black">
         {playUrl ? (
           <div ref={boxRef} className="absolute inset-0" />
-        ) : generating ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
-            <span className="text-[13px] text-neutral-400">Generating link for {S?.quality ?? ""} {S?.langs?.length ? "· " + S.langs.join("+") : ""}…</span>
-          </div>
-        ) : S ? (
-          <div className="absolute inset-0" />
-        ) : (
+        ) : pageUrl ? (
+          <>
+            <iframe
+              key={pageUrl}
+              src={pageUrl}
+              title="Generate link"
+              className="absolute inset-0 h-full w-full border-0 bg-white"
+              sandbox="allow-scripts allow-same-origin allow-forms"
+            />
+            <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
+              Tap <span className="font-bold text-white">Generate Link</span> / Download in the page below — Yetflix auto-plays it here
+            </div>
+          </>
+        ) : streams === null ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            {streams === null ? (
-              <span className="text-[13px] text-neutral-400">Finding multi-language sources…</span>
-            ) : (
-              <div className="px-6 text-center">
-                <span className="text-3xl">🌐</span>
-                <p className="mt-2 text-sm font-bold">No Multi Dub sources found</p>
-                <p className="text-[12.5px] text-neutral-400">Try another server below.</p>
-              </div>
-            )}
+            <span className="text-[13px] text-neutral-400">Finding multi-language sources…</span>
+          </div>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            <span className="text-3xl">🌐</span>
+            <p className="mt-2 text-sm font-bold">No Multi Dub sources found</p>
+            <p className="text-[12.5px] text-neutral-400">Try another server below.</p>
           </div>
         )}
-        {S && error ? (
+        {playUrl && error ? (
           <div className="absolute inset-x-0 top-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div>
         ) : null}
       </div>
@@ -178,13 +182,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
               Multi Dub sources ({streams.length})
             </span>
-            <span className="text-[10px] text-neutral-600">switch any time - playback resumes</span>
+            <span className="text-[10px] text-neutral-600">tap a chip → generate → plays here</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {streams.map((s, i) => (
               <button
                 key={s.url + i}
-                onClick={() => { setError(""); setPlayUrl(null); setCurrent(i); }}
+                onClick={() => pick(i)}
                 title={`${s.quality} - ${s.langs.join("+")} - ${s.host}${s.codecNote ? " - " + s.codecNote : ""}`}
                 className={
                   "rounded-full px-2.5 py-1 text-[11px] font-semibold transition " +

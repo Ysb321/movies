@@ -73,17 +73,3 @@ export async function fetchDubStreams(
     sizeNum(a.size) - sizeNum(b.size)
   );
 }
-
-/** The user-designed generate step: server-side, /api/dub/resolve
- * follows the extract URL through HubCloud's link generator and returns
- * the GENERATED direct link for our player. */
-export async function resolveDubStream(extractUrl: string): Promise<string | null> {
-  try {
-    const res = await fetch(`/api/dub/resolve?u=${encodeURIComponent(extractUrl)}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return typeof json?.url === "string" && /^https?:\/\//.test(json.url) ? json.url : null;
-  } catch {
-    return null;
-  }
-}
