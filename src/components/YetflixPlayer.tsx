@@ -109,6 +109,27 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const resumeAt = getResume(rkey)?.positionSec ?? 0;
     lastSaved.current = resumeAt;
 
+    /* Pengu links are time-signed (psig) and EXPIRE - when one dies,
+     * refetch the list and hop to the same source seamlessly */
+    let recovering = false;
+    const recover = async (): Promise<boolean> => {
+      if (recovering) return true; /* already on it */
+      if (!S) return false; /* pasted link - nothing to match */
+      recovering = true;
+      try { if (artRef.current) artRef.current.notice.show = "Link expired - refreshing..."; } catch {}
+      try {
+        const fresh = await fetchDubStreams(type, tmdbId, season, episode);
+        const samePath = (u: string) => u.split("?")[0];
+        const match =
+          fresh.find((f) => f.url !== playUrl && samePath(f.url) === samePath(playUrl)) ??
+          fresh.find((f) => f.url !== playUrl && f.quality === S.quality && f.host === S.host && f.langs.join() === S.langs.join()) ??
+          fresh.find((f) => f.url !== playUrl && f.quality === S.quality && f.host === S.host);
+        setStreams(fresh); /* chips get fresh links either way */
+        if (match) { setCurrent(fresh.indexOf(match)); setPlayUrl(match.url); return true; }
+      } catch {}
+      return false;
+    };
+
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
@@ -123,7 +144,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       fullscreen: true,
       fullscreenWeb: true,
       theme: "#e50914",
-      moreVideoAttr: { playsInline: true },
+      moreVideoAttr: { playsInline: true, preload: "auto" },
       controls: [
         { position: "right", index: 10, html: ICONS.audio, tooltip: "Audio / Language", click: () => setMenu((m) => (m === "audio" ? null : "audio")) },
         { position: "right", index: 11, html: ICONS.gear, tooltip: "Quality", click: () => setMenu((m) => (m === "quality" ? null : "quality")) },
@@ -132,11 +153,27 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       customType: {
         m3u8: (video: HTMLVideoElement, url: string, art: Artplayer) => {
           if (Hls.isSupported()) {
-            const hls = new Hls({ maxBufferLength: 30 });
+            const hls = new Hls({
+              /* buffer 60s ahead (was 30) but cap at ~90MB / 120s so
+               * low-end PCs stay smooth; free watched data after 30s;
+               * conservative initial estimate so 4K doesn't lock in and
+               * stall; retry flaky proxy segments before giving up */
+              maxBufferLength: 60,
+              maxMaxBufferLength: 120,
+              maxBufferSize: 90 * 1000 * 1000,
+              backBufferLength: 30,
+              abrEwmaDefaultEstimate: 1_000_000,
+              fragLoadingMaxRetry: 6,
+              fragLoadingRetryDelay: 800,
+            });
             hls.loadSource(url);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => setTick((t) => t + 1));
             hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => setTick((t) => t + 1));
+            hls.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
+              if (!data?.fatal) return;
+              recover().then((ok) => { if (!ok) art.notice.show = "Stream failed - pick another chip"; });
+            });
             hlsRef.current = hls;
             art.hls = hls;
             art.on("destroy", () => { hls.destroy(); hlsRef.current = null; });
@@ -158,13 +195,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     });
     art.on("ended", () => clearResume(rkey));
-    art.on("error", () =>
-      setError(
-        /\.mkv|matroska/i.test(playUrl) || S?.codecNote
-          ? "This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link."
-          : "This link failed to play (expired or unsupported) - generate again or paste another link."
-      )
-    );
+    art.on("error", async () => {
+      if (/\.mkv|matroska/i.test(playUrl) || S?.codecNote) {
+        setError("This file's codec can't play in-app (MKV/Dolby) - pick a white chip (H.264+AAC) or paste an mp4/m3u8 link.");
+        return;
+      }
+      const handled = await recover();
+      if (!handled) setError("This link failed (expired or unsupported) - pick another chip or paste a link.");
+    });
     artRef.current = art;
     return () => { art.destroy(false); artRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
