@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge"; // Cloudflare Pages (next-on-pages requirement)
 
 const UPSTREAM = "https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club";
 
