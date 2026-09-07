@@ -32,17 +32,22 @@ function WatchContent() {
   const t = type === "tv" ? "tv" : "movie";
   const [season, setSeason] = useState(Number(sp.get("s") ?? 1) || 1);
   const [episode, setEpisode] = useState(Number(sp.get("e") ?? 1) || 1);
-  const [serverId, setServerId] = useState("vidzee");
+  /* Netout's player is the site's DEFAULT engine (user call): every
+   * title plays through it unless the user picks another server pill. */
+  const [serverId, setServerId] = useState("netout");
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setServerId(() => {
-      try { return localStorage.getItem("yetflix:server") || "vidzee"; } catch { return "vidzee"; }
+      /* v2 key: one-time migration so existing installs (saved under the
+       * old key, default vidzee) also start on Netout; manual picks from
+       * now on persist under this key. */
+      try { return localStorage.getItem("yetflix:server2") || "netout"; } catch { return "netout"; }
     });
   }, []);
   const switchServer = (id: string) => {
     setServerId(id);
-    try { localStorage.setItem("yetflix:server", id); } catch {}
+    try { localStorage.setItem("yetflix:server2", id); } catch {}
   };
   const playerRef = useRef<HTMLDivElement>(null); /* scroll target: page container */
   const lastTime = useRef<{ time: number; duration?: number } | null>(null);
