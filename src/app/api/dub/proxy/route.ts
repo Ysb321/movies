@@ -21,6 +21,8 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("u") ?? "";
+  const probe = req.nextUrl.searchParams.get("probe");
+  const variant = req.nextUrl.searchParams.get("v") ?? "1";
   let target: URL;
   try {
     target = new URL(raw);
@@ -30,7 +32,20 @@ export async function GET(req: NextRequest) {
   /* hard gate: pengu.uk only, https only */
   if (!target.href.startsWith(ALLOWED)) return new NextResponse("forbidden", { status: 403 });
 
-  const headers: Record<string, string> = { "user-agent": UA, accept: "*/*" };
+  const headers: Record<string, string> =
+    variant === "2"
+      ? {
+          /* browser-like request */
+          "user-agent": UA,
+          accept: "*/*",
+          "accept-language": "en-US,en;q=0.9",
+          origin: "https://yetflixbyyashraj.pages.dev",
+          referer: "https://pengu.uk/",
+          "sec-fetch-dest": "video",
+          "sec-fetch-mode": "no-cors",
+          "sec-fetch-site": "cross-site",
+        }
+      : { "user-agent": UA, accept: "*/*" };
   const range = req.headers.get("range");
   if (range) headers.range = range;
 
@@ -43,7 +58,24 @@ export async function GET(req: NextRequest) {
     return new NextResponse("upstream unreachable", { status: 502 });
   }
 
+  /* diagnostics: return the upstream status + headers as JSON */
+  if (probe) {
+    const h: Record<string, string> = {};
+    upstream.headers.forEach((v, k) => {
+      h[k] = v;
+    });
+    return NextResponse.json({ variant, status: upstream.status, ok: upstream.ok, finalUrl: upstream.url, headers: h });
+  }
+
   if (!upstream.ok && upstream.status !== 206) {
+    /* pengu blocks worker-side media fetches (418/403/5xx anti-bot) or
+     * the upstream died - hand the URL to the CLIENT instead: a browser
+     * fetch has no CF-Worker header and <video> needs no CORS. In the
+     * exe the local server's fetch usually succeeds, so this rarely
+     * triggers there. */
+    if ([403, 418, 429, 500, 502, 503, 504].includes(upstream.status)) {
+      return NextResponse.redirect(target.href, 302);
+    }
     return new NextResponse(`upstream ${upstream.status}`, { status: upstream.status });
   }
 
