@@ -75,6 +75,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [subUrl, setSubUrl] = useState<string>("");
   const [subInput, setSubInput] = useState("");
   const [tick, setTick] = useState(0); /* re-render menus on hls changes */
+  const [reload, setReload] = useState(0); /* manual retry of the source list */
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
 
@@ -86,7 +87,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       .then((s) => { if (!dead) setStreams(s); })
       .catch(() => { if (!dead) setStreams([]); });
     return () => { dead = true; };
-  }, [type, tmdbId, season, episode]);
+  }, [type, tmdbId, season, episode, reload]);
 
   /* every PenguPlay stream is a direct proxied link - instant play */
   const pick = (i: number) => {
@@ -391,8 +392,12 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
             <span className="text-3xl">🌐</span>
-            <p className="mt-2 text-sm font-bold">No Multi Dub sources found</p>
-            <p className="text-[12.5px] text-neutral-400">Paste a video link below, or try another server.</p>
+            <p className="mt-2 text-sm font-bold">No Multi Dub sources right now</p>
+            <p className="text-[12.5px] text-neutral-400">The list server may be busy (rate limit) - wait a minute and retry.</p>
+            <button onClick={() => setReload((r) => r + 1)}
+              className="mt-3 rounded bg-white px-4 py-1.5 text-[12px] font-bold text-black transition hover:bg-neutral-300">
+              Retry
+            </button>
           </div>
         )}
       </div>
