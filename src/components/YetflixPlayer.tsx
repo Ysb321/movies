@@ -63,9 +63,21 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     if (!streams?.[i]) return;
     setError("");
     setPlayUrl(null);
-    setPageUrl(`/api/dub/page?u=${encodeURIComponent(streams[i].url)}`);
+    /* DIRECT link, no proxy: gpdl.hubcloud.cx sits behind Cloudflare
+     * bot-protection that blocks server-side fetches (datacenter IP) -
+     * the user's real browser passes the check invisibly. The generated
+     * link is captured by the exe's navigation hooks (window flag). */
+    setPageUrl(streams[i].url);
     setCurrent(i);
   };
+
+  /* flag for the desktop capture hooks: while the generator page is
+   * open, any navigation to a direct media file gets postMessaged here
+   * as {yetflixDubUrl} (Electron did-frame-navigate / open-handler) */
+  useEffect(() => {
+    (window as any).__dubCapture = !!pageUrl && !playUrl;
+    return () => { (window as any).__dubCapture = false; };
+  }, [pageUrl, playUrl]);
 
   /* build the player once a generated link exists */
   useEffect(() => {
@@ -153,10 +165,10 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               src={pageUrl}
               title="Generate link"
               className="absolute inset-0 h-full w-full border-0 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
             />
             <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
-              Tap <span className="font-bold text-white">Generate Link</span> / Download in the page below — Yetflix auto-plays it here
+              A security check may flash once — then tap <span className="font-bold text-white">Generate / Download</span>; in the app it auto-plays here
             </div>
           </>
         ) : streams === null ? (
