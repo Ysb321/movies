@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
 import Hls from "hls.js";
-import { fetchDubStreams, DubStream } from "@/lib/dub";
+import { fetchDubStreams, resolveDubStream, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -31,6 +31,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [current, setCurrent] = useState(-1);
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [error, setError] = useState("");
   const [paste, setPaste] = useState("");
   /* the exe captures generated links automatically (navigation hooks);
@@ -65,16 +66,22 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  const pick = (i: number) => {
-    if (!streams?.[i]) return;
+  const pick = async (i: number) => {
+    if (!streams?.[i] || resolving) return;
     setError("");
     setPlayUrl(null);
-    /* DIRECT link, no proxy: gpdl.hubcloud.cx sits behind Cloudflare
-     * bot-protection that blocks server-side fetches (datacenter IP) -
-     * the user's real browser passes the check invisibly. The generated
-     * link is captured by the exe's navigation hooks (window flag). */
-    setPageUrl(streams[i].url);
+    setPageUrl(null);
     setCurrent(i);
+    /* FAST PATH - server generates the link itself (no iframe, no click,
+     * no download dialog) and the player starts right away. Verified
+     * route: extract -> dl.php?link=<direct file>. If the chain is
+     * Cloudflare-walled / busy, fall back to the generator page:
+     * exe = auto-capture hooks; browser = open-tab + paste box. */
+    setResolving(true);
+    const direct = await resolveDubStream(streams[i].url);
+    setResolving(false);
+    if (direct) { setPlayUrl(direct); return; }
+    setPageUrl(streams[i].url);
   };
 
   const playPasted = () => {
@@ -181,6 +188,11 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       <div className="relative min-h-0 w-full flex-1 bg-black">
         {playUrl ? (
           <div ref={boxRef} className="absolute inset-0" />
+        ) : resolving ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
+            <span className="text-[13px] text-neutral-400">Generating link — it will play here automatically…</span>
+          </div>
         ) : pageUrl ? (
           <>
             <iframe
@@ -188,13 +200,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               src={pageUrl}
               title="Generate link"
               className="absolute inset-0 h-full w-full border-0 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+              sandbox={`allow-scripts allow-same-origin allow-forms allow-popups${inApp ? " allow-downloads" : ""}`}
             />
             <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
               {inApp ? (
                 <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
               ) : (
-                <>If the page below won&rsquo;t load, <span className="font-bold text-white">open it in a tab</span>, tap Generate, copy the link, paste it below</>
+                <>This source needs a manual step — <span className="font-bold text-white">open it in a tab</span>, tap Generate, copy the link, paste it below</>
               )}
             </div>
             {!inApp && (

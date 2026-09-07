@@ -73,3 +73,17 @@ export async function fetchDubStreams(
     sizeNum(a.size) - sizeNum(b.size)
   );
 }
+
+/** Auto-generate the direct link server-side (fast path - no iframe, no
+ * clicks, no download dialog). Falls back to the generator-page flow on
+ * failure (returned null). */
+export async function resolveDubStream(extractUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/dub/resolve?u=${encodeURIComponent(extractUrl)}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return typeof json?.url === "string" && /^https?:\/\//.test(json.url) ? json.url : null;
+  } catch {
+    return null;
+  }
+}
