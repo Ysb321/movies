@@ -12,7 +12,6 @@ import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
-import YetflixPlayer from "@/components/YetflixPlayer";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -69,14 +68,8 @@ function WatchContent() {
     [d]
   );
   const providers = useMemo(() => PROVIDERS.filter((p) => !p.animeOnly || isAnime), [isAnime]);
-  /* Multi Dub (in-house FOSS player: ArtPlayer + hls.js fed by the
-   * WebStreamrMBG source API) - hidden in Kids mode (fail-closed). */
-  const dubAllowed = !isKidsActive();
-  const activeId =
-    serverId === "dub" && dubAllowed
-      ? "dub"
-      : providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
-  const provider = getProvider(activeId === "dub" ? providers[0]?.id ?? "vidzee" : activeId);
+  const activeId = providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
+  const provider = getProvider(activeId);
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -91,8 +84,6 @@ function WatchContent() {
 
   useEffect(() => {
     let cancelled = false;
-    /* Multi Dub renders YetflixPlayer (own embed + resume handling) */
-    if (activeId === "dub") { setEmbed(null); return; }
     /* MegaPlay (anime server) has no TMDB ids: resolve the title on
      * AniList, then embed /stream/ani/{id}/{ep}/sub per their docs
      * (megaplay.buzz/api - embed-only, direct nav is disabled). */
@@ -116,7 +107,7 @@ function WatchContent() {
     setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, id, season, episode, provider.id, embedId, d, activeId]);
+  }, [t, id, season, episode, provider.id, embedId, d]);
 
   const startOver = () => {
     clearResume(resumeKeyFor(t, id, season, episode));
@@ -267,8 +258,6 @@ function WatchContent() {
                 This title isn&rsquo;t suitable for kids. Ask a parent to enter the PIN to switch profiles.
               </p>
             </div>
-          ) : activeId === "dub" ? (
-            <YetflixPlayer type={t === "tv" ? "tv" : "movie"} tmdbId={id as string} season={season} episode={episode} />
           ) : embed ? (
             embed.src ? (
               <iframe
@@ -313,17 +302,6 @@ function WatchContent() {
               {pv.label ?? `Server ${i + 1}`}
             </button>
           ))}
-          {dubAllowed && (
-            <button
-              onClick={() => switchServer("dub")}
-              className={clsx(
-                "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
-                activeId === "dub" ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
-              )}
-            >
-              Multi Dub
-            </button>
-          )}
           <button
             onClick={() => setReloadKey((k) => k + 1)}
             title="Reload player"
