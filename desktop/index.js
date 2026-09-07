@@ -266,40 +266,12 @@ if (!app.requestSingleInstanceLock()) {
      * open as in-app child windows). Every other window.open / target=_blank
      * is an ad popup (popads etc.) and is denied outright - never sent to
      * the system browser. Applied recursively to child windows too. */
-    /* Multi Dub capture: while the watch page shows the link generator
-     * (app sets window.__dubCapture), any navigation to a DIRECT media
-     * file (googleusercontent / .mkv / .mp4 / .m3u8) - frame navigation
-     * or target=_blank click - is bounced to the page as a
-     * {yetflixDubUrl} postMessage; the Yetflix player takes over. */
-    const DUB_MEDIA = /googleusercontent|drive\.usercontent|videoplayback|\.(mkv|mp4|m3u8)(\?|$)/i;
-    /* IMPORTANT: iframe downloads/navigations are attributed to the
-     * IFRAME's own webContents (the generator page, e.g. gpdl.hubcloud.cx)
-     * - not our app page. window.__dubCapture lives on the APP window, so
-     * the postMessage must ALWAYS be executed on win.webContents; the flag
-     * itself is the gate (only true while the generator is open on the
-     * watch page). */
-    const dubCapture = (url) => {
-      try {
-        if (typeof url === "string" && DUB_MEDIA.test(url) && !(site && url.startsWith(site)) && win && !win.isDestroyed()) {
-          win.webContents.executeJavaScript(
-            "if (window.__dubCapture) window.postMessage({yetflixDubUrl:" + JSON.stringify(url) + "}, '*')",
-            false
-          ).catch(() => {});
-        }
-      } catch {}
-    };
     const popupGuard = (wc) => {
       try { wc.insertCSS(HIDE_PROMO_CSS, { cssOrigin: "user" }); } catch {}
       /* no in-app feature uses window.open anymore - every popup attempt
        * from any frame (player iframes included, e.g. unsandboxed Server 3)
        * is an ad: denied outright. Whitelisted hosts remain navigable. */
-      wc.setWindowOpenHandler(({ url }) => {
-        dubCapture(url);
-        return { action: "deny" };
-      });
-      /* generator iframes navigate cross-origin (Cloudflare check etc.);
-       * if one lands on the generated media file -> capture for playback */
-      wc.on("did-frame-navigate", (_e, url) => dubCapture(url));
+      wc.setWindowOpenHandler(() => ({ action: "deny" }));
       wc.on("will-navigate", (e, url) => {
         if (!site || (!url.startsWith(site) && !isPopupHost(url))) e.preventDefault();
       });
@@ -309,23 +281,6 @@ if (!app.requestSingleInstanceLock()) {
      * still cannot escape the whitelist) */
     app.on("web-contents-created", (_e, wc) => popupGuard(wc));
 
-    /* Multi Dub auto-capture: tapping Generate/Download in the generator
-     * page triggers a FILE DOWNLOAD (download attr / attachment) - that's
-     * the most reliable signal the link is ready. Intercept it: cancel
-     * the download (nobody wants a 40 GB remux saved to disk), and hand
-     * the direct URL to the player, which auto-plays it. Only fires while
-     * a /watch page is open; normal downloads elsewhere are untouched. */
-    session.defaultSession.on("will-download", (_e, item) => {
-      try {
-        const url = item.getURL();
-        if (DUB_MEDIA.test(url) && !(site && url.startsWith(site))) {
-          /* cancel BEFORE the save dialog can appear; deliver the direct
-           * URL to the app page for auto-play (gated by __dubCapture) */
-          item.cancel();
-          dubCapture(url);
-        }
-      } catch {}
-    });
   });
 
   app.on("window-all-closed", () => app.quit());

@@ -48,7 +48,9 @@ export async function fetchDubStreams(
   for (const s of streams) {
     if (!s?.url || typeof s.url !== "string") continue;
     const name: string = s.name ?? "";
-    const title: string = s.title ?? "";
+    /* PenguPlay carries everything in `description` (name/description
+     * fields), WebStreamr used `title` - read both for accurate labels */
+    const title: string = s.title ?? s.description ?? "";
     const blob = `${name}\n${title}`;
 
     /* PenguPlay: name/description carry everything (verified live):
@@ -89,18 +91,4 @@ export async function fetchDubStreams(
     qOrder(a.quality) - qOrder(b.quality) ||
     sizeNum(a.size) - sizeNum(b.size)
   );
-}
-
-/** Auto-generate the direct link server-side (fast path - no iframe, no
- * clicks, no download dialog). Falls back to the generator-page flow on
- * failure (returned null). */
-export async function resolveDubStream(extractUrl: string): Promise<string | null> {
-  try {
-    const res = await fetch(`/api/dub/resolve?u=${encodeURIComponent(extractUrl)}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return typeof json?.url === "string" && /^https?:\/\//.test(json.url) ? json.url : null;
-  } catch {
-    return null;
-  }
 }

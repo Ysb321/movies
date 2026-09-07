@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import Artplayer from "artplayer";
 import Hls from "hls.js";
-import { fetchDubStreams, resolveDubStream, DubStream } from "@/lib/dub";
+import { fetchDubStreams, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -51,9 +51,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [streams, setStreams] = useState<DubStream[] | null>(null);
   const [current, setCurrent] = useState(-1);
   const [showAll, setShowAll] = useState(false);
-  const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
-  const [resolving, setResolving] = useState(false);
   const [error, setError] = useState("");
   const [paste, setPaste] = useState("");
   const [menu, setMenu] = useState<null | "audio" | "quality" | "subs">(null);
@@ -61,7 +59,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [subUrl, setSubUrl] = useState<string>("");
   const [subInput, setSubInput] = useState("");
   const [tick, setTick] = useState(0); /* re-render menus on hls changes */
-  const inApp = useRef(/electron/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "")).current;
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
 
@@ -75,39 +72,16 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => { dead = true; };
   }, [type, tmdbId, season, episode]);
 
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      const u = (e.data as any)?.yetflixDubUrl;
-      if (typeof u === "string" && /^https?:\/\//.test(u)) {
-        setPlayUrl(u);
-        setPageUrl(null);
-      }
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-
-  useEffect(() => {
-    (window as any).__dubCapture = !!pageUrl && !playUrl;
-    return () => { (window as any).__dubCapture = false; };
-  }, [pageUrl, playUrl]);
-
-  const pick = async (i: number) => {
-    if (!streams?.[i] || resolving) return;
-    setError(""); setPlayUrl(null); setPageUrl(null); setMenu(null); setCurrent(i);
-    /* PenguPlay sources are already direct proxied links - play NOW */
-    if (streams[i].isDirect) { setPlayUrl(streams[i].url); return; }
-    setResolving(true);
-    const direct = await resolveDubStream(streams[i].url);
-    setResolving(false);
-    if (direct) { setPlayUrl(direct); return; }
-    setPageUrl(streams[i].url);
+  /* every PenguPlay stream is a direct proxied link - instant play */
+  const pick = (i: number) => {
+    if (!streams?.[i]) return;
+    setError(""); setPlayUrl(streams[i].url); setMenu(null); setCurrent(i);
   };
 
   const playPasted = () => {
     const u = paste.trim();
     if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
-    setError(""); setPlayUrl(u); setPageUrl(null); setMenu(null);
+    setError(""); setPlayUrl(u); setMenu(null);
   };
 
   /* ── subtitle loading ── */
@@ -306,34 +280,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             {error ? <div className="absolute inset-x-0 top-0 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
             <input ref={fileInput} type="file" accept=".srt,.vtt,.txt" className="hidden" onChange={(e) => onSubFile(e.target.files?.[0])} />
           </>
-        ) : resolving ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
-            <span className="text-[13px] text-neutral-400">Generating link — it will play here automatically…</span>
-          </div>
-        ) : pageUrl ? (
-          <>
-            <iframe
-              key={pageUrl}
-              src={pageUrl}
-              title="Generate link"
-              className="absolute inset-0 h-full w-full border-0 bg-white"
-              sandbox={`allow-scripts allow-same-origin allow-forms allow-popups${inApp ? " allow-downloads" : ""}`}
-            />
-            <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
-              {inApp ? (
-                <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
-              ) : (
-                <>This source needs a manual step — <span className="font-bold text-white">open it in a tab</span>, tap Generate, copy the link, paste it below</>
-              )}
-            </div>
-            {!inApp && (
-              <button onClick={() => window.open(pageUrl, "_blank", "noopener")}
-                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25">
-                Open tab ↗
-              </button>
-            )}
-          </>
         ) : streams === null ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-[13px] text-neutral-400">Finding multi-language sources…</span>
@@ -388,7 +334,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
                         : "bg-amber-900/40 text-amber-300 hover:bg-amber-900/60")
                   }
                 >
-                  {s.quality} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}
+                  {s.quality} · {s.langs.join("+")}{s.size ? ` · ${s.size}` : ""}{s.host && s.host !== "PenguPlay" ? ` · ${s.host}` : ""}
                 </button>
               ))}
             </div>
