@@ -32,6 +32,12 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [paste, setPaste] = useState("");
+  /* the exe captures generated links automatically (navigation hooks);
+   * in a plain browser Cloudflare challenges can't run inside a
+   * cross-origin iframe - there the user opens the generator in a
+   * normal tab (check passes) and pastes the generated link back. */
+  const inApp = useRef(/electron/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "")).current;
 
   const rkey = resumeKeyFor(type, tmdbId, season ?? 1, episode ?? 1);
 
@@ -69,6 +75,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
      * link is captured by the exe's navigation hooks (window flag). */
     setPageUrl(streams[i].url);
     setCurrent(i);
+  };
+
+  const playPasted = () => {
+    const u = paste.trim();
+    if (!/^https?:\/\//i.test(u)) { setError("Paste the generated link (it starts with http)"); return; }
+    setError("");
+    setPlayUrl(u);
+    setPageUrl(null);
   };
 
   /* flag for the desktop capture hooks: while the generator page is
@@ -168,8 +182,35 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
             />
             <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
-              A security check may flash once — then tap <span className="font-bold text-white">Generate / Download</span>; in the app it auto-plays here
+              {inApp ? (
+                <>A security check may flash once — then tap <span className="font-bold text-white">Generate / Download</span>; it auto-plays here</>
+              ) : (
+                <>If the page below won&rsquo;t load — <span className="font-bold text-white">open it in a new tab</span>, tap Generate, copy the link, paste it here</>
+              )}
             </div>
+            {!inApp && (
+              <div className="absolute inset-x-0 bottom-0 z-10 flex items-center gap-1.5 bg-black/85 px-2 py-1.5">
+                <button
+                  onClick={() => window.open(pageUrl, "_blank", "noopener")}
+                  className="shrink-0 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25"
+                >
+                  Open tab ↗
+                </button>
+                <input
+                  value={paste}
+                  onChange={(e) => setPaste(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && playPasted()}
+                  placeholder="paste the generated link (https://…)"
+                  className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
+                />
+                <button
+                  onClick={playPasted}
+                  className="shrink-0 rounded bg-brand px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand/85"
+                >
+                  ▶ Play
+                </button>
+              </div>
+            )}
           </>
         ) : streams === null ? (
           <div className="absolute inset-0 flex items-center justify-center">
