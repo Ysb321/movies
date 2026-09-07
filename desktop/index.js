@@ -302,6 +302,25 @@ if (!app.requestSingleInstanceLock()) {
      * iframes (players run unsandboxed when they demand it; their popups
      * still cannot escape the whitelist) */
     app.on("web-contents-created", (_e, wc) => popupGuard(wc));
+
+    /* Multi Dub auto-capture: tapping Generate/Download in the generator
+     * page triggers a FILE DOWNLOAD (download attr / attachment) - that's
+     * the most reliable signal the link is ready. Intercept it: cancel
+     * the download (nobody wants a 40 GB remux saved to disk), and hand
+     * the direct URL to the player, which auto-plays it. Only fires while
+     * a /watch page is open; normal downloads elsewhere are untouched. */
+    session.defaultSession.on("will-download", (_e, item, wc) => {
+      try {
+        const url = item.getURL();
+        if (DUB_MEDIA.test(url) && !(site && url.startsWith(site)) && /\/watch\//.test(wc.getURL())) {
+          item.cancel();
+          wc.executeJavaScript(
+            "window.__dubCapture && window.postMessage({yetflixDubUrl:" + JSON.stringify(url) + "}, '*')",
+            false
+          ).catch(() => {});
+        }
+      } catch {}
+    });
   });
 
   app.on("window-all-closed", () => app.quit());

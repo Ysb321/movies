@@ -103,6 +103,9 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
+      /* extensionless direct links: tell ArtPlayer when it's HLS so the
+       * hls.js customType kicks in (flexible for ALL link types) */
+      type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) ? "m3u8" : "",
       autoplay: true,
       autoOrientation: true,
       setting: true,
@@ -159,7 +162,13 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     });
     art.on("ended", () => clearResume(rkey));
-    art.on("error", () => setError("This file failed to play (usually a codec or expired link) - generate another chip."));
+    art.on("error", () =>
+      setError(
+        /\.mkv|matroska/i.test(playUrl) || S?.codecNote
+          ? "This file's codec can't play in the app (MKV/Dolby). Pick a WHITE chip (H.264+AAC) or paste an mp4/m3u8 link."
+          : "This link failed to play (expired or unsupported) - generate again or paste another link."
+      )
+    );
     artRef.current = art;
     return () => { art.destroy(false); artRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,33 +192,18 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             />
             <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
               {inApp ? (
-                <>A security check may flash once — then tap <span className="font-bold text-white">Generate / Download</span>; it auto-plays here</>
+                <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
               ) : (
-                <>If the page below won&rsquo;t load — <span className="font-bold text-white">open it in a new tab</span>, tap Generate, copy the link, paste it here</>
+                <>If the page below won&rsquo;t load, <span className="font-bold text-white">open it in a tab</span>, tap Generate, copy the link, paste it below</>
               )}
             </div>
             {!inApp && (
-              <div className="absolute inset-x-0 bottom-0 z-10 flex items-center gap-1.5 bg-black/85 px-2 py-1.5">
-                <button
-                  onClick={() => window.open(pageUrl, "_blank", "noopener")}
-                  className="shrink-0 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25"
-                >
-                  Open tab ↗
-                </button>
-                <input
-                  value={paste}
-                  onChange={(e) => setPaste(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && playPasted()}
-                  placeholder="paste the generated link (https://…)"
-                  className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1 text-[11.5px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
-                />
-                <button
-                  onClick={playPasted}
-                  className="shrink-0 rounded bg-brand px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand/85"
-                >
-                  ▶ Play
-                </button>
-              </div>
+              <button
+                onClick={() => window.open(pageUrl, "_blank", "noopener")}
+                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25"
+              >
+                Open tab ↗
+              </button>
             )}
           </>
         ) : streams === null ? (
@@ -228,9 +222,26 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
         ) : null}
       </div>
 
-      {/* source picker: language / quality / size / host */}
-      {streams && streams.length > 0 ? (
-        <div className="styled-scroll max-h-32 shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 px-2 py-2">
+      {/* manual link box (always available) + source picker */}
+      {!playUrl ? (
+        <div className="styled-scroll max-h-44 shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 px-2 py-2">
+          <div className="mb-2 flex items-center gap-1.5">
+            <input
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && playPasted()}
+              placeholder="paste any video link (mp4 · m3u8 · direct) — Enter to play"
+              className="min-w-0 flex-1 rounded bg-white/10 px-2.5 py-1.5 text-[11.5px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
+            />
+            <button
+              onClick={playPasted}
+              className="shrink-0 rounded bg-brand px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand/85"
+            >
+              ▶ Play link
+            </button>
+          </div>
+          {streams && streams.length > 0 ? (
+            <>
           <div className="mb-1 flex items-center justify-between px-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
               Multi Dub sources ({streams.length})
@@ -256,6 +267,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               </button>
             ))}
           </div>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
