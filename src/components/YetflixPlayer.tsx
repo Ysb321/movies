@@ -95,6 +95,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const pick = async (i: number) => {
     if (!streams?.[i] || resolving) return;
     setError(""); setPlayUrl(null); setPageUrl(null); setMenu(null); setCurrent(i);
+    /* PenguPlay sources are already direct proxied links - play NOW */
+    if (streams[i].isDirect) { setPlayUrl(streams[i].url); return; }
     setResolving(true);
     const direct = await resolveDubStream(streams[i].url);
     setResolving(false);
@@ -136,7 +138,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const art = new Artplayer({
       container: boxRef.current,
       url: playUrl,
-      type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) ? "m3u8" : "",
+      type: /\.m3u8(\?|$)/i.test(playUrl) || /format=m3u8/i.test(playUrl) || /\/hls\//i.test(playUrl) ? "m3u8" : "",
       autoplay: true,
       autoOrientation: true,
       setting: true,

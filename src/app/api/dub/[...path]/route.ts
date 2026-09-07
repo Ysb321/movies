@@ -17,6 +17,13 @@ export const runtime = "edge"; // Cloudflare Pages
 
 const UPSTREAM = "https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club";
 
+/* PenguPlay (pengu.uk) - user-supplied addon with embedded auth token.
+ * GOLD for our player: it PROXIES everything through its own domain -
+ * direct MP4s (pengu.uk/direct/...mp4) and HLS (pengu.uk/hls/...m3u8) -
+ * so its streams are playable AS-IS (no generator, no link resolving). */
+const PENGU = "https://pengu.uk/" +
+  encodeURIComponent(JSON.stringify({ auth_token: "LNN2vJEqRNUjUgBsnSqMRWwI_Pb91VDdIoIDUK4RuyI" }));
+
 const enc = (o: Record<string, string>) => encodeURIComponent(JSON.stringify(o));
 
 /* priority order: richest config first */
@@ -49,19 +56,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
 
   try {
     if (path[0] === "stream") {
-      /* race all configs in parallel; pick the richest that returned streams */
-      const results = await Promise.all(
-        CONFIGS.map((c) => fetchJson(`${UPSTREAM}/${c.seg ? c.seg + "/" : ""}${rest}${search}`))
-      );
-      for (let i = 0; i < CONFIGS.length; i++) {
-        const j = results[i];
-        if (j && Array.isArray(j.streams) && j.streams.length > 0) {
-          return NextResponse.json(j, {
-            headers: { "content-type": "application/json", "cache-control": "public, max-age=120" },
-          });
+      /* PenguPlay first (direct-playable proxied links), WebStreamrMBG
+       * configs raced as fallback - results MERGED so the player offers
+       * every source we have. */
+      const jobs = [
+        fetchJson(`${PENGU}/${rest}${search}`),
+        ...CONFIGS.map((c) => fetchJson(`${UPSTREAM}/${c.seg ? c.seg + "/" : ""}${rest}${search}`)),
+      ];
+      const results = await Promise.all(jobs);
+      const merged: any[] = [];
+      for (const j of results) {
+        if (j && Array.isArray(j.streams)) {
+          for (const st of j.streams) {
+            if (st?.url && typeof st.url === "string" && merged.length < 80) merged.push(st);
+          }
         }
       }
-      return NextResponse.json({ streams: [] }, { headers: { "content-type": "application/json" } });
+      return NextResponse.json(
+        { streams: merged },
+        { headers: { "content-type": "application/json", "cache-control": "public, max-age=120" } }
+      );
     }
 
     /* everything else (extract etc.) - direct passthrough */

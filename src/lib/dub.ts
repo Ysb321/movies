@@ -11,6 +11,7 @@ export type DubStream = {
   codecNote: string;    // "" | "Dolby/DTS audio may be silent in-browser"
   isHls: boolean;       // .m3u8 -> hls.js (true multi-audio switching)
   webSafe: boolean;     // H.264/AAC/MP4/HLS - plays everywhere
+  isDirect?: boolean;   // playable as-is (PenguPlay proxied links)
 };
 
 const LANG_WORDS: [RegExp, string][] = [
@@ -50,20 +51,32 @@ export async function fetchDubStreams(
     const title: string = s.title ?? "";
     const blob = `${name}\n${title}`;
 
-    const quality = (name.match(/(\d{3,4}p)/) ?? [])[1] ?? (title.match(/(4K|2160p|1080p|720p|480p)/i) ?? [])[1] ?? "SD";
-    const langs = LANG_WORDS.filter(([re]) => re.test(blob)).map(([, l]) => l);
+    /* PenguPlay: name/description carry everything (verified live):
+     *   name: "PenguPlay 4K - 2Peckle"   description: "... 1080p - MP4 ...
+     *   Source: 2Peckle ... 2.89 GB ... Audio: English, Hindi" */
+    const isPengu = /pengu\.uk/i.test(s.url);
+    const quality = isPengu
+      ? (/4K/i.test(blob) && !/\d{3,4}p/.test(blob) ? "2160p" : (blob.match(/(\d{3,4}p)/) ?? [])[1] ?? (/4K/i.test(blob) ? "2160p" : "SD"))
+      : (name.match(/(\d{3,4}p)/) ?? [])[1] ?? (title.match(/(4K|2160p|1080p|720p|480p)/i) ?? [])[1] ?? "SD";
+    let langs: string[] = [];
+    const audioLine = (title.match(/\ud83c\udfa7 Audio: ([^\n]+)/) ?? [])[1];
+    if (audioLine) langs = audioLine.split(/,\s*/).filter(Boolean);
+    if (!langs.length) langs = LANG_WORDS.filter(([re]) => re.test(blob)).map(([, l]) => l);
     if (!langs.length) langs.push("—");
-    const size = pick(/💾 ([\d.]+ [GM]B)/, title) ?? "";
-    const host = pick(/🔗 (.+)$/, title) ?? "";
+    const size = pick(/💾 ([\d.]+ ?[GM]B)/, title) ?? "";
+    const host = isPengu ? (pick(/🛰️ Source: ([^\n]+)/, title) ?? "PenguPlay") : (pick(/🔗 (.+)$/, title) ?? "");
     const dolby = /DDP|DD\+|Dolby|EAC3|AC-?3|TrueHD|DTS/i.test(blob);
     const hevc = /HEVC|x265|10bit/i.test(blob);
-    const isHls = /\.m3u8(\?|$)/i.test(s.url);
-    const webSafe = isHls || (!dolby && !hevc);
+    const isHls = /\.m3u8(\?|$)/i.test(s.url) || /\/hls\//i.test(s.url);
+    const mkv = /\.mkv|\bMKV\b/i.test(blob);
+    const webSafe = isHls || (!dolby && !mkv);
+    void hevc;
     out.push({
       url: s.url,
       quality, langs, size, host,
-      codecNote: dolby ? "Dolby audio may be silent in-browser" : hevc ? "HEVC needs a modern PC" : "",
+      codecNote: dolby ? "Dolby audio may be silent in-browser" : mkv && !isPengu ? "MKV container" : hevc ? "HEVC needs a modern PC" : "",
       isHls, webSafe,
+      isDirect: isPengu,
     });
   }
 
@@ -71,6 +84,7 @@ export async function fetchDubStreams(
   const qOrder = (q: string) => (q.includes("1080") ? 0 : q.includes("2160") || /4k/i.test(q) ? 1 : q.includes("720") ? 2 : 3);
   const sizeNum = (s: string) => parseFloat(s) || 0;
   return out.sort((a, b) =>
+    Number(b.isDirect ?? false) - Number(a.isDirect ?? false) ||
     Number(b.webSafe) - Number(a.webSafe) ||
     qOrder(a.quality) - qOrder(b.quality) ||
     sizeNum(a.size) - sizeNum(b.size)
