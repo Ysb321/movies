@@ -17,6 +17,9 @@ const LANG_WORDS: [RegExp, string][] = [
   [/hindi/i, "Hindi"], [/english|eng\b/i, "English"], [/tamil/i, "Tamil"],
   [/telugu/i, "Telugu"], [/malayalam/i, "Malayalam"], [/punjabi/i, "Punjabi"],
   [/gujarati/i, "Gujarati"], [/korean/i, "Korean"], [/dual/i, "Dual"],
+  [/german|deutsch/i, "German"], [/spanish|espa\u00f1ol|castellano/i, "Spanish"],
+  [/french|fran\u00e7ais/i, "French"], [/italian|italiano/i, "Italian"],
+  [/albanian|shqip/i, "Albanian"],
 ];
 
 function pick(re: RegExp, s: string): string | null {
