@@ -19,9 +19,10 @@
  *    embed-only by design). Multi-AUDIO (Hindi/Tamil/English + more)
  *    switchable in-player; postMessage events feed resume tracking.
  *    FilmU-family -> unsandboxed + popups revoked, fullscreen allowed.
- *  - NetOut: netout.pages.dev/watch/movie/{tmdb} for movies and
- *    /watch/{tmdb}/{season}/{episode} for series/anime (routes per user,
- *    matched to their site; the ORIGINAL this clone came from).
+ *  - VidOut (id "netout"): vidout.pages.dev - Netout's BARE PLAYER (no
+ *    profile gate, no site chrome): /watch/movie/{tmdb} + /tv/{tmdb}/S{s}/E{e}
+ *    (both verified live). Multi-audio (Hindi/Tamil/Telugu/Kannada/English),
+ *    Skip Intro, Episodes drawer; the site default player.
  *    Runs VidCore inside with in-player server options; one-time profile
  *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
  *    revoked; noScroll crops their chrome.
@@ -161,27 +162,23 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://vidbolt.xyz/tv/${id}/${s}/${e}`,
   },
   {
+    /* id kept as "netout" for saved-prefs stability; the player itself
+     * is VIDOUT (vidout.pages.dev) - Netout's bare player deployment.
+     * Verified live: NO profile gate, Netflix-style chrome, Skip Intro,
+     * Episodes drawer, Speed & Quality - and MULTI-AUDIO (Hindi, Tamil,
+     * Telugu, Kannada, English seen on GOT) - ideal India-first default.
+     * Routes (verified): movie /watch/movie/{tmdb} (served direct);
+     * series/anime /tv/{tmdb}/S{s}/E{e} (canonical - /watch/tv/{id}/{s}/{e}
+     * redirects there). Unsandboxed (this player family rejects sandbox
+     * flags) + popups revoked; noScroll crops the description section
+     * below the player. */
     id: "netout",
-    name: "NetOut",
-    /* The ORIGINAL site this project was cloned from - full-site server
-     * (BingeR/PVRPlay pattern), user-requested. Their watch page runs
-     * VidCore (vidcore.io - the clone's original engine) with in-player
-     * server options + subtitles. FIRST LOAD ONLY: their "Who's
-     * watching?" gate shows inside the frame - tap any profile once;
-     * the choice persists in their origin's localStorage (app session
-     * in the exe). Unsandboxed because sandbox flags cascade into their
-     * nested VidCore iframe, which was always embedded unsandboxed (see
-     * git history); popups revoked via Permissions-Policy + exe layers.
-     * noScroll crops their page chrome like the other full-site servers.
-     * Routes per user (verified against their site):
-     *   movie: /watch/movie/{tmdb_id}
-     *   series/anime: /watch/{tmdb_id}/{season}/{episode}
-     * Fallback if the gate ever annoys: embed vidcore.io directly. */
+    name: "VidOut",
     denyPopups: true,
     sandbox: false,
     noScroll: true,
-    movie: (id) => `https://netout.pages.dev/watch/movie/${id}`,
-    tv: (id, s, e) => `https://netout.pages.dev/watch/${id}/${s}/${e}`,
+    movie: (id) => `https://vidout.pages.dev/watch/movie/${id}`,
+    tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
   },
   {
     id: "megaplay",
@@ -235,7 +232,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "megaplay"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
