@@ -25,6 +25,15 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=86400" },
         ],
       },
+      {
+        /* ad popups from player iframes open without an opener handle,
+         * so they can never reach back and hijack/redirect our tab.
+         * (No OAuth/popup flows in the app, so same-origin is safe.
+         * NB: never add COEP require-corp - it would block the
+         * cross-origin player iframes themselves.) */
+        source: "/:path*",
+        headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin" }],
+      },
     ];
   },
   async rewrites() {

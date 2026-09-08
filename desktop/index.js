@@ -47,6 +47,15 @@ const HIDE_PROMO_CSS = `
   [class*="telegram" i], [id*="telegram" i] {
     display: none !important;
   }
+  /* generic in-player sponsor/ad overlays (players are unsandboxed when
+   * they demand it, so EasyList network blocking + these cosmetic rules
+   * are what keep frames clean - full-word tokens only, so player
+   * controls never match) */
+  [class*="sponsor" i], [id*="sponsor" i],
+  [class*="advertisement" i], [id*="advertisement" i],
+  [class*="popunder" i], [id*="popunder" i] {
+    display: none !important;
+  }
 `;
 
 const isPopupHost = (url) => {
@@ -73,7 +82,7 @@ const AD_HOSTS = [
   "adnxs.com", "rubiconproject.com", "pubmatic.com", "criteo.com",
   "criteo.net", "smartadserver.net", "adskeeper.com", "adsupply.com",
   "popunder.net", "popunderads.com", "adcron.com", "adspyglass.com",
-  "adplexity.com",
+  "adplexity.com", "monetag.com", "hai8g.com",
 ];
 const AD_URL_HINTS = ["popunder"];
 

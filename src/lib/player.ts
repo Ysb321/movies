@@ -248,9 +248,10 @@ export const PROVIDERS: EmbedProvider[] = [
      * player), in the site's own source order. Nxsha + screenscape +
      * Vidout + GDMirror + Multiverse are TMDB-keyed (verified live
      * 2026-09-08); only Cineverse is slug-keyed (/embed/{slug}, slugs
-     * mirror multimovies slugs). Base armor is unsandboxed + popups
-     * revoked + noScroll; GDMirror overrides to the default sandbox
-     * (its ad popups died only under a real sandbox). */
+     * mirror multimovies slugs). Same iframe armor throughout
+     * (unsandboxed + popups revoked + noScroll): sandboxing was tried
+     * on GDMirror and reverted - their player refuses to play
+     * sandboxed. Sub-player armor overrides still supported. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -286,11 +287,11 @@ export const PROVIDERS: EmbedProvider[] = [
          * backend (rpmshare mirror servers). No frame block. */
         id: "gdmirror",
         name: "GDMirror",
-        /* sandboxed (default tokens, NO allow-popups): their player
-         * throws ad popups on taps, and only a real sandbox kills
-         * window.open even under a user gesture. Playback + Download
-         * (+ fullscreen via the allow list) still work sandboxed. */
-        sandbox: PLAYER_SANDBOX,
+        /* NB: runs UNSANDBOXED like its Server 8 siblings - their player
+         * breaks under any sandbox, so the sandbox experiment was
+         * reverted (their ad popups are the price on the open web: the
+         * browser's popup blocker + COOP same-origin blunt them; the
+         * desktop app denies them outright at the network level). */
         movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}?key=${GDMIRROR_KEY}`,
         tv: (id, s, e) =>
           `https://streams.iqsmartgames.com/embed/tv/${id}/${s}/${e}?key=${GDMIRROR_KEY}`,
