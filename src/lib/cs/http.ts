@@ -38,7 +38,17 @@ export async function rawGet(
   if (res.status < 200 || res.status >= 400) {
     throw new Error(`HTTP ${res.status} ${res.statusText} | ${url.slice(0, 90)}`);
   }
-  return res.text();
+  const text = await res.text();
+  /* Cloudflare "checking browser" pages come back 200 but empty of
+   * content - treat as an error so the provider is retried, not
+   * silently marked done-with-no-results */
+  if (
+    text.length < 6000 &&
+    /just a moment|challenge-platform|cf-browser-verification|_cf_chl/i.test(text)
+  ) {
+    throw new Error(`CF challenge | ${new URL(url).hostname}`);
+  }
+  return text;
 }
 
 export async function rawGetJson<T = any>(
