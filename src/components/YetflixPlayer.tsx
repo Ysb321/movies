@@ -15,7 +15,7 @@ import { MediaPlayer, MediaProvider, type MediaPlayerInstance, TextTrack } from 
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default";
 import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
-import { fetchDubStreams, DubStream } from "@/lib/dub";
+import { fetchDubStreams, resolveDubStream, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -61,6 +61,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [current, setCurrent] = useState(-1);
   const [showAll, setShowAll] = useState(false);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
+  const [genUrl, setGenUrl] = useState<string | null>(null); /* host wants a manual generate step -> frame */
+  const [resolving, setResolving] = useState(false);
   const [nonce, setNonce] = useState(0); /* force player remount on recovery */
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -87,11 +89,12 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
 
   /* the fallback frame is on screen only when HdHub has nothing and
    * nothing is playing - that's when the exe capture hooks are armed */
-  const frameVisible = streams !== null && streams.length === 0 && !playUrl;
+  const frameVisible = streams !== null && streams.length === 0 && !playUrl && !genUrl;
+  const captureArmed = frameVisible || !!genUrl; /* exe capture hooks live while any source frame is up */
   useEffect(() => {
-    (window as any).__dubCapture = frameVisible;
+    (window as any).__dubCapture = captureArmed;
     return () => { (window as any).__dubCapture = false; };
-  }, [frameVisible]);
+  }, [captureArmed]);
 
   /* the exe posts captured media links here (desktop dubCapture hooks) */
   useEffect(() => {
@@ -99,6 +102,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       const u = (e.data as any)?.yetflixDubUrl;
       if (typeof u === "string" && /^https?:\/\//.test(u)) {
         setError("");
+        setGenUrl(null);
         setPlayUrl(u);
         setNonce((n) => n + 1);
       }
@@ -110,17 +114,29 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* every HdHub stream is a direct link - instant play.
    * Codec-limited files (MKV / Dolby / DTS - silent in any browser
    * engine) go to VLC in the exe; falls back to the in-app player. */
-  const pick = async (i: number) => {
-    const st = streams?.[i];
-    if (!st) return;
-    setError(""); 
+  /* play a (possibly extract-endpoint) stream: resolve to the direct
+   * file, then VLC (exe, codec-limited) or the in-app player */
+  const playStream = async (st: DubStream, idx: number) => {
+    setError(""); setGenUrl(null); setCurrent(idx);
+    let url = st.url;
+    if (!st.isDirect) {
+      setResolving(true);
+      url = (await resolveDubStream(st.url)) ?? "";
+      setResolving(false);
+    }
+    if (!url) {
+      /* host wants a manual click: generator frame (exe auto-captures
+       * the download, web pastes it) */
+      setGenUrl(st.url);
+      return;
+    }
     if (inApp && !st.webSafe) {
       const bridge = (window as any).yetflixVlc;
       if (bridge?.play) {
         try {
-          const ok = await bridge.play(st.url);
+          const ok = await bridge.play(url);
           if (ok) {
-            setCurrent(i); setPlayUrl(null);
+            setPlayUrl(null);
             flashNotice("Playing in VLC - switch audio / subtitles with its menus (keys b / v).");
             return;
           }
@@ -128,9 +144,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     }
     resumed.current = false;
-    setPlayUrl(st.url);
+    setPlayUrl(url);
     setNonce((n) => n + 1);
-    setCurrent(i);
+  };
+
+  const pick = (i: number) => {
+    const st = streams?.[i];
+    if (!st || resolving) return;
+    playStream(st, i);
   };
 
   const playPasted = () => {
@@ -172,16 +193,11 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     try {
       const fresh = await fetchDubStreams(type, tmdbId, season, episode);
       setStreams(fresh);
-      const samePath = (u: string) => u.split("?")[0];
       const match =
-        fresh.find((f) => samePath(f.url) === samePath(playUrl ?? "")) ??
-        fresh.find((f) => f.quality === S.quality && f.langs.join() === S.langs.join()) ??
-        fresh.find((f) => f.quality === S.quality);
+        fresh.find((f) => f.quality === S.quality && f.langs.join() === S.langs.join() && f.url !== S.url) ??
+        fresh.find((f) => f.quality === S.quality && f.url !== S.url);
       if (match) {
-        resumed.current = false;
-        setCurrent(fresh.indexOf(match));
-        setPlayUrl(match.url);
-        setNonce((n) => n + 1);
+        await playStream(match, fresh.indexOf(match));
         return true;
       }
     } catch {}
@@ -215,7 +231,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     const S = streams?.[current];
     if (S && !S.webSafe) {
       setError("This file's audio codec (Dolby/MKV) can't play in a browser" + (inApp ? " - VLC handles it, retrying in VLC..." : "") + ".");
-      if (inApp) { pick(current); return; }
+      if (inApp && current >= 0) { playStream(S, current); return; }
       return;
     }
     const handled = await recover();
@@ -261,6 +277,35 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             {error ? <div className="absolute inset-x-0 top-0 z-20 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
             {notice ? <div className="absolute inset-x-0 top-0 z-20 bg-black/85 px-3 py-1.5 text-center text-[12px] font-medium text-white">{notice}</div> : null}
             <input ref={fileInput} type="file" accept=".srt,.vtt,.txt" className="hidden" onChange={(e) => onSubFile(e.target.files?.[0])} />
+          </>
+        ) : resolving ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
+            <span className="text-[13px] text-neutral-400">Generating the direct link — it will play here automatically…</span>
+          </div>
+        ) : genUrl ? (
+          <>
+            <iframe
+              key={genUrl}
+              src={genUrl}
+              title="Generate link"
+              className="absolute inset-0 h-full w-full border-0 bg-white"
+              sandbox={`allow-scripts allow-same-origin allow-forms allow-popups${inApp ? " allow-downloads" : ""}`}
+            />
+            <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
+              {inApp ? (
+                <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
+              ) : (
+                <>This host needs one manual step — <span className="font-bold text-white">generate the link</span>, copy it and paste it below</>
+              )}
+            </div>
+            {!inApp && (
+              <button onClick={() => window.open(genUrl, "_blank", "noopener")}
+                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25">
+                Open tab ↗
+              </button>
+            )}
+            {error ? <div className="absolute inset-x-0 bottom-0 z-10 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
           </>
         ) : streams === null ? (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -320,7 +365,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               <button onClick={() => fileInput.current?.click()} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
                 💡 Subtitle file
               </button>
-              <button onClick={() => { setPlayUrl(null); setError(""); }} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
+              <button onClick={() => { setPlayUrl(null); setGenUrl(null); setError(""); }} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
                 ⇄ Change source
               </button>
             </>
