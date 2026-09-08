@@ -37,16 +37,59 @@ function pick(re: RegExp, s: string): string | null {
   return m ? m[1] : null;
 }
 
-async function resolveImdb(type: "movie" | "tv", tmdbId: string | number): Promise<string> {
+type Meta = { title: string; year: number; imdbId: string };
+
+async function fetchMeta(type: "movie" | "tv", tmdbId: string | number): Promise<Meta> {
   try {
-    const r = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${TMDB_KEY}`, {
-      signal: AbortSignal.timeout(7000),
-    });
+    /* one call: details (title, release date) + external_ids (imdb) */
+    const r = await fetch(
+      `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`,
+      { signal: AbortSignal.timeout(7000) }
+    );
     const j = await r.json().catch(() => null);
-    return j?.imdb_id ?? "";
+    const date: string = j?.release_date ?? j?.first_air_date ?? "";
+    return {
+      title: j?.title ?? j?.name ?? "",
+      year: parseInt(date.slice(0, 4), 10) || 0,
+      imdbId: j?.external_ids?.imdb_id ?? j?.imdb_id ?? "",
+    };
   } catch {
-    return "";
+    return { title: "", year: 0, imdbId: "" };
   }
+}
+
+/* HdHub's search is FUZZY - it happily returns OTHER movies' files for a
+ * title (Deadpool 2016 query -> Deadpool & Wolverine 2024 files). Every
+ * stream is validated against the real TMDB title/year before it becomes
+ * a chip: title token must appear AND the year (if present in the
+ * filename) must match; episodes must additionally contain SxxEyy. */
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+function streamMatches(
+  blob: string,
+  meta: Meta,
+  type: "movie" | "tv",
+  season?: number,
+  episode?: number
+): boolean {
+  const b = norm(blob);
+  const tokens = norm(meta.title).split(" ").filter((w) => w.length > 3);
+  const tokenOK = !tokens.length || tokens.some((t) => b.includes(t));
+
+  if (type === "tv") {
+    if (!tokenOK) return false;
+    const s = season ?? 1, e = episode ?? 1;
+    return (
+      new RegExp(`s0*${s}\\s?e0*${e}\\b`, "i").test(b) ||
+      new RegExp(`(^|\\s)0*${s}x0*${e}(\\s|$)`).test(b)
+    );
+  }
+
+  if (!tokenOK) return false;
+  if (!meta.year) return true;
+  const years = (blob.match(/\b(19|20)\d{2}\b/g) ?? []).map(Number);
+  if (!years.length) return true; /* no year in filename - trust the token */
+  return years.some((y) => Math.abs(y - meta.year) <= 1);
 }
 
 export async function fetchDubStreams(
@@ -57,10 +100,10 @@ export async function fetchDubStreams(
 ): Promise<DubStream[]> {
   const kind = type === "tv" ? "series" : "movie";
   const sep = type === "tv" ? `:${season ?? 1}:${episode ?? 1}` : "";
-  const tt = await resolveImdb(type, tmdbId);
+  const meta = await fetchMeta(type, tmdbId);
 
   /* tt first (hits their cache directly), tmdb: as fallback */
-  const ids = tt ? [`${tt}${sep}`, `tmdb:${tmdbId}${sep}`] : [`tmdb:${tmdbId}${sep}`];
+  const ids = meta.imdbId ? [`${meta.imdbId}${sep}`, `tmdb:${tmdbId}${sep}`] : [`tmdb:${tmdbId}${sep}`];
   let streams: any[] = [];
   for (const id of ids) {
     try {
@@ -80,6 +123,10 @@ export async function fetchDubStreams(
     const name: string = s.name ?? "";
     const desc: string = s.description ?? "";
     const blob = `${name}\n${desc}`;
+
+    /* wrong-title / wrong-episode files are dropped - HdHub's fuzzy
+     * search returns other movies; the fallback embed covers gaps */
+    if (!streamMatches(blob, meta, type, season, episode)) continue;
 
     const quality =
       (name.match(/(\d{3,4}p)/) ?? [])[1] ??

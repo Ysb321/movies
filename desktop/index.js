@@ -2,7 +2,7 @@
  * Bundles the Next.js standalone server (desktop/app) and shows it in an
  * app window. The server runs as a child process using Electron's own
  * binary in Node mode (ELECTRON_RUN_AS_NODE), so no system Node is needed. */
-const { app, BrowserWindow, shell, session } = require("electron");
+const { app, BrowserWindow, shell, session, ipcMain } = require("electron");
 /* uBlock-grade blocking: Ghostery adblocker on EasyList + EasyPrivacy
  * filter lists (github.com/ghostery/adblocker). Optional at runtime - if
  * the package is missing or lists cannot download, the built-in static
@@ -256,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
         contextIsolation: true,
         sandbox: true,
         spellcheck: false,
+        preload: path.join(__dirname, "preload.js"),
       },
     });
 
@@ -318,6 +319,35 @@ if (!app.requestSingleInstanceLock()) {
       } catch {}
     });
 
+  });
+
+  /* Multi Dub: codec-limited files (MKV / Dolby - silent in Chromium)
+   * play in the bundled VLC: every codec, native audio/subtitle switching.
+   * vlc.exe ships next to the app (desktop/vlc -> resources/app/vlc when
+   * packaged; electron-packager includes it automatically). */
+  const vlcExe = () => {
+    const candidates = [
+      path.join(__dirname, "vlc", "vlc.exe"),
+      path.join(process.resourcesPath, "vlc", "vlc.exe"),
+      path.join(path.dirname(process.execPath), "vlc", "vlc.exe"),
+    ];
+    return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) ?? null;
+  };
+  ipcMain.handle("vlc-play", (_e, url) => {
+    try {
+      if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
+      const exe = vlcExe();
+      if (!exe) return false;
+      const child = spawn(
+        exe,
+        [url, "--play-and-exit", "--no-qt-privacy-ask", "--no-plugins-scan", "--no-one-instance"],
+        { detached: true, stdio: "ignore" }
+      );
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
   });
 
   app.on("window-all-closed", () => app.quit());

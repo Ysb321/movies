@@ -82,4 +82,49 @@ if (!fs.existsSync(entry)) {
   process.exit(1);
 }
 
-console.log("[OK] Site bundled at desktop/app. Run: npm run start  or  npm run portable  or  npm run dist");
+/* ── VLC for codec-limited Multi Dub links (MKV / Dolby / DTS) ──
+ * Downloaded ONCE into desktop/vlc/ (kept across builds; the portable
+ * packaging includes it automatically). If it fails the app still works
+ * - those links just play best-effort in the built-in player. */
+async function ensureVlc() {
+  const { spawnSync } = require("child_process");
+  const vlcDir = path.join(__dirname, "..", "vlc");
+  const vlcExe = path.join(vlcDir, "vlc.exe");
+  if (fs.existsSync(vlcExe)) { console.log(">> VLC already present (desktop/vlc)."); return; }
+
+  const VER = "3.0.21";
+  const url = `https://get.videolan.org/vlc/${VER}/win64/vlc-${VER}-win64.zip`;
+  const tmp = path.join(__dirname, "..", "vlc-download.zip");
+  const tmpDir = path.join(__dirname, "..", "vlc-extract");
+  console.log(">> Downloading VLC (one-time, ~50 MB) for full-codec playback...");
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const buf = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(tmp, buf);
+    console.log(">> Extracting VLC...");
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+    /* Windows 10+ ships bsdtar, which handles zip; macOS/Linux tar too */
+    const r = spawnSync("tar", ["-xf", tmp, "-C", tmpDir], { shell: true });
+    if (r.status !== 0) throw new Error("tar exited " + r.status);
+    /* the zip contains a versioned folder - flatten it into desktop/vlc */
+    const inner = fs.readdirSync(tmpDir).find((e) => {
+      try { return fs.statSync(path.join(tmpDir, e)).isDirectory(); } catch { return false; }
+    });
+    if (!inner) throw new Error("zip layout unexpected");
+    fs.rmSync(vlcDir, { recursive: true, force: true });
+    fs.renameSync(path.join(tmpDir, inner), vlcDir);
+    if (!fs.existsSync(vlcExe)) throw new Error("vlc.exe not found after extract");
+    console.log("[OK] VLC ready at desktop/vlc (MKV/Dolby links get full audio).");
+  } catch (e) {
+    console.log("[WARN] VLC download failed (" + (e && e.message ? e.message : e) + ").");
+    console.log("       Codec-limited links will play best-effort in-app.");
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch {}
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+ensureVlc().then(() => {
+  console.log("[OK] Site bundled at desktop/app. Run: npm run start  or  npm run portable  or  npm run dist");
+});

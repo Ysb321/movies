@@ -106,10 +106,28 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  /* every HdHub stream is a direct link - instant play */
-  const pick = (i: number) => {
-    if (!streams?.[i]) return;
-    setError(""); setPlayUrl(streams[i].url); setMenu(null); setCurrent(i);
+  /* every HdHub stream is a direct link - instant play.
+   * Codec-limited files (MKV / Dolby / DTS - silent in Chromium) go to
+   * VLC in the exe: every codec decodes, audio/subtitle switching is
+   * native. Falls back to the in-app player if VLC is missing. */
+  const pick = async (i: number) => {
+    const st = streams?.[i];
+    if (!st) return;
+    setError(""); setMenu(null);
+    if (inApp && !st.webSafe) {
+      const bridge = (window as any).yetflixVlc;
+      if (bridge?.play) {
+        try {
+          const ok = await bridge.play(st.url);
+          if (ok) {
+            setCurrent(i); setPlayUrl(null);
+            setError("Playing in VLC - use its Audio / Subtitle menus (keys b / v) to switch tracks.");
+            return;
+          }
+        } catch {}
+      }
+    }
+    setPlayUrl(st.url); setCurrent(i);
   };
 
   const playPasted = () => {
@@ -385,6 +403,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             <span className="text-3xl">🌐</span>
             <p className="text-sm font-bold">Pick a source below</p>
             <p className="text-[12.5px] text-neutral-400">Dual-audio files (Hindi + English) - tap a chip, it plays instantly.</p>
+            {inApp ? <p className="text-[11.5px] text-neutral-500">Amber chips open in VLC (MKV / Dolby - full audio support).</p> : null}
           </div>
         ) : (
           <>
@@ -443,7 +462,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               </span>
               {hiddenCount > 0 ? (
                 <button onClick={() => setShowAll((v) => !v)} className="text-[10px] font-semibold text-amber-500/90 hover:text-amber-400">
-                  {showAll ? "hide codec-limited" : `+${hiddenCount} codec-limited (may be silent)`}
+                  {showAll ? "hide codec-limited" : `+${hiddenCount} codec-limited${inApp ? " (open in VLC)" : " (may be silent)"}`}
                 </button>
               ) : null}
             </div>
