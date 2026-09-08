@@ -24,6 +24,10 @@ const SERVER = path.join(APP_ROOT, "app", "server.js");
 let child = null;
 let win = null;
 let site = "";
+/* yetflix-vlc:// bridge scheme: the website's VLC buttons target the
+ * installed app, which spawns VLC - this is what makes web taps open
+ * VLC automatically instead of downloading the file. */
+const VLC_PROTO = "yetflix-vlc";
 
 /* Player-friendly popup hosts (the "Open in browser" button / video CDNs).
  * Anything NOT on this list that tries to open a window is an ad popup
@@ -162,17 +166,37 @@ const killServer = () => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  /* macOS protocol launches arrive here (registered early - may fire pre-ready) */
+  app.on("open-url", (e, url) => {
+    try { e.preventDefault(); } catch {}
+    playVlcUrl(url);
+  });
+  app.on("second-instance", (_e, argv) => {
     if (win) {
       if (win.isMinimized()) win.restore();
       win.focus();
     }
+    /* Windows/Linux protocol launch while running: argv carries the url */
+    try {
+      for (const a of argv || []) {
+        if (typeof a === "string" && a.startsWith(VLC_PROTO + "://")) playVlcUrl(a);
+      }
+    } catch {}
   });
 
   /* allow embedded-player media without a user gesture */
   app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
   app.whenReady().then(async () => {
+    /* yetflix-vlc:// bridge: the website's VLC buttons target the installed
+     * app so web taps open VLC instead of downloading (a protocol launch
+     * while closed arrives via argv - handled below + in second-instance). */
+    try { app.setAsDefaultProtocolClient(VLC_PROTO); } catch {}
+    try {
+      for (const a of process.argv || []) {
+        if (typeof a === "string" && a.startsWith(VLC_PROTO + "://")) playVlcUrl(a);
+      }
+    } catch {}
     /* grant media/fullscreen/clipboard permissions to the app session */
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => {
       const ok = ["media", "fullscreen", "clipboard-read", "clipboard-sanitized-write", "pointerLock"].includes(permission);
@@ -342,7 +366,9 @@ if (!app.requestSingleInstanceLock()) {
     ];
     return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) ?? null;
   };
-  ipcMain.handle("vlc-play", (_e, url, headers) => {
+  /* shared VLC launcher: embedded-page IPC + yetflix-vlc:// protocol
+   * links from the website both end up here. */
+  function spawnVlc(url, headers) {
     try {
       if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
       const exe = vlcExe();
@@ -364,7 +390,21 @@ if (!app.requestSingleInstanceLock()) {
     } catch {
       return false;
     }
-  });
+  }
+  /* yetflix-vlc://play?url=<file>&ref=<referer> (website bridge) */
+  function playVlcUrl(raw) {
+    try {
+      const u = new URL(String(raw));
+      if (u.protocol !== VLC_PROTO + ":") return false;
+      const file = u.searchParams.get("url");
+      if (!file || !/^https?:\/\//i.test(file)) return false;
+      const ref = u.searchParams.get("ref");
+      return spawnVlc(file, ref ? { Referer: ref } : undefined);
+    } catch {
+      return false;
+    }
+  }
+  ipcMain.handle("vlc-play", (_e, url, headers) => spawnVlc(url, headers));
 
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", killServer);

@@ -181,8 +181,22 @@ export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: s
       window.location.href = vlcIosUrl(fileUrl);
       return { ok: true, note: "Opening VLC app… (no VLC? install it, then tap again)" };
     }
+    /* PC web browser: no direct VLC hook - fire the Yetflix desktop bridge
+     * (auto-opens VLC when the app is installed; silent no-op otherwise)
+     * and always copy the link as well */
+    try {
+      let ref = "";
+      try {
+        ref = `&ref=${encodeURIComponent(new URL(fileUrl).origin)}`;
+      } catch {}
+      const f = document.createElement("iframe");
+      f.style.display = "none";
+      f.src = `yetflix-vlc://play?url=${encodeURIComponent(fileUrl)}${ref}`;
+      document.body.appendChild(f);
+      setTimeout(() => f.remove(), 4000);
+    } catch {}
     await copyLink();
-    return { ok: false, note: "Link copied — paste it in VLC ▸ Media ▸ Open Network Stream" };
+    return { ok: false, note: "Opening VLC via the Yetflix app… (link copied too)" };
   } catch {
     await copyLink();
     return { ok: false, note: "VLC didn't open — link copied instead" };

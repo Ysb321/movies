@@ -38,7 +38,7 @@ const platformHint = () =>
     ? "Tap a source — it opens in VLC"
     : isAndroid() || isIOS()
       ? "Tap a source — it opens in your VLC app"
-      : "Tap a source — the link is copied for VLC ▸ Open Network Stream";
+      : "Tap a source — opens in VLC via the desktop app (link copied too)";
 
 export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Props) {
   const [status, setStatus] = useState<Status>("loading");
@@ -53,6 +53,7 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
   const [reload, setReload] = useState(0);
   const alive = useRef(true);
   const [hint] = useState(platformHint);
+  const [isPcWeb] = useState(() => !isDesktopVlc() && !isAndroid() && !isIOS());
 
   /* fetch streams (IMDb first when TMDB knows it, TMDB fallback on empty) */
   useEffect(() => {
@@ -262,6 +263,12 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
           <RotateCcwIcon className="h-3.5 w-3.5" />
         </button>
       </div>
+      {isPcWeb && (
+        <div className="border-b border-white/10 px-3 py-1.5 text-[11px] text-neutral-500">
+          Tip: install the Yetflix desktop app — sources then open in VLC with one tap, no
+          downloads.
+        </div>
+      )}
 
       <div className="styled-scroll min-h-0 flex-1 overflow-y-auto p-1.5">
         {status === "loading" && (

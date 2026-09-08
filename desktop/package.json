@@ -29,6 +29,12 @@
       "buildResources": "build"
     },
     "asar": true,
+    "protocols": [
+      {
+        "name": "Yetflix VLC bridge",
+        "schemes": ["yetflix-vlc"]
+      }
+    ],
     "win": {
       "target": [
         {

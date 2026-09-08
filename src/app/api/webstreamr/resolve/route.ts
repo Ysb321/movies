@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
  * that lands ON the file itself is free); if the chain ends at an HTML
  * page (HubCloud-style "link generator" with a Download button), the file
  * link is scraped out of it (query-param handoff first, anchor hrefs
- * second). Anything that still looks like a page comes back as kind:page
- * and the client embeds it for the click-through flow.
+ * second, bare urls in markup third). A cookie jar is kept across hops
+ * (generator sessions need it). Anything that still looks like a page
+ * comes back as kind:page and the client embeds it for the
+ * click-through flow.
  * Private/local targets are refused (no SSRF into the desktop's own
  * localhost server or cloud metadata endpoints). */
 
@@ -27,6 +29,34 @@ const looksFile = (u: string) => /\.(m3u8|mpd|mp4|mkv|webm|m4v|mov|avi)(\?|#|$)/
 const FILE_HOST = /(^|\.)(googleusercontent\.com|googlevideo\.com|drive\.google\.com|dropboxusercontent\.com|gofile\.io|pixeldrain\.com)$/i;
 
 const HREF = /(?:href|data-href|data-url)\s*=\s*["'](https?:\/\/[^"'\s<>]+?)["']/gi;
+
+/* any bare url in markup (onclick handlers, js vars, meta refresh) */
+const ANY_URL = /https?:\/\/[^"'\s<>\\]+/g;
+
+/* cookie jar: edge fetch ships no jar, but generator sessions (second
+ * visit holds the link, bot-check cookies) need continuity across hops */
+const makeJar = () => {
+  const jar = new Map<string, string>();
+  return {
+    header: () => [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; "),
+    collect: (res: Response) => {
+      try {
+        const getAll = (
+          res.headers as unknown as { getSetCookie?: () => string[] }
+        ).getSetCookie;
+        const raws =
+          typeof getAll === "function"
+            ? getAll.call(res.headers)
+            : [res.headers.get("set-cookie") || ""];
+        for (const c of raws) {
+          const pair = c.split(";")[0] || "";
+          const eq = pair.indexOf("=");
+          if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        }
+      } catch {}
+    },
+  };
+};
 
 const json = (body: object, status = 200) =>
   NextResponse.json(body, {
@@ -53,6 +83,7 @@ export async function GET(req: NextRequest) {
   }
 
   const seen = new Set<string>();
+  const jar = makeJar();
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     if (seen.has(current.href)) break;
     seen.add(current.href);
@@ -61,11 +92,12 @@ export async function GET(req: NextRequest) {
       res = await fetch(current.href, {
         redirect: "manual",
         signal: AbortSignal.timeout(HOP_TIMEOUT_MS),
-        headers: { accept: "*/*" },
+        headers: { accept: "*/*", ...(jar.header() ? { cookie: jar.header() } : {}) },
       });
     } catch {
       return json({ ok: false, error: hop === 0 ? "source unreachable" : "resolve failed" }, 502);
     }
+    jar.collect(res);
     const loc = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && loc) {
       let next: URL;
@@ -117,6 +149,23 @@ export async function GET(req: NextRequest) {
         if (links.length >= 10) break;
         try {
           const u = new URL(m[1]);
+          if (
+            /^https?:$/.test(u.protocol) &&
+            !blockedHost(u.hostname) &&
+            (looksFile(u.href) || FILE_HOST.test(u.hostname)) &&
+            !links.includes(u.href)
+          ) {
+            links.push(u.href);
+          }
+        } catch {}
+      }
+      /* 3) bare urls anywhere in the markup (onclick, js vars, meta
+       * refresh) - same strict file/file-host filter, first wins */
+      for (const m of html.matchAll(ANY_URL)) {
+        if (links.length >= 10) break;
+        try {
+          const clean = m[0].replace(/[).,;!?]+$/, "");
+          const u = new URL(clean);
           if (
             /^https?:$/.test(u.protocol) &&
             !blockedHost(u.hostname) &&
