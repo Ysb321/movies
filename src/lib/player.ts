@@ -65,6 +65,13 @@
  *    generator-page scraping, sibling-index fallback, quota checks).
  *    Truly uncrackable pages open in a new tab. New/cam releases may
  *    have zero sources (empty state).
+ *  - Servers 10-18 (free embed APIs, all TMDB-keyed, verified live
+ *    2026-09-09): VidSrc (vidsrc.to), VidLink (vidlink.pro), VidCore
+ *    (vidcore.org, 14 in-player servers), VidFast (vidfast.vc, 4K +
+ *    multi-audio rows), 2Embed (2embed.cc, TMDB numerics on both
+ *    routes), SuperEmbed (multiembed.mov, CF check passes in real
+ *    browsers), MoviesAPI (moviesapi.to), VidSpark (vidspark.to) and
+ *    VidSrc IN (vidsrc.in mirror). Default popup-killing sandbox.
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -390,6 +397,85 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: () => "",
     tv: () => "",
   },
+  {
+    /* Servers 10-18 - free TMDB-keyed embed APIs (verified live
+     * 2026-09-09: Fight Club 550 resolves with title on every movie
+     * route below; TV routes verified on Breaking Bad 1396 S01E01).
+     * All run under the default popup-killing sandbox until a player
+     * proves it needs relaxing - report dead ones, they rotate
+     * domains constantly. */
+    id: "vidsrc",
+    name: "VidSrc",
+    /* the original embed API - plain player shell, no login/key. */
+    movie: (id) => `https://vidsrc.to/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidlink",
+    name: "VidLink",
+    /* multi-server player + subtitles; iframe embed is keyless (only
+     * their JSON API needs a key). */
+    movie: (id) => `https://vidlink.pro/movie/${id}`,
+    tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidcore",
+    name: "VidCore",
+    /* multi-server ArtPlayer (Pacific/Orion/Nova/Armor/Tiki/1Embed/
+     * Cinextream/Filmubox/Movy/Orchestr/Overlook/VAPlayer/VidNest/
+     * Viduki) with anime + subtitle support. */
+    movie: (id) => `https://vidcore.org/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidfast",
+    name: "VidFast",
+    /* multi-server player (vRapid/vEdge/Cobra/Cine/vFast/Horizon/
+     * Bravo, 4K + multi-audio rows), subtitles, quality picker. */
+    movie: (id) => `https://vidfast.vc/movie/${id}`,
+    tv: (id, s, e) => `https://vidfast.vc/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "twoembed",
+    name: "2Embed",
+    /* most reliable of the 2Embed family; TMDB numerics work on both
+     * routes (their own embed code confirms). NB: direct (non-iframe)
+     * hits bounce to a 2embed.skin watch page - inside our iframe it
+     * serves the player, like the thousands of sites embedding it. */
+    movie: (id) => `https://www.2embed.cc/embed/movie/${id}`,
+    tv: (id, s, e) => `https://www.2embed.cc/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "superembed",
+    name: "SuperEmbed",
+    /* multi-server failover; base URL only (directstream.php is dead).
+     * multiembed.mov -> streamingnow.mov redirect is normal; a Cloud-
+     * flare invisible check runs first and passes in real browsers. */
+    movie: (id) => `https://multiembed.mov/${qs({ video_id: id, tmdb: 1 })}`,
+    tv: (id, s, e) => `https://multiembed.mov/${qs({ video_id: id, tmdb: 1, s, e })}`,
+  },
+  {
+    id: "moviesapi",
+    name: "MoviesAPI",
+    /* path is /movie/{id} (the old /embed/movie/{id} is gone). */
+    movie: (id) => `https://moviesapi.to/movie/${id}`,
+    tv: (id, s, e) => `https://moviesapi.to/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidspark",
+    name: "VidSpark",
+    /* same codebase as MoviesAPI, separate deployment. */
+    movie: (id) => `https://vidspark.to/movie/${id}`,
+    tv: (id, s, e) => `https://vidspark.to/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "vidsrcin",
+    name: "VidSrc IN",
+    /* VidSrc mirror (vsembed.ru backend) - failover pill for when
+     * vidsrc.to itself is down; same route scheme. */
+    movie: (id) => `https://vidsrc.in/embed/movie/${id}`,
+    tv: (id, s, e) => `https://vidsrc.in/embed/tv/${id}/${s}/${e}`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -422,7 +508,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

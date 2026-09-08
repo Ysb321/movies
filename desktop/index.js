@@ -95,7 +95,7 @@ const AD_URL_HINTS = ["popunder"];
  * its own network stack, so those headers can be stripped for the known
  * player hosts - making the frame load. (A plain website can never do
  * this: the headers come from the provider's server.) */
-const FRAME_HOSTS = ["pvrplay.online", "bingr.one", "megaplay.buzz", "netout.pages.dev", "vidout.pages.dev", "modiplay.xyz", "web.nxsha.app", "screenscape.me", "iqsmartgames.com", "gamerxyt.com", "hubcloud.ist"]; // full sites + Server 8 players + Server 9 download pages - strip any frame-block headers
+const FRAME_HOSTS = ["pvrplay.online", "bingr.one", "megaplay.buzz", "netout.pages.dev", "vidout.pages.dev", "modiplay.xyz", "web.nxsha.app", "screenscape.me", "iqsmartgames.com", "gamerxyt.com", "hubcloud.ist", "vidsrc.to", "vidsrc.in", "vidlink.pro", "vidcore.org", "vidfast.vc", "2embed.cc", "2embed.skin", "multiembed.mov", "streamingnow.mov", "moviesapi.to", "vidspark.to"]; // full sites + Server 8 players + Server 9 download pages + Servers 10-18 embed APIs - strip any frame-block headers
 const stripFrameHeaders = (details, callback) => {
   try {
     const u = new URL(details.url);
