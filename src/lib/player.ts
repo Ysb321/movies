@@ -37,7 +37,8 @@
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
  *    + TV, Hindi audio by default), Multiverse
- *    (multiverse.modiplay.xyz/embed/{slug} - slug-keyed, movies only)
+ *    (multiverse.modiplay.xyz/embed/{tmdb} + /embed/tv/{tmdb}/{s}/{e}
+ *    - TMDB-keyed, movies + TV)
  *    and Vidout (vidout.pages.dev - movies + TV). NB: cineverse.
  *    pages.dev is an unrelated info-only demo and multiverse.pages.dev
  *    is dead (HTTP 500) - neither is the site's player, never use them.
@@ -245,8 +246,8 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     /* Server 8 - the multimovies.beer sources, embedded as-is (their
      * player), in the site's own source order. Nxsha + screenscape +
-     * Vidout + GDMirror are TMDB-keyed (verified live 2026-09-08);
-     * Cineverse + Multiverse are slug-keyed (/embed/{slug}, slugs
+     * Vidout + GDMirror + Multiverse are TMDB-keyed (verified live
+     * 2026-09-08); only Cineverse is slug-keyed (/embed/{slug}, slugs
      * mirror multimovies slugs). Base armor is unsandboxed + popups
      * revoked + noScroll; GDMirror overrides to the default sandbox
      * (its ad popups died only under a real sandbox). */
@@ -314,20 +315,20 @@ export const PROVIDERS: EmbedProvider[] = [
         tv: (id, s, e) => `https://screenscape.me/embed?tmdb=${id}&type=tv&s=${s}&e=${e}`,
       },
       {
-        /* REAL Multiverse: multiverse.modiplay.xyz/embed/{slug} - same
-         * operator/scheme as Cineverse (verified 2026-09-08:
-         * /embed/spider-man-brand-new-day serves the Multiverse Player
-         * shell: multi-audio tracks, 3 stream servers). The watch page
-         * passes a slugified TMDB title (slugTitle). Movies only - no
-         * TV addressing found (extra path segments redirect to their
-         * cover page). NB: the old multiverse.pages.dev URL was
-         * wrong/dead - never use it. */
+        /* REAL Multiverse: multiverse.modiplay.xyz/embed/{tmdb} +
+         * /embed/tv/{tmdb}/{s}/{e} - TMDB-keyed, movies + TV (verified
+         * 2026-09-08: /embed/969681 renders "Spider-Man: Brand New Day
+         * (2026)", /embed/550 "Fight Club (1999)", /embed/tv/1396/1/1
+         * "Breaking Bad - S01E01": ArtPlayer 5.1.7, Hindi default
+         * audio, HubCloud/GDFlix/Backup servers). NB: /embed/{slug}
+         * only serves a static demo shell (renders even for bogus
+         * slugs - never use it), /embed/{id}/{s}/{e} without the /tv/
+         * segment redirects to their cover page, and the old
+         * multiverse.pages.dev URL was wrong/dead - never use it. */
         id: "multiverse",
         name: "Multiverse",
-        movieOnly: true,
-        slugTitle: true,
-        movie: (slug) => `https://multiverse.modiplay.xyz/embed/${slug}`,
-        tv: () => "",
+        movie: (id) => `https://multiverse.modiplay.xyz/embed/${id}`,
+        tv: (id, s, e) => `https://multiverse.modiplay.xyz/embed/tv/${id}/${s}/${e}`,
       },
       {
         id: "vidout",
