@@ -370,6 +370,11 @@ const absolutize = (link: string, origin: OriginRef): string => {
 /* hosts that 403 Cloudflare-worker egress (WSMBG lesson) - skipped on
  * the deployed site, kept for the desktop exe (user IP works) */
 const SITE_DEAD_HOSTS = /hubcloud\.|zcloud\.|gdflix/i;
+/* cheap extractors first: direct-ish hosts = 1-2 subrequests, gofile
+ * needs 3-4 (wt.obf + account + contents + link) */
+const hostCost = (link: string): number =>
+  /pixeldrain|fastdl|drive\.google|gd\.|1fichier|mega\.nz|mediafire|cfile/i.test(link) ? 0 :
+  /gofile/i.test(link) ? 1 : 2;
 const siteSkip = (link: string | null | undefined, siteMode: boolean): boolean =>
   !!siteMode && !!link && SITE_DEAD_HOSTS.test(link);
 
@@ -503,15 +508,15 @@ export async function listAll(
           for (const e of entries.slice(0, 3)) {
             const dls = Array.isArray(e.directLinks) ? e.directLinks : [];
             if (dls.length) {
-              for (const dl of dls) {
-                if (!dl?.link) continue;
-                if (siteSkip(dl.link, siteMode)) { skippedHosts++; continue; }
-                targets.push(dl.link);
-                if (targets.length >= 4) break;
-              }
+              /* one host per quality entry, cheapest extractor first */
+              const ok = dls
+                .filter((dl: any) => dl?.link && !siteSkip(dl.link, siteMode))
+                .sort((a: any, b: any) => hostCost(a.link) - hostCost(b.link));
+              if (ok.length) targets.push(ok[0].link);
+              else skippedHosts++;
             } else if (e.link && !siteSkip(e.link, siteMode)) targets.push(e.link);
             else if (e.link) skippedHosts++;
-            if (targets.length >= 4) break;
+            if (targets.length >= 3) break;
           }
         }
         if (targets.length) {

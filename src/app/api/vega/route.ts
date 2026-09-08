@@ -14,9 +14,9 @@ export const runtime = "edge"; // Cloudflare Pages
 
 const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
 const BATCH = 6;
-const SITE_FETCH_BUDGET = 44; /* ~50 CF subrequests minus TMDB/urls.json */
+const SITE_FETCH_BUDGET = 38; /* ~50 CF subrequests minus TMDB/urls.json */
 const CACHE_TTL = 1800; // 30 min merged-state TTL
-const CACHE_V = "4"; // bump to flush merged states after engine changes
+const CACHE_V = "5"; // bump to flush merged states after engine changes
 const MAX_TRIES = 5; // providers that keep returning nothing stop retrying
 
 type CacheState = { chips: VegaChip[]; done: string[]; tries?: Record<string, number> };
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
           (!!info && info.matched == null && info.err == null) ||
           (!!info && info.err === "site-skip");
         if (solid) state.done.push(v);
-        else if (info?.budget) {
+        else if (info?.budget || /too many subrequests/i.test(info?.err ?? "")) {
           /* subrequest budget ran out mid-run: retry for free */
         } else state.tries![v] = (state.tries![v] ?? 0) + 1;
       }
