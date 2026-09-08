@@ -1,6 +1,13 @@
 /** "Multi Dub" stream sources - HdHub addon (hdhub.thevolecitor.qzz.io).
  * Hindi/English dual-audio files hosted on Cloudflare R2 + PixelDrain
- * mirrors - every URL is DIRECT and playable as-is (no generators). */
+ * mirrors - every URL is DIRECT and playable as-is (no generators).
+ *
+ * Queried DIRECTLY from the browser (no server hop): HdHub is a Stremio
+ * addon - Stremio-web fetches addons client-side, so it is CORS-open to
+ * browsers - and it blocks server/worker-originated fetches (verified:
+ * the same URL that returns streams to a browser returned nothing to our
+ * Cloudflare function). The IMDb id is resolved client-side via TMDB
+ * (CORS-open, public key) because HdHub's own tmdb: lookups are slow. */
 
 export type DubStream = {
   url: string;
@@ -15,6 +22,9 @@ export type DubStream = {
   codec: string;        // "H.264" (light) | "HEVC" (needs hw decode)
 };
 
+const HDHUB = "https://hdhub.thevolecitor.qzz.io";
+const TMDB_KEY = "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
+
 const LANG_WORDS: [RegExp, string][] = [
   [/hindi|\bhin\b|\bhi\b/i, "Hindi"], [/english|eng\b|\ben\b/i, "English"], [/tamil/i, "Tamil"],
   [/telugu/i, "Telugu"], [/malayalam/i, "Malayalam"], [/punjabi/i, "Punjabi"],
@@ -27,26 +37,46 @@ function pick(re: RegExp, s: string): string | null {
   return m ? m[1] : null;
 }
 
+async function resolveImdb(type: "movie" | "tv", tmdbId: string | number): Promise<string> {
+  try {
+    const r = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${TMDB_KEY}`, {
+      signal: AbortSignal.timeout(7000),
+    });
+    const j = await r.json().catch(() => null);
+    return j?.imdb_id ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export async function fetchDubStreams(
   type: "movie" | "tv",
   tmdbId: string | number,
   season?: number,
   episode?: number
 ): Promise<DubStream[]> {
-  const idPath =
-    type === "tv" ? `tmdb:${tmdbId}:${season ?? 1}:${episode ?? 1}` : `tmdb:${tmdbId}`;
-  const res = await fetch(`/api/dub/stream/${type}/${encodeURIComponent(idPath)}.json`, {
-    headers: { accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => null);
-  const streams: any[] = json?.streams ?? [];
+  const kind = type === "tv" ? "series" : "movie";
+  const sep = type === "tv" ? `:${season ?? 1}:${episode ?? 1}` : "";
+  const tt = await resolveImdb(type, tmdbId);
+
+  /* tt first (hits their cache directly), tmdb: as fallback */
+  const ids = tt ? [`${tt}${sep}`, `tmdb:${tmdbId}${sep}`] : [`tmdb:${tmdbId}${sep}`];
+  let streams: any[] = [];
+  for (const id of ids) {
+    try {
+      const r = await fetch(`${HDHUB}/stream/${kind}/${encodeURIComponent(`${id}.json`)}`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(25000),
+      });
+      const j = await r.json().catch(() => null);
+      const found: any[] = (j?.streams ?? []).filter((s: any) => s?.url && typeof s.url === "string");
+      if (found.length) { streams = found; break; }
+    } catch { /* try the next id form */ }
+  }
 
   const out: DubStream[] = [];
   const seenSizes = new Set<string>();
   for (const s of streams) {
-    if (!s?.url || typeof s.url !== "string") continue; /* donation/discord/no-streams entries */
     const name: string = s.name ?? "";
     const desc: string = s.description ?? "";
     const blob = `${name}\n${desc}`;
