@@ -12,6 +12,7 @@ import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX, slugify } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
+import VlcSources from "@/components/VlcSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -120,6 +121,12 @@ function WatchContent() {
   const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
+    /* WebStreamr (Server 9) renders its own source list (VlcSources) - no
+     * iframe embed to build; clear any stale one from another server. */
+    if (provider.vlcOnly) {
+      setEmbed(null);
+      return;
+    }
     let cancelled = false;
     /* MegaPlay (anime server) has no TMDB ids: resolve the title on
      * AniList, then embed /stream/ani/{id}/{ep}/sub per their docs
@@ -301,6 +308,15 @@ function WatchContent() {
                 This title isn&rsquo;t suitable for kids. Ask a parent to enter the PIN to switch profiles.
               </p>
             </div>
+          ) : provider.vlcOnly ? (
+            <VlcSources
+              key={`${t}-${id}-${season}-${episode}`}
+              type={t}
+              tmdbId={String(id)}
+              imdbId={d?.external_ids?.imdb_id ?? null}
+              season={season}
+              episode={episode}
+            />
           ) : embed ? (
             embed.src ? (
               <iframe

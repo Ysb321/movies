@@ -52,6 +52,15 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
+ *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
+ *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
+ *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
+ *    /api/webstreamr routes and handed to the installed VLC (desktop:
+ *    bundled vlc.exe; Android: vlc intent; iOS: vlc-x-callback; PC web:
+ *    copy-link). No iframe - the watch page renders the source list
+ *    (VlcSources) instead. HubCloud-style download-button pages embed
+ *    on demand; desktop captures the clicked file (__dubCapture) into
+ *    VLC. New/cam releases may have zero sources (empty state).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -100,6 +109,10 @@ export type EmbedProvider = {
   denyPopups?: boolean;
   /** only show this provider on anime titles (watch page filters the pills) */
   animeOnly?: boolean;
+  /** VLC server (WebStreamr): no iframe - the watch page renders the
+   *  addon's source list and hands picked links to the installed VLC.
+   *  movie()/tv() stubs below are never called. */
+  vlcOnly?: boolean;
   /** pill label override (default "Server N") */
   label?: string;
   /** drop "fullscreen" from the iframe allow list - for players that
@@ -343,6 +356,15 @@ export const PROVIDERS: EmbedProvider[] = [
      * TMDB-keyed like the signature expects) */
     movie: (id) => `https://web.nxsha.app/embed/movie/${id}`,
     tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    /* Server 9 - WebStreamr (vlcOnly, see the header doc): movie()/tv()
+     * are never called - the watch page renders VlcSources instead. */
+    id: "webstreamr",
+    name: "WebStreamr",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
   },
   {
     id: "megaplay",
