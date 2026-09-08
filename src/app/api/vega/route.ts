@@ -14,9 +14,10 @@ export const runtime = "edge"; // Cloudflare Pages
 
 const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
 const BATCH = 6;
+const SITE_FETCH_BUDGET = 44; /* ~50 CF subrequests minus TMDB/urls.json */
 const CACHE_TTL = 1800; // 30 min merged-state TTL
-const CACHE_V = "3"; // bump to flush merged states after engine changes
-const MAX_TRIES = 3; // providers that keep returning nothing stop retrying
+const CACHE_V = "4"; // bump to flush merged states after engine changes
+const MAX_TRIES = 5; // providers that keep returning nothing stop retrying
 
 type CacheState = { chips: VegaChip[]; done: string[]; tries?: Record<string, number> };
 
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
   try {
     if (local) {
       const dbg = sp.get("debug") === "1" ? [] : undefined;
-      const chips = await listAll(meta, type, season, episode, undefined, dbg);
+      const chips = await listAll(meta, type, season, episode, undefined, dbg, { siteMode: false, maxFetches: 2000 });
       return NextResponse.json(
         dbg ? { streams: chips, debug: dbg, more: 0 } : { streams: chips, more: 0 },
         { headers: { "cache-control": "no-store" } }
@@ -111,13 +112,20 @@ export async function GET(req: NextRequest) {
 
     let fresh: VegaChip[] = [];
     if (batch.length) {
-      fresh = await listAll(meta, type, season, episode, batch, dbg);
+      fresh = await listAll(meta, type, season, episode, batch, dbg, { siteMode: true, maxFetches: SITE_FETCH_BUDGET });
       const dbgByP = new Map((dbg ?? []).map((x: VegaDebug) => [x.provider, x]));
       for (const v of batch) {
         const info = dbgByP.get(v);
-        const solid = !!info && info.chips > 0; /* matched-but-empty gets retried */
+        /* done = produced chips, cleanly found nothing, or only
+         * site-dead hosts (hubcloud/zcloud - exe still gets them) */
+        const solid =
+          (!!info && info.chips > 0) ||
+          (!!info && info.matched == null && info.err == null) ||
+          (!!info && info.err === "site-skip");
         if (solid) state.done.push(v);
-        else state.tries![v] = (state.tries![v] ?? 0) + 1;
+        else if (info?.budget) {
+          /* subrequest budget ran out mid-run: retry for free */
+        } else state.tries![v] = (state.tries![v] ?? 0) + 1;
       }
       const merged = dedupe([...state.chips, ...fresh]).slice(0, 80);
       const done = Array.from(new Set(state.done));

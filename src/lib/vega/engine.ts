@@ -196,7 +196,7 @@ export type VegaChip = {
 };
 
 type ProviderMod = { value: string; name: string; posts: any; meta: any; stream: any; episodes: any };
-export type VegaDebug = { provider: string; posts: number; titles: string[]; matched: string | null; chips: number; err: string | null };
+export type VegaDebug = { provider: string; posts: number; titles: string[]; matched: string | null; chips: number; err: string | null; budget?: boolean };
 
 const PROVIDERS: ProviderMod[] = [
   { value: "vega", name: "VMovies", posts: VVegaPosts, meta: VVegaMeta, stream: VVegaStream, episodes: VVegaEpisodes },
@@ -306,9 +306,13 @@ const memoryKV = () => {
 };
 
 /* per-provider context: relative urls resolve against the provider's
- * own origin, captured from its first absolute request (the search) */
+ * own origin, captured from its first absolute request (the search).
+ * budget caps total fetches per request (Cloudflare free tier allows
+ * ~50 subrequests per invocation; exhausting it throws a tagged error
+ * so the route can retry that provider on the NEXT request) */
 type OriginRef = { base: string | null };
-const makeContext = (origin: OriginRef) => {
+type Budget = { left: number };
+const makeContext = (origin: OriginRef, budget: Budget) => {
   const resolve = (url: string): string => {
     if (/^https?:/i.test(url)) return url;
     if (url.startsWith("//")) return "https:" + url;
@@ -318,6 +322,12 @@ const makeContext = (origin: OriginRef) => {
     return url;
   };
   const doReq = async (url: string, config: any = {}) => {
+    if (budget.left <= 0) {
+      const err: any = new Error("subrequest budget exceeded");
+      err.__budget = true;
+      throw err;
+    }
+    budget.left--;
     const u = resolve(url);
     const res = await doRequest(u, config);
     if (!origin.base) {
@@ -351,20 +361,26 @@ function postMatches(title: string, wantTitle: string, year: number): boolean {
   return tokens.every((tk) => t.includes(tk)) && yearOk(true);
 }
 
-function episodeEntry(list: any[], episode: number): any | null {
-  const num = new RegExp("(^|[^0-9])0*" + episode + "([^0-9]|$)", "i");
-  return list.find((d) => num.test(d?.title ?? "")) ?? list[episode - 1] ?? null;
-}
-
 const absolutize = (link: string, origin: OriginRef): string => {
   if (link?.startsWith("//")) return "https:" + link;
   if (!link || /^https?:/i.test(link) || !origin.base) return link;
   try { return new URL(link, origin.base).toString(); } catch { return link; }
 };
 
-async function resolveEpisodeLink(m: ProviderMod, link: string, season: number, episode: number, signal: AbortSignal, origin: OriginRef): Promise<string | null> {
+/* hosts that 403 Cloudflare-worker egress (WSMBG lesson) - skipped on
+ * the deployed site, kept for the desktop exe (user IP works) */
+const SITE_DEAD_HOSTS = /hubcloud\.|zcloud\.|gdflix/i;
+const siteSkip = (link: string | null | undefined, siteMode: boolean): boolean =>
+  !!siteMode && !!link && SITE_DEAD_HOSTS.test(link);
+
+/* returns { link } on success; { skippedAll: true } when every
+ * candidate host is site-dead (counts as done, not a retry) */
+async function resolveEpisodeLink(
+  m: ProviderMod, link: string, season: number, episode: number,
+  signal: AbortSignal, origin: OriginRef, budget: Budget, siteMode: boolean
+): Promise<{ link: string } | { skippedAll: true } | null> {
   if (!m.meta) return null;
-  const info = await m.meta.getMeta({ link: absolutize(link, origin), providerContext: makeContext(origin), signal });
+  const info = await m.meta.getMeta({ link: absolutize(link, origin), providerContext: makeContext(origin, budget), signal });
   const seasons = info?.linkList ?? [];
   if (!seasons.length) return null;
   const sNum = new RegExp("(^|[^0-9])0*" + season + "([^0-9]|$)", "i");
@@ -374,18 +390,33 @@ async function resolveEpisodeLink(m: ProviderMod, link: string, season: number, 
     seasons[0];
   if (!sEntry) return null;
   if (Array.isArray(sEntry.directLinks) && sEntry.directLinks.length) {
-    const ep = episodeEntry(sEntry.directLinks, episode);
-    return ep?.link ? absolutize(ep.link, origin) : null;
+    const cands = sEntry.directLinks.filter((x: any) => episodeNum(x?.title) === episode);
+    const pool = cands.length ? cands : sEntry.directLinks;
+    const ok = pool.find((x: any) => x?.link && !siteSkip(x.link, siteMode));
+    if (ok) return { link: absolutize(ok.link, origin) };
+    return pool.some((x: any) => x?.link) ? { skippedAll: true } : null;
   }
   if (sEntry.episodesLink && m.episodes?.getEpisodes) {
-    const eps = await m.episodes.getEpisodes({ url: absolutize(sEntry.episodesLink, origin), providerContext: makeContext(origin), signal });
-    const ep = episodeEntry(eps ?? [], episode);
-    return ep?.link ? absolutize(ep.link, origin) : null;
+    const eps = await m.episodes.getEpisodes({ url: absolutize(sEntry.episodesLink, origin), providerContext: makeContext(origin, budget), signal });
+    const cands = (eps ?? []).filter((x: any) => episodeNum(x?.title) === episode);
+    const pool = cands.length ? cands : (eps ?? []);
+    const ok = pool.find((x: any) => x?.link && !siteSkip(x.link, siteMode));
+    if (ok) return { link: absolutize(ok.link, origin) };
+    return pool.some((x: any) => x?.link) ? { skippedAll: true } : null;
   }
   return null;
 }
 
+const episodeNum = (title: string | null | undefined): number | null => {
+  const m = String(title ?? "").match(/(?:^|[^0-9])0*(\d{1,3})(?:[^0-9]|$)/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return n >= 1 && n <= 500 ? n : null;
+};
+
 export type VegaMeta = { title: string; year: number };
+
+export type VegaOpts = { siteMode?: boolean; maxFetches?: number };
 
 /* run the engine for a SUBSET of providers (batching keeps us under
  * the Cloudflare free-tier 50-subrequests-per-invocation limit; the
@@ -396,9 +427,12 @@ export async function listAll(
   season?: number,
   episode?: number,
   only?: string[],
-  dbg?: VegaDebug[]
+  dbg?: VegaDebug[],
+  opts?: VegaOpts
 ): Promise<VegaChip[]> {
   const signal = AbortSignal.timeout(24000);
+  const siteMode = !!opts?.siteMode;
+  const budget: Budget = { left: opts?.maxFetches ?? 2000 };
   const mods = only ? PROVIDERS.filter((p) => only.includes(p.value)) : PROVIDERS;
   const jobs = mods.map(async (m): Promise<VegaChip[]> => {
     const d: VegaDebug = { provider: m.value, posts: 0, titles: [], matched: null, chips: 0, err: null };
@@ -406,7 +440,7 @@ export async function listAll(
     const origin: OriginRef = { base: null };
     try {
       const posts = await m.posts.getSearchPosts({
-        searchQuery: meta.title, page: 1, providerValue: m.value, signal, providerContext: makeContext(origin),
+        searchQuery: meta.title, page: 1, providerValue: m.value, signal, providerContext: makeContext(origin, budget),
       });
       const clean = (posts ?? []).filter((p: any) => p?.link && p?.title);
       d.posts = clean.length;
@@ -420,10 +454,11 @@ export async function listAll(
         try {
           const streams = await m.stream.getStream({
             link, type: type === "tv" ? "series" : "movie", signal,
-            providerContext: makeContext(origin), isDownload: false,
+            providerContext: makeContext(origin, budget), isDownload: false,
           });
           return (streams ?? []).filter((x: any) => x?.link);
         } catch (e: any) {
+          if (e?.__budget) { d.budget = true; throw e; }
           streamErr = streamErr ?? String(e?.message ?? e).slice(0, 120);
           return [];
         }
@@ -447,31 +482,45 @@ export async function listAll(
 
       let chips: VegaChip[] = [];
       if (type === "tv") {
-        const epLink = await resolveEpisodeLink(m, hit.link, season ?? 1, episode ?? 1, signal, origin);
-        if (!epLink) { d.err = "episode not resolved"; return []; }
-        chips = toChips(await runStream(epLink));
+        const ep = await resolveEpisodeLink(m, hit.link, season ?? 1, episode ?? 1, signal, origin, budget, siteMode);
+        if (!ep) { d.err = "episode not resolved"; return []; }
+        if ("skippedAll" in ep) { d.err = "site-skip"; return []; }
+        chips = toChips(await runStream(ep.link));
       } else {
-        /* linkList-style: post page -> quality entries -> host links */
+        /* linkList-style: post page -> quality entries -> host links.
+         * Take up to 2 hosts per quality entry (max 3 entries, cap 4
+         * targets) - each host extraction costs several subrequests */
         let entries: any[] = [];
         if (m.meta) {
           try {
-            const info = await m.meta.getMeta({ link: absolutize(hit.link, origin), providerContext: makeContext(origin), signal });
+            const info = await m.meta.getMeta({ link: absolutize(hit.link, origin), providerContext: makeContext(origin, budget), signal });
             entries = (info?.linkList ?? []).filter((e: any) => e);
           } catch { entries = []; }
         }
         const targets: string[] = [];
+        let skippedHosts = 0;
         if (entries.length) {
-          for (const e of entries.slice(0, 4)) {
-            const dls = Array.isArray(e.directLinks) ? e.directLinks.slice(0, 4) : [];
+          for (const e of entries.slice(0, 3)) {
+            const dls = Array.isArray(e.directLinks) ? e.directLinks : [];
             if (dls.length) {
-              for (const dl of dls) if (dl?.link) targets.push(dl.link);
-            } else if (e.link) targets.push(e.link);
-            if (targets.length >= 6) break;
+              for (const dl of dls) {
+                if (!dl?.link) continue;
+                if (siteSkip(dl.link, siteMode)) { skippedHosts++; continue; }
+                targets.push(dl.link);
+                if (targets.length >= 4) break;
+              }
+            } else if (e.link && !siteSkip(e.link, siteMode)) targets.push(e.link);
+            else if (e.link) skippedHosts++;
+            if (targets.length >= 4) break;
           }
         }
         if (targets.length) {
-          const batches = await Promise.all(targets.slice(0, 6).map((t) => runStream(t)));
+          const batches = await Promise.all(targets.map((t) => runStream(t)));
           chips = toChips(batches.flat());
+        } else if (skippedHosts && entries.length) {
+          /* only hubcloud/zcloud hosts (site-dead) - done, not retried */
+          d.err = "site-skip";
+          return [];
         } else {
           /* embed-style provider: stream straight off the post page */
           chips = toChips(await runStream(hit.link));
@@ -479,9 +528,10 @@ export async function listAll(
         if (chips.length > 12) chips = chips.slice(0, 12);
       }
       d.chips = chips.length;
-      d.err = chips.length ? null : (streamErr ?? d.err);
+      d.err = chips.length ? null : (d.err === "site-skip" ? d.err : streamErr ?? d.err);
       return chips;
     } catch (e: any) {
+      if (e?.__budget) d.budget = true;
       d.err = String(e?.message ?? e).slice(0, 140);
       return [];
     }

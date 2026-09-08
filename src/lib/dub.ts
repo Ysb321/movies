@@ -111,7 +111,7 @@ export async function fetchDubStreams(
   if (onPartial && acc.length) onPartial(sortChips([...acc]));
 
   let remaining = more;
-  for (let pass = 0; remaining > 0 && pass < 6; pass++) {
+  for (let pass = 0; remaining > 0 && pass < 8; pass++) {
     const next = await fetchPage(type, tmdbId, season, episode);
     remaining = next.more;
     const seen = new Set(acc.map((d) => d.url));
