@@ -35,11 +35,11 @@
  *    movies + TV; TV needs the fixed site key), Nxsha
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
- *    + TV, Hindi audio by default) and Vidout (vidout.pages.dev -
- *    movies + TV). NB: cineverse.pages.dev is an unrelated info-only
- *    demo, NOT the site's Cineverse - never use it. Multiverse
- *    (multiverse.pages.dev) is DOWN (HTTP 500 on every route) - left
- *    out until it recovers.
+ *    + TV, Hindi audio by default), Multiverse
+ *    (multiverse.modiplay.xyz/embed/{slug} - slug-keyed, movies only)
+ *    and Vidout (vidout.pages.dev - movies + TV). NB: cineverse.
+ *    pages.dev is an unrelated info-only demo and multiverse.pages.dev
+ *    is dead (HTTP 500) - neither is the site's player, never use them.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -232,9 +232,9 @@ export const PROVIDERS: EmbedProvider[] = [
     /* Server 8 - the multimovies.beer sources, embedded as-is (their
      * player), in the site's own source order. Nxsha + screenscape +
      * Vidout + GDMirror are TMDB-keyed (verified live 2026-09-08);
-     * Cineverse is slug-keyed (/embed/{slug}, slugs mirror multimovies
-     * slugs). Same iframe armor throughout (unsandboxed + popups
-     * revoked + noScroll). Multiverse 500s on every route - left out. */
+     * Cineverse + Multiverse are slug-keyed (/embed/{slug}, slugs
+     * mirror multimovies slugs). Same iframe armor throughout
+     * (unsandboxed + popups revoked + noScroll). */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -289,6 +289,22 @@ export const PROVIDERS: EmbedProvider[] = [
         name: "screenscape",
         movie: (id) => `https://screenscape.me/embed?tmdb=${id}&type=movie`,
         tv: (id, s, e) => `https://screenscape.me/embed?tmdb=${id}&type=tv&s=${s}&e=${e}`,
+      },
+      {
+        /* REAL Multiverse: multiverse.modiplay.xyz/embed/{slug} - same
+         * operator/scheme as Cineverse (verified 2026-09-08:
+         * /embed/spider-man-brand-new-day serves the Multiverse Player
+         * shell: multi-audio tracks, 3 stream servers). The watch page
+         * passes a slugified TMDB title (slugTitle). Movies only - no
+         * TV addressing found (extra path segments redirect to their
+         * cover page). NB: the old multiverse.pages.dev URL was
+         * wrong/dead - never use it. */
+        id: "multiverse",
+        name: "Multiverse",
+        movieOnly: true,
+        slugTitle: true,
+        movie: (slug) => `https://multiverse.modiplay.xyz/embed/${slug}`,
+        tv: () => "",
       },
       {
         id: "vidout",
@@ -355,7 +371,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "nxsha", "screenscape", "iqsmartgames"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
