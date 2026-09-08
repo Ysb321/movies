@@ -30,17 +30,16 @@
  *    AS-IS (their player, not ours), in the site's own source order:
  *    Cineverse (cineverse.modiplay.xyz/embed/{slug} - slug-keyed,
  *    movies only; slugs mirror multimovies slugs and are derived
- *    from the TMDB title at runtime), Nxsha
+ *    from the TMDB title at runtime), GDMirror (their "Recommended"
+ *    tag: pro.iqsmartgames.com/evid/{token} - opaque per-title tokens
+ *    resolved at runtime via /api/gdmirror, movies only), Nxsha
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
  *    + TV, Hindi audio by default) and Vidout (vidout.pages.dev -
  *    movies + TV). NB: cineverse.pages.dev is an unrelated info-only
- *    demo, NOT the site's Cineverse - never use it. GDMIRROR (their
- *    "Recommended" tag) is NOT TMDB-addressable: per-file tokens
- *    from multimovies' private AJAX (gdmirrorbot.nl now redirects to
- *    a token-walled aggregator) so it cannot be embedded via TMDB id
- *    - left out by design. Multiverse (multiverse.pages.dev) is DOWN
- *    (HTTP 500 on every route) - left out until it recovers.
+ *    demo, NOT the site's Cineverse - never use it. Multiverse
+ *    (multiverse.pages.dev) is DOWN (HTTP 500 on every route) - left
+ *    out until it recovers.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -64,6 +63,9 @@ export type EmbedSubPlayer = {
   /** slug-keyed player (Cineverse): the watch page passes a slugified
    *  TMDB title as the id instead of the TMDB id */
   slugTitle?: boolean;
+  /** async player (GDMirror): no buildable URL - the watch page
+   *  resolves the per-title embed via /api/gdmirror at runtime */
+  needsResolve?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -228,10 +230,10 @@ export const PROVIDERS: EmbedProvider[] = [
     /* Server 8 - the multimovies.beer sources, embedded as-is (their
      * player), in the site's own source order. Nxsha + screenscape +
      * Vidout are TMDB-keyed (verified live 2026-09-08); Cineverse is
-     * slug-keyed (/embed/{slug}, slugs mirror multimovies slugs).
-     * Same iframe armor throughout (unsandboxed + popups revoked +
-     * noScroll). GDMIRROR is per-file tokens (not keyable); Multiverse
-     * 500s on every route - both left out. */
+     * slug-keyed (/embed/{slug}, slugs mirror multimovies slugs);
+     * GDMirror tokens resolve at runtime via /api/gdmirror. Same
+     * iframe armor throughout (unsandboxed + popups revoked +
+     * noScroll). Multiverse 500s on every route - left out. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -252,6 +254,20 @@ export const PROVIDERS: EmbedProvider[] = [
         movieOnly: true,
         slugTitle: true,
         movie: (slug) => `https://cineverse.modiplay.xyz/embed/${slug}`,
+        tv: () => "",
+      },
+      {
+        /* GDMIRROR (their "Recommended" tag): opaque per-title token
+         * embeds - pro.iqsmartgames.com/evid/{id} (302 -> the svid
+         * player, no frame block). Resolved at runtime via our
+         * /api/gdmirror (slug -> movie page -> player AJAX). Verified
+         * 2026-09-08: Spider-Man embeds /evid/vouoyr7 with 6
+         * in-player servers. Movies only for now. */
+        id: "gdmirror",
+        name: "GDMirror",
+        movieOnly: true,
+        needsResolve: true,
+        movie: () => "",
         tv: () => "",
       },
       {
@@ -338,7 +354,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "nxsha", "screenscape"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "nxsha", "screenscape", "iqsmartgames"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
