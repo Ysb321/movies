@@ -31,8 +31,9 @@
  *    Cineverse (cineverse.modiplay.xyz/embed/{slug} - slug-keyed,
  *    movies only; slugs mirror multimovies slugs and are derived
  *    from the TMDB title at runtime), GDMirror (their "Recommended"
- *    tag: streams.iqsmartgames.com/embed - direct multi-server player,
- *    movies + TV; TV needs the fixed site key), Nxsha
+ *    tag: streams.iqsmartgames.com/embed - the exact keyed player their
+ *    page loads (key on movies + TV; keyed mode shows their library
+ *    file view, e.g. the V4/V3 releases on Spider-Man), Nxsha
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
  *    + TV, Hindi audio by default), Multiverse
@@ -124,9 +125,11 @@ export const slugify = (s: string) =>
 export const PLAYER_SANDBOX =
   "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock";
 
-/** GDMirror TV key: fixed site-wide (same key serves every title -
- *  verified with the key from a movie embed on a TV embed). Movies do
- *  not need it, so only TV URLs carry it (less to break if it rotates). */
+/** GDMirror site key: fixed site-wide (same key serves every title).
+ *  BOTH movies + TV carry it: keyless/key-mismatched loads fall back to
+ *  a generic third-party server lineup, while the keyed player shows
+ *  their real library file view (verified 2026-09-08: Spider-Man 969681
+ *  + Fight Club 550 serve their release files with the key). */
 const GDMIRROR_KEY = "e11a7debaaa4f5d25b671706ffe4d2acb56efbd4";
 
 export const PROVIDERS: EmbedProvider[] = [
@@ -258,16 +261,19 @@ export const PROVIDERS: EmbedProvider[] = [
         tv: () => "",
       },
       {
-        /* GDMIRROR (their "Recommended" tag): direct multi-server
-         * embed player - streams.iqsmartgames.com/embed/movie/{tmdb}
-         * + /embed/tv/{tmdb}/{s}/{e} (verified 2026-09-08: Fight Club
-         * + Breaking Bad S1:E1 incl. a Hindi-dubbed source). In-player
-         * servers include multi-audio backends (Autoembed / Videasy /
-         * Vidsrc.wtf). Movies need no key; TV needs the fixed site key.
-         * No frame block on their side. */
+        /* GDMIRROR (their "Recommended" tag): the EXACT player their
+         * page loads - streams.iqsmartgames.com/embed/movie/{tmdb}
+         * + /embed/tv/{tmdb}/{s}/{e}, both with the fixed site key
+         * (verified 2026-09-08: this is the Request URL their own
+         * GDMirror option makes). Keyed mode shows their real library
+         * file view (Spider-Man 969681: V4 HEVC + V3 x264 releases;
+         * Fight Club 550; Breaking Bad S1:E1 incl. Hindi-dubbed). Keyless
+         * loads only get a generic third-party lineup - never drop the
+         * key. Their /evid/{per-title-token} iframe wraps this same
+         * backend (rpmshare mirror servers). No frame block. */
         id: "gdmirror",
         name: "GDMirror",
-        movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}`,
+        movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}?key=${GDMIRROR_KEY}`,
         tv: (id, s, e) =>
           `https://streams.iqsmartgames.com/embed/tv/${id}/${s}/${e}?key=${GDMIRROR_KEY}`,
       },
