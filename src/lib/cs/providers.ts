@@ -25,6 +25,43 @@ export type CsProvider = {
 
 const $n = (html: string) => cheerio.load(html);
 
+/* try each base; remember the last error so dead searches surface in
+ * debug instead of silently reporting "0 posts" */
+async function trySearch(
+  bases: string[],
+  fn: (base: string) => Promise<CsPost[]>
+): Promise<CsPost[]> {
+  let lastErr = "no bases";
+  for (const b of bases) {
+    if (!b) continue;
+    try {
+      return await fn(b);
+    } catch (e: any) {
+      lastErr = String(e?.message ?? e).slice(0, 100);
+    }
+  }
+  throw new Error(`all bases failed (${lastErr})`);
+}
+
+/* search.php JSON family (vegamovies + moviesdrive): hits[].document
+ * keys come in snake_case AND camelCase; permalinks may be relative */
+const searchPhp = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
+  const j = await rawGetJson<any>(
+    `${base}/search.php?q=${encodeURIComponent(query)}&page=1`,
+    budget
+  );
+  const hits: any[] = j?.hits ?? j?.results ?? [];
+  return hits
+    .map((h) => {
+      const d = h?.document ?? h;
+      return {
+        title: String(d?.post_title ?? d?.postTitle ?? ""),
+        link: absolutize(String(d?.permalink ?? d?.url ?? ""), base),
+      };
+    })
+    .filter((p) => p.title && /^https?:/.test(p.link));
+};
+
 /* ---------- shared generic crawler (intermediate download pages) ---------- */
 
 const HOST_RE = /vcloud|hubcloud|gdflix|gdlink|driveseed|driveleech/i;
@@ -106,16 +143,8 @@ export async function crawlHostLinks(
 
 /* ---------- vegamovies (CSX port) ---------- */
 
-const vegaSearch = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
-  const j = await rawGetJson<any>(`${base}/search.php?q=${encodeURIComponent(query)}&page=1`, budget);
-  const hits: any[] = j?.hits ?? j?.results ?? [];
-  return hits
-    .map((h) => ({
-      title: String(h?.document?.post_title ?? h?.document?.title ?? ""),
-      link: String(h?.document?.permalink ?? h?.document?.url ?? ""),
-    }))
-    .filter((p) => p.title && /^https?:/.test(p.link));
-};
+const vegaSearch = (base: string, query: string, budget: Budget): Promise<CsPost[]> =>
+  searchPhp(base, query, budget);
 
 export const vegamovies: CsProvider = {
   value: "vegamovies",
@@ -125,10 +154,7 @@ export const vegamovies: CsProvider = {
   search: async (query, budget) => {
     const urls = await csxUrls(budget);
     const bases = [urls.vegamovies, ...vegamovies.domains].filter(Boolean) as string[];
-    const base = await firstAliveBase(bases, (b) =>
-      vegaSearch(b, query, budget).then((r) => r.length > 0)
-    );
-    return base ? vegaSearch(base, query, budget) : [];
+    return trySearch(bases, (b) => vegaSearch(b, query, budget));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -199,18 +225,8 @@ export const vegamovies: CsProvider = {
 
 /* ---------- moviesdrive (CSX port) ---------- */
 
-const mdSearch = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
-  const html = await rawGet(`${base}/?s=${encodeURIComponent(query)}`, budget);
-  const $ = $n(html);
-  return $("a")
-    .toArray()
-    .map((el) => ({
-      link: absolutize($(el).attr("href"), base),
-      title: $(el).find("p").text() || $(el).attr("title") || "",
-    }))
-    .filter((p) => p.title && /^https?:/.test(p.link) && p.link.includes(base.replace(/\/$/, "")))
-    .slice(0, 12);
-};
+const mdSearch = (base: string, query: string, budget: Budget): Promise<CsPost[]> =>
+  searchPhp(base, query, budget);
 
 export const moviesdrive: CsProvider = {
   value: "moviesdrive",
@@ -220,10 +236,7 @@ export const moviesdrive: CsProvider = {
   search: async (query, budget) => {
     const urls = await csxUrls(budget);
     const bases = [urls.moviesdrive, ...moviesdrive.domains].filter(Boolean) as string[];
-    const base = await firstAliveBase(bases, (b) =>
-      mdSearch(b, query, budget).then((r) => r.length > 0)
-    );
-    return base ? mdSearch(base, query, budget) : [];
+    return trySearch(bases, (b) => mdSearch(b, query, budget));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -263,17 +276,29 @@ export const moviesdrive: CsProvider = {
 
 /* ---------- moviesmod / moviesleech (CSX port) ---------- */
 
-const mmSearch = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
-  const html = await rawGet(`${base}/search/${encodeURIComponent(query)}/page/1`, budget);
+const mmParse = (html: string, base: string): CsPost[] => {
   const $ = $n(html);
-  return $("div.post-cards > article a")
+  const from = $("div.post-cards > article a, article a, h2 a, h3 a")
     .toArray()
     .map((el) => ({
       link: absolutize($(el).attr("href"), base),
       title: ($(el).attr("title") ?? $(el).text() ?? "").replace(/^Download\s+/i, ""),
     }))
-    .filter((p) => p.title && /^https?:/.test(p.link))
+    .filter((p) => p.title.length > 3 && /^https?:/.test(p.link))
     .slice(0, 12);
+  return from;
+};
+
+const mmSearch = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
+  /* theme A: /search/<q>/page/1 (moviesleech style) */
+  try {
+    const r = mmParse(await rawGet(`${base}/search/${encodeURIComponent(query)}/page/1`, budget), base);
+    if (r.length) return r;
+  } catch {
+    /* theme B below */
+  }
+  /* theme B: plain wordpress ?s= */
+  return mmParse(await rawGet(`${base}/?s=${encodeURIComponent(query)}`, budget), base);
 };
 
 export const moviesmod: CsProvider = {
@@ -283,11 +308,12 @@ export const moviesmod: CsProvider = {
   urlsKey: "moviesmod",
   search: async (query, budget) => {
     const urls = await csxUrls(budget);
-    const bases = [urls.moviesmod, urls.moviesleech, ...moviesmod.domains].filter(Boolean) as string[];
-    const base = await firstAliveBase(bases, (b) =>
-      mmSearch(b, query, budget).then((r) => r.length > 0)
-    );
-    return base ? mmSearch(base, query, budget) : [];
+    const bases = [
+      urls.moviesmod,
+      urls.topmovies,
+      ...moviesmod.domains,
+    ].filter(Boolean) as string[];
+    return trySearch(bases, (b) => mmSearch(b, query, budget));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -382,13 +408,7 @@ export const hdhub4u: CsProvider = {
   value: "hdhub4u",
   name: "HDHub4u",
   domains: ["https://hdhub4u.rest", "https://hdhub4u.ltd", "https://hdhub4u.com"],
-  search: async (query, budget) => {
-    try {
-      return await hduSearch(query, budget);
-    } catch {
-      return [];
-    }
-  },
+  search: async (query, budget) => hduSearch(query, budget),
   hostLinks: async (post, opts, budget) => crawlHostLinks(post.link, opts, budget),
 };
 
@@ -412,10 +432,9 @@ export const khdhub4u: CsProvider = {
   name: "4KHDHub",
   domains: ["https://4khdhub.one", "https://4khdhub.pics", "https://4khdhub.fit"],
   search: async (query, budget) => {
-    const base = await firstAliveBase(khdhub4u.domains, (b) =>
-      khSearch(b, query, budget).then((r) => r.length > 0)
-    );
-    return base ? khSearch(base, query, budget) : [];
+    const urls = await csxUrls(budget);
+    const bases = [urls["4khdhub"], ...khdhub4u.domains].filter(Boolean) as string[];
+    return trySearch(bases, (b) => khSearch(b, query, budget));
   },
   hostLinks: async (post, opts, budget) => crawlHostLinks(post.link, opts, budget),
 };
@@ -441,10 +460,7 @@ export const moviezwap: CsProvider = {
   name: "MoviezWap",
   domains: ["https://www.moviezwap.best", "https://moviezwap.best"],
   search: async (query, budget) => {
-    const base = await firstAliveBase(moviezwap.domains, (b) =>
-      mwSearch(b, query, budget).then((r) => r.length > 0)
-    );
-    return base ? mwSearch(base, query, budget) : [];
+    return trySearch(moviezwap.domains, (b) => mwSearch(b, query, budget));
   },
   hostLinks: async (post, opts, budget) => crawlHostLinks(post.link, opts, budget),
 };
