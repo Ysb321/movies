@@ -15,7 +15,7 @@ const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
 const BATCH = 2;
 const SITE_FETCH_BUDGET = 38; /* ~50 CF subrequests minus TMDB/urls.json */
 const CACHE_TTL = 1800; // 30 min
-const CACHE_V = "cs3";
+const CACHE_V = "cs4";
 const MAX_TRIES = 4;
 
 type CacheState = { chips: CsChip[]; done: string[]; tries?: Record<string, number> };

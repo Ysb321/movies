@@ -66,8 +66,9 @@ export async function rawGetResilient(
     const msg = String(e?.message ?? e);
     if (!/HTTP 403|HTTP 429|HTTP 451/i.test(msg)) throw e;
     const proxies = [
-      `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
       `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+      `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
     ];
     for (const px of proxies) {
       try {

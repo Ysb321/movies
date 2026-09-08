@@ -91,7 +91,14 @@ export async function listAll(
 
       const chips: CsChip[] = [];
       const linkErrs: string[] = [];
-      for (const hl of hostLinks.slice(0, 4)) {
+      /* hubcloud entries cost 2+ proxied fetches each (rate-limited) -
+       * try 2 of them; gdflix/others are cheap, try 4 */
+      const isHub = (u: string) => /hubcloud/i.test(u);
+      const ordered = [
+        ...hostLinks.filter((u) => !isHub(u)).slice(0, 4),
+        ...hostLinks.filter(isHub).slice(0, 2),
+      ];
+      for (const hl of ordered.slice(0, 5)) {
         if (budget.left <= 3) break;
         let resolved;
         try {
