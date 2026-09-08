@@ -12,7 +12,6 @@ import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
-import YetflixPlayer from "@/components/YetflixPlayer";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -69,14 +68,22 @@ function WatchContent() {
     [d]
   );
   const providers = useMemo(() => PROVIDERS.filter((p) => !p.animeOnly || isAnime), [isAnime]);
-  /* Multi Dub (in-house FOSS player - generate-link flow) - hidden in
-   * Kids mode (fail-closed: unfiltered external sources). */
-  const dubAllowed = !isKidsActive();
-  const activeId =
-    serverId === "dub" && dubAllowed
-      ? "dub"
-      : providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
-  const provider = getProvider(activeId === "dub" ? providers[0]?.id ?? "vidzee" : activeId);
+  const activeId = providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
+  const provider = getProvider(activeId);
+
+  /* Server 8 (MultiMovies): named sub-players - which of their
+   * TMDB-keyed players is embedded. Reset whenever the server or the
+   * title type changes; defaults to the first player for the type. */
+  const [subPlayerId, setSubPlayerId] = useState<string | null>(null);
+  useEffect(() => { setSubPlayerId(null); }, [serverId, t]);
+  const subPlayers = useMemo(
+    () =>
+      (provider.players ?? []).filter((sp) =>
+        t === "movie" ? !!sp.movie : !sp.movieOnly && !!sp.tv
+      ),
+    [provider, t]
+  );
+  const subPlayer = subPlayers.find((sp) => sp.id === subPlayerId) ?? subPlayers[0] ?? null;
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -91,8 +98,6 @@ function WatchContent() {
 
   useEffect(() => {
     let cancelled = false;
-    /* Multi Dub renders YetflixPlayer (own link-generation + resume) */
-    if (activeId === "dub") { setEmbed(null); return; }
     /* MegaPlay (anime server) has no TMDB ids: resolve the title on
      * AniList, then embed /stream/ani/{id}/{ep}/sub per their docs
      * (megaplay.buzz/api - embed-only, direct nav is disabled). */
@@ -113,10 +118,17 @@ function WatchContent() {
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume }), resumedFrom: resume });
+    /* Server 8: embed the SELECTED sub-player (their player, TMDB-keyed);
+     * download chips never resume (fresh page each time) */
+    const src = subPlayer
+      ? t === "movie"
+        ? subPlayer.movie(embedId)
+        : subPlayer.tv(embedId, season, episode)
+      : embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume });
+    setEmbed({ src, resumedFrom: subPlayer?.download ? undefined : resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, id, season, episode, provider.id, embedId, d, activeId]);
+  }, [t, id, season, episode, provider.id, embedId, d, activeId, subPlayer?.id]);
 
   const startOver = () => {
     clearResume(resumeKeyFor(t, id, season, episode));
@@ -267,10 +279,21 @@ function WatchContent() {
                 This title isn&rsquo;t suitable for kids. Ask a parent to enter the PIN to switch profiles.
               </p>
             </div>
-          ) : activeId === "dub" ? (
-            <YetflixPlayer type={t === "tv" ? "tv" : "movie"} tmdbId={id as string} season={season} episode={episode} />
           ) : embed ? (
             embed.src ? (
+              subPlayer?.download ? (
+                /* the Download chip (DEFE) keeps the old Multi Dub frame
+                 * armor: sandboxed, forms + popups + downloads allowed */
+                <iframe
+                  key={`${t}-${id}-${embed.src}-${reloadKey}`}
+                  src={embed.src}
+                  title={title}
+                  className="h-full w-full bg-white"
+                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer; popups"
+                  sandbox={`${PLAYER_SANDBOX} allow-popups allow-downloads`}
+                  referrerPolicy="origin"
+                />
+              ) : (
               <iframe
                 key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
                 src={embed.src}
@@ -282,6 +305,7 @@ function WatchContent() {
                 allowFullScreen={!provider.denyFullscreen}
                 referrerPolicy="origin"
               />
+              )
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                 <span className="text-4xl">🌸</span>
@@ -293,6 +317,31 @@ function WatchContent() {
             <div className="skeleton h-full w-full rounded-none opacity-50" />
           )}
         </div>
+
+        {/* ── Server 8 player picker (their multi-audio players) ── */}
+        {!kidsBlocked && subPlayers.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Players
+            </span>
+            {subPlayers.map((sp) => (
+              <button
+                key={sp.id}
+                onClick={() => setSubPlayerId(sp.id)}
+                className={clsx(
+                  "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
+                  subPlayer?.id === sp.id
+                    ? sp.download
+                      ? "bg-amber-600 text-white"
+                      : "bg-brand text-white"
+                    : "bg-white/10 text-neutral-300 hover:bg-white/20"
+                )}
+              >
+                {sp.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── Server switcher (below the player; wraps on small screens) ── */}
 
@@ -313,17 +362,6 @@ function WatchContent() {
               {pv.label ?? `Server ${i + 1}`}
             </button>
           ))}
-          {dubAllowed && (
-            <button
-              onClick={() => switchServer("dub")}
-              className={clsx(
-                "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
-                activeId === "dub" ? "bg-brand text-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
-              )}
-            >
-              Multi Dub
-            </button>
-          )}
           <button
             onClick={() => setReloadKey((k) => k + 1)}
             title="Reload player"
