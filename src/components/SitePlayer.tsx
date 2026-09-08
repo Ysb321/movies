@@ -23,6 +23,8 @@ type Props = {
   startAt: number;
   /** resolve a source key to a playable file url (null = failed) */
   onPickSource: (key: string) => Promise<string | null>;
+  /** subtitle tracks (NetMirror Hindi lane) - Hindi auto-loads first */
+  subtitles?: { url: string; name: string; lang: string }[];
   onTimeupdate?: (time: number, duration?: number) => void;
   onError?: () => void;
   onVlc?: () => void;
@@ -37,7 +39,8 @@ type Props = {
  * straight to <video>. Source hops use switchUrl (seamless, resets to 0);
  * resume seeks once after mount. Browser-codec limits still apply
  * (HEVC/Dolby need real VLC) - failures surface via onError and the VLC
- * control stays one tap away. */
+ * control stays one tap away. The Hindi lane passes subtitle tracks -
+ * Hindi auto-loads first (ArtPlayer's own settings toggle them). */
 export default function SitePlayer({
   mountId,
   url,
@@ -45,6 +48,7 @@ export default function SitePlayer({
   sources,
   currentKey,
   startAt,
+  subtitles,
   onPickSource,
   onTimeupdate,
   onError,
@@ -60,8 +64,8 @@ export default function SitePlayer({
   cbs.current = { onError, onVlc, onDownload, onReport, onPickSource, onTimeupdate };
   /* fresh mount values every render (the mount effect reads these, so a
    * remount never plays stale props) */
-  const mountVals = useRef({ url, title, startAt });
-  mountVals.current = { url, title, startAt };
+  const mountVals = useRef({ url, title, startAt, subs: subtitles });
+  mountVals.current = { url, title, startAt, subs: subtitles };
   const [panel, setPanel] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [pickFail, setPickFail] = useState(false);
@@ -75,6 +79,11 @@ export default function SitePlayer({
         if (dead || !host.current) return;
         const init = mountVals.current;
         appliedUrl.current = init.url;
+        const subs = (init.subs || []) as { url: string; name: string; lang: string }[];
+        const defSub =
+          subs.find((s) => s.lang.toLowerCase().startsWith("hi")) ||
+          subs.find((s) => s.lang.toLowerCase().startsWith("en")) ||
+          subs[0];
         const isHls = /\.m3u8(\?|#|$)/i.test(init.url);
         const art = new Artplayer({
           container: host.current,
@@ -94,6 +103,16 @@ export default function SitePlayer({
               } catch {}
             },
           },
+          ...(defSub
+            ? {
+                subtitle: {
+                  url: defSub.url,
+                  type: "srt",
+                  encoding: "utf-8",
+                  style: { color: "#ffffff", "font-size": "20px" },
+                },
+              }
+            : {}),
           title: init.title,
           theme: "#e50914",
           volume: 0.8,

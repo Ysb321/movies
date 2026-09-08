@@ -13,6 +13,7 @@ import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SAN
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
 import VlcSources from "@/components/VlcSources";
+import HindiSources from "@/components/HindiSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -121,7 +122,7 @@ function WatchContent() {
   const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
-    /* WebStreamr (Server 9) renders its own source list (VlcSources) - no
+    /* WebStreamr (Server 9) renders its own source list (VlcSources/HindiSources) - no
      * iframe embed to build; clear any stale one from another server. */
     if (provider.vlcOnly) {
       setEmbed(null);
@@ -309,14 +310,25 @@ function WatchContent() {
               </p>
             </div>
           ) : provider.vlcOnly ? (
-            <VlcSources
-              key={`${t}-${id}-${season}-${episode}`}
-              type={t}
-              tmdbId={String(id)}
-              imdbId={d?.external_ids?.imdb_id ?? null}
-              season={season}
-              episode={episode}
-            />
+            provider.id === "netmirror" ? (
+              <HindiSources
+                key={`nm-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                season={season}
+                episode={episode}
+              />
+            ) : (
+              <VlcSources
+                key={`${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
+                season={season}
+                episode={episode}
+              />
+            )
           ) : embed ? (
             embed.src ? (
               <iframe

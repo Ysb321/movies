@@ -72,6 +72,11 @@
  *    routes), SuperEmbed (multiembed.mov, CF check passes in real
  *    browsers), MoviesAPI (moviesapi.to), VidSpark (vidspark.to) and
  *    VidSrc IN (vidsrc.in mirror). Default popup-killing sandbox.
+ *  - NetMirror (Server 19, vlcOnly Hindi-OTT lane): Indian OTT rips via
+ *    our /api/netmirror routes - direct signed mp4s (360-1080p) + caption
+ *    tracks with Hindi subs auto-loaded, played in the inbuilt site player
+ *    (HindiSources list, own :site-nm resume namespace). Netflix-direct is
+ *    verified live; NewTV Hotstar/Prime/Disney fan-out best-effort.
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -373,6 +378,20 @@ export const PROVIDERS: EmbedProvider[] = [
      * are never called - the watch page renders VlcSources instead. */
     id: "webstreamr",
     name: "WebStreamr",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 19 - NetMirror (vlcOnly Hindi-OTT lane, no iframe - the watch
+     * page renders HindiSources instead; stubs never called). Indian OTT
+     * rips (Netflix/Hotstar/Prime/Disney) via our /api/netmirror routes:
+     * direct signed mp4s + caption tracks, Hindi subs auto-loaded.
+     * Verified live 2026-09-09: Fight Club 550 + RRR 579974 + Breaking
+     * Bad 1396 S01E01 all exact-match with 360-1080p files. NewTV
+     * Hotstar/Prime/Disney fan-out is code-complete but unverified. */
+    id: "netmirror",
+    name: "NetMirror",
     vlcOnly: true,
     movie: () => "",
     tv: () => "",
