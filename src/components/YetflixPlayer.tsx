@@ -15,7 +15,7 @@ import { MediaPlayer, MediaProvider, type MediaPlayerInstance, TextTrack } from 
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default";
 import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
-import { fetchDubStreams, resolveDubStream, DubStream } from "@/lib/dub";
+import { fetchDubStreams, DubStream } from "@/lib/dub";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 
 type Props = {
@@ -61,8 +61,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   const [current, setCurrent] = useState(-1);
   const [showAll, setShowAll] = useState(false);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
-  const [genUrl, setGenUrl] = useState<string | null>(null); /* host wants a manual generate step -> frame */
-  const [resolving, setResolving] = useState(false);
+  const pendingSubs = useRef<DubStream["subs"]>(undefined); /* provider subtitles, added on canplay */
   const [nonce, setNonce] = useState(0); /* force player remount on recovery */
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -89,12 +88,11 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
 
   /* the fallback frame is on screen only when HdHub has nothing and
    * nothing is playing - that's when the exe capture hooks are armed */
-  const frameVisible = streams !== null && streams.length === 0 && !playUrl && !genUrl;
-  const captureArmed = frameVisible || !!genUrl; /* exe capture hooks live while any source frame is up */
+  const frameVisible = streams !== null && streams.length === 0 && !playUrl;
   useEffect(() => {
-    (window as any).__dubCapture = captureArmed;
+    (window as any).__dubCapture = frameVisible;
     return () => { (window as any).__dubCapture = false; };
-  }, [captureArmed]);
+  }, [frameVisible]);
 
   /* the exe posts captured media links here (desktop dubCapture hooks) */
   useEffect(() => {
@@ -102,7 +100,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       const u = (e.data as any)?.yetflixDubUrl;
       if (typeof u === "string" && /^https?:\/\//.test(u)) {
         setError("");
-        setGenUrl(null);
         setPlayUrl(u);
         setNonce((n) => n + 1);
       }
@@ -114,27 +111,15 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* every HdHub stream is a direct link - instant play.
    * Codec-limited files (MKV / Dolby / DTS - silent in any browser
    * engine) go to VLC in the exe; falls back to the in-app player. */
-  /* play a (possibly extract-endpoint) stream: resolve to the direct
-   * file, then VLC (exe, codec-limited) or the in-app player */
+  /* every Vega chip is a DIRECT link - instant play (VLC in the exe
+   * for MKV/download links, VidStack otherwise) */
   const playStream = async (st: DubStream, idx: number) => {
-    setError(""); setGenUrl(null); setCurrent(idx);
-    let url = st.url;
-    if (!st.isDirect) {
-      setResolving(true);
-      url = (await resolveDubStream(st.url)) ?? "";
-      setResolving(false);
-    }
-    if (!url) {
-      /* host wants a manual click: generator frame (exe auto-captures
-       * the download, web pastes it) */
-      setGenUrl(st.url);
-      return;
-    }
+    setError(""); setCurrent(idx);
     if (inApp && !st.webSafe) {
       const bridge = (window as any).yetflixVlc;
       if (bridge?.play) {
         try {
-          const ok = await bridge.play(url);
+          const ok = await bridge.play(st.url);
           if (ok) {
             setPlayUrl(null);
             flashNotice("Playing in VLC - switch audio / subtitles with its menus (keys b / v).");
@@ -144,13 +129,14 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       }
     }
     resumed.current = false;
-    setPlayUrl(url);
+    pendingSubs.current = st.subs;
+    setPlayUrl(st.url);
     setNonce((n) => n + 1);
   };
 
   const pick = (i: number) => {
     const st = streams?.[i];
-    if (!st || resolving) return;
+    if (!st) return;
     playStream(st, i);
   };
 
@@ -182,8 +168,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     addSubtitle(f.name.replace(/\.[^.]+$/, ""), URL.createObjectURL(new Blob([vtt], { type: "text/vtt" })));
   };
 
-  /* ── recovery: signed links expire - refetch and hop to the same
-   *     source (max 2 tries per playback) ── */
+  /* ── recovery: links die - refetch and hop to the same
+   *     quality+language (max 2 tries per playback) ── */
   const recover = async (): Promise<boolean> => {
     const S = streams?.[current];
     if (!S) return false; /* pasted link - nothing to match */
@@ -195,7 +181,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       setStreams(fresh);
       const match =
         fresh.find((f) => f.quality === S.quality && f.langs.join() === S.langs.join() && f.url !== S.url) ??
-        fresh.find((f) => f.quality === S.quality && f.url !== S.url);
+        fresh.find((f) => f.quality === S.quality && f.url !== S.url) ??
+        fresh.find((f) => f.webSafe);
       if (match) {
         await playStream(match, fresh.indexOf(match));
         return true;
@@ -211,6 +198,23 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     clearTimeout(stallTimer.current);
     /* guard against a zero-volume start (the 'no audio' report) */
     if (p.volume === 0 && !p.muted) p.volume = 0.9;
+    /* provider-bundled subtitles (Vega streams) -> Captions menu */
+    if (pendingSubs.current?.length) {
+      const subs = pendingSubs.current;
+      pendingSubs.current = undefined;
+      try {
+        for (const [i, t] of subs.entries()) {
+          const track = new TextTrack({
+            kind: "subtitles",
+            label: t.title || t.language || `Track ${i + 1}`,
+            language: t.language || "en",
+            src: t.uri,
+            type: (t.type?.includes("subrip") ? "srt" : t.type?.includes("ttml") ? "ttml" : "vtt") as any,
+          });
+          p.textTracks.add(track);
+        }
+      } catch {}
+    }
     if (!resumed.current) {
       resumed.current = true;
       const at = getResume(rkey)?.positionSec ?? 0;
@@ -278,35 +282,6 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
             {notice ? <div className="absolute inset-x-0 top-0 z-20 bg-black/85 px-3 py-1.5 text-center text-[12px] font-medium text-white">{notice}</div> : null}
             <input ref={fileInput} type="file" accept=".srt,.vtt,.txt" className="hidden" onChange={(e) => onSubFile(e.target.files?.[0])} />
           </>
-        ) : resolving ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-600 border-t-brand" />
-            <span className="text-[13px] text-neutral-400">Generating the direct link — it will play here automatically…</span>
-          </div>
-        ) : genUrl ? (
-          <>
-            <iframe
-              key={genUrl}
-              src={genUrl}
-              title="Generate link"
-              className="absolute inset-0 h-full w-full border-0 bg-white"
-              sandbox={`allow-scripts allow-same-origin allow-forms allow-popups${inApp ? " allow-downloads" : ""}`}
-            />
-            <div className="absolute inset-x-0 top-0 z-10 bg-black/80 px-3 py-1.5 text-center text-[11.5px] font-medium text-neutral-200">
-              {inApp ? (
-                <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
-              ) : (
-                <>This host needs one manual step — <span className="font-bold text-white">right-click "Download Here" → Copy link address</span>, then paste it below</>
-              )}
-            </div>
-            {!inApp && (
-              <button onClick={() => window.open(genUrl, "_blank", "noopener")}
-                className="absolute right-2 top-9 z-10 rounded bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25">
-                Open tab ↗
-              </button>
-            )}
-            {error ? <div className="absolute inset-x-0 bottom-0 z-10 bg-brand/90 px-3 py-1.5 text-center text-[12px] font-semibold">{error}</div> : null}
-          </>
         ) : streams === null ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-[13px] text-neutral-400">Finding multi-language sources…</span>
@@ -315,7 +290,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <span className="text-3xl">🌐</span>
             <p className="text-sm font-bold">Pick a source below</p>
-            <p className="text-[12.5px] text-neutral-400">Dual-audio files (Hindi + English) - tap a chip, it plays instantly.</p>
+            <p className="text-[12.5px] text-neutral-400">Multi-audio files from 50 source sites (Hindi + English) - tap a chip, it plays instantly.</p>
             {inApp ? <p className="text-[11.5px] text-neutral-500">Amber chips open in VLC (MKV / Dolby - full audio support).</p> : null}
           </div>
         ) : (
@@ -365,7 +340,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               <button onClick={() => fileInput.current?.click()} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
                 💡 Subtitle file
               </button>
-              <button onClick={() => { setPlayUrl(null); setGenUrl(null); setError(""); }} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
+              <button onClick={() => { setPlayUrl(null); setError(""); }} className="shrink-0 rounded bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-neutral-200 hover:bg-white/20">
                 ⇄ Change source
               </button>
             </>
