@@ -82,6 +82,9 @@
  *    links (V-Cloud/HubCloud/GDFlix/GDLink) cracked on tap with FSL fast
  *    links first, played in the site player (DdlSources list, own :site-dd
  *    resume namespace). Ported from the Megix CSX CloudStream providers.
+ *  - Super Player (hdmovies-online.com's player, labeled pill, movies
+ *    only): slast430did.com/play/{imdb} (user-pasted embed). Bot-gated -
+ *    live browser check pending (referer-lock would kill it).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -130,6 +133,8 @@ export type EmbedProvider = {
   denyPopups?: boolean;
   /** only show this provider on anime titles (watch page filters the pills) */
   animeOnly?: boolean;
+  /** only show this provider on movies (TV pattern unknown) */
+  movieOnly?: boolean;
   /** VLC server (WebStreamr): no iframe - the watch page renders the
    *  addon's source list and hands picked links to the installed VLC.
    *  movie()/tv() stubs below are never called. */
@@ -417,6 +422,24 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
+    /* Super Player (hdmovies-online.com's own "Video Sources" player -
+     * user-named pill). IMDb-keyed (prefersImdb falls back to TMDB id
+     * when TMDB knows no IMDb id), movies only (their TV pattern is
+     * still unknown). Verified 2026-09-09: their Tula Pahta page embeds
+     * https://slast430did.com/play/tt41977221 (user-pasted iframe).
+     * CAUTION: bot-gated ("Video Not Found !" + "We are offline now."
+     * to probes) - needs a live browser check: if our embed plays, the
+     * gate is UA-only; if it shows Not Found, it is referer-locked to
+     * their site and this entry must go. Default popup-killing sandbox. */
+    id: "superplayer",
+    name: "Super Player",
+    label: "Super Player",
+    prefersImdb: true,
+    movieOnly: true,
+    movie: (id) => `https://slast430did.com/play/${id}`,
+    tv: (id) => `https://slast430did.com/play/${id}`,
+  },
+  {
     id: "megaplay",
     name: "MegaPlay",
     /* anime-only server (pill label: "Anime 1", shown only on anime
@@ -547,7 +570,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark", "slast430did"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
