@@ -1,16 +1,56 @@
 /* Multi Dub sources via the Vega provider engine (vega-providers).
- * One call: resolve TMDB title/year, search all providers in parallel,
- * validate titles, resolve TV episodes, run getStream - returns direct
- * playable chips. Success cached 5 min at the edge; empty never cached.
- * Runs in BOTH the deployed site (edge) and the exe's local server
- * (user's IP - hosts that block Cloudflare workers still work there). */
+ * Cloudflare free tier caps a Worker invocation at ~50 subrequests -
+ * 49 providers need far more - so on the SITE we run providers in
+ * batches of 8 per request and merge results into an edge-cached
+ * state (30 min) keyed by title; repeat requests (the player tops up
+ * automatically) accumulate coverage across ALL providers. The
+ * desktop exe's local server has no such limit: it runs everything
+ * in one shot. Runs TMDB -> engine -> DIRECT playable chips. */
 import { NextRequest, NextResponse } from "next/server";
-import { listAll } from "@/lib/vega/engine";
+import { listAll, VEGA_PROVIDER_VALUES, VegaChip, VegaDebug } from "@/lib/vega/engine";
 
 export const dynamic = "force-dynamic";
 export const runtime = "edge"; // Cloudflare Pages
 
 const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
+const BATCH = 8;
+const CACHE_TTL = 1800; // 30 min merged-state TTL
+
+type CacheState = { chips: VegaChip[]; done: string[] };
+
+async function readCache(key: string): Promise<CacheState | null> {
+  try {
+    const c = (globalThis as any).caches?.default;
+    if (!c) return null;
+    const r = await c.match(new Request(key));
+    if (!r) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function writeCache(key: string, state: CacheState) {
+  try {
+    const c = (globalThis as any).caches?.default;
+    if (!c) return;
+    await c.put(
+      new Request(key),
+      new Response(JSON.stringify(state), {
+        headers: { "content-type": "application/json", "cache-control": `max-age=${CACHE_TTL}` },
+      })
+    );
+  } catch {}
+}
+
+const dedupe = (chips: VegaChip[]): VegaChip[] => {
+  const seen = new Set<string>();
+  const out: VegaChip[] = [];
+  for (const c of chips) {
+    if (seen.has(c.link)) continue;
+    seen.add(c.link);
+    out.push(c);
+  }
+  return out;
+};
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -35,15 +75,49 @@ export async function GET(req: NextRequest) {
       const date: string = j?.release_date ?? j?.first_air_date ?? "";
       meta = { title: j?.title ?? j?.name ?? "", year: parseInt(date.slice(0, 4), 10) || 0 };
     } catch {}
+    if (!meta.title) return NextResponse.json({ streams: [], error: "no meta" }, { headers: { "cache-control": "no-store" } });
   }
-  if (!meta.title) return NextResponse.json({ streams: [], error: "no meta" });
+
+  /* exe / local dev / ?full=1 -> everything in one shot, no batching */
+  const local =
+    sp.get("full") === "1" || /localhost|127\.0\.0\.1/i.test(req.nextUrl.hostname ?? "");
+  const cacheKey = `https://vega-cache.local/${type}/${tmdb}/${season}/${episode}`;
 
   try {
+    if (local) {
+      const dbg = sp.get("debug") === "1" ? [] : undefined;
+      const chips = await listAll(meta, type, season, episode, undefined, dbg);
+      return NextResponse.json(
+        dbg ? { streams: chips, debug: dbg, more: 0 } : { streams: chips, more: 0 },
+        { headers: { "cache-control": "no-store" } }
+      );
+    }
+
+    /* batched site mode: merge with whatever earlier batches found */
+    const state = (await readCache(cacheKey)) ?? { chips: [], done: [] };
+    const doneSet = new Set(state.done);
+    const pending = VEGA_PROVIDER_VALUES.filter((v) => !doneSet.has(v));
+    const batch = pending.slice(0, BATCH);
     const dbg = sp.get("debug") === "1" ? [] : undefined;
-    const chips = await listAll(meta, type, season, episode, dbg);
+
+    let fresh: VegaChip[] = [];
+    if (batch.length) {
+      fresh = await listAll(meta, type, season, episode, batch, dbg);
+      const merged = dedupe([...state.chips, ...fresh]).slice(0, 80);
+      const done = Array.from(new Set([...state.done, ...batch]));
+      const keep = done.filter((v) => VEGA_PROVIDER_VALUES.includes(v));
+      await writeCache(cacheKey, { chips: merged, done: keep });
+      const remaining = VEGA_PROVIDER_VALUES.filter((v) => !keep.includes(v)).length;
+      return NextResponse.json(
+        dbg ? { streams: merged, debug: dbg, more: remaining } : { streams: merged, more: remaining },
+        { headers: { "cache-control": "no-store" } }
+      );
+    }
+
+    /* all batches already ran for this title - serve the cached set */
     return NextResponse.json(
-      dbg ? { streams: chips, debug: dbg } : { streams: chips },
-      { headers: chips.length ? { "cache-control": "public, max-age=300" } : { "cache-control": "no-store" } }
+      dbg ? { streams: state.chips, more: 0 } : { streams: state.chips, more: 0 },
+      { headers: { "cache-control": "no-store" } }
     );
   } catch (e: any) {
     return NextResponse.json({ streams: [], error: e?.message ?? "engine failed" }, {

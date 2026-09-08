@@ -30,55 +30,79 @@ type VegaChip = {
   subtitles?: { title: string; language: string; uri: string; type: string }[];
 };
 
-export async function fetchDubStreams(
-  type: "movie" | "tv",
-  tmdbId: string | number,
-  season?: number,
-  episode?: number
-): Promise<DubStream[]> {
-  const q = new URLSearchParams({ type, tmdb: String(tmdbId) });
-  if (type === "tv") { q.set("season", String(season ?? 1)); q.set("episode", String(episode ?? 1)); }
-  let chips: VegaChip[] = [];
-  try {
-    const r = await fetch(`/api/vega?${q.toString()}`, { headers: { accept: "application/json" } });
-    const j = await r.json().catch(() => null);
-    const s: any[] = j?.streams ?? [];
-    chips = Array.isArray(s) ? s.filter((c) => c?.link) : [];
-  } catch {
-    return [];
-  }
+const toDub = (c: VegaChip): DubStream => {
+  const blob = `${c.server ?? ""} ${c.title ?? ""}`;
+  const quality = c.quality ? `${c.quality}p` : (/2160|4k/i.test(blob) ? "2160p" : /1080/i.test(blob) ? "1080p" : /720/i.test(blob) ? "720p" : "Auto");
+  let langs = LANG_WORDS.filter(([re]) => re.test(blob)).map(([, l]) => l);
+  if (!langs.length) langs = ["—"];
+  const isMkv = /mkv/i.test(String(c.type)) || /\.mkv(\?|$)/i.test(c.link) || /gdrive|gofile|hubcdn|cf storage/i.test(blob);
+  const isHls = /m3u8/i.test(String(c.type)) || /\.m3u8(\?|$)/i.test(c.link);
+  const webSafe = isHls || (!isMkv && /mp4|webm/i.test(String(c.type) || "mp4"));
+  return {
+    url: c.link,
+    quality, langs,
+    size: "",
+    host: `${c.provider} · ${c.server ?? ""}`.replace(/ ·$/, ""),
+    codecNote: isMkv ? "MKV / download link - VLC handles it (exe)" : "",
+    isHls,
+    webSafe,
+    isDirect: true,
+    codec: /hevc|x265|10bit|4k|2160/i.test(blob) ? "HEVC" : "H.264",
+    subs: Array.isArray(c.subtitles) ? c.subtitles : undefined,
+  };
+};
 
-  const out: DubStream[] = [];
-  for (const c of chips) {
-    const blob = `${c.server ?? ""} ${c.title ?? ""}`;
-    const quality = c.quality ? `${c.quality}p` : (/2160|4k/i.test(blob) ? "2160p" : /1080/i.test(blob) ? "1080p" : /720/i.test(blob) ? "720p" : "Auto");
-    let langs = LANG_WORDS.filter(([re]) => re.test(blob)).map(([, l]) => l);
-    if (!langs.length) langs = ["—"];
-
-    const isMkv = /mkv/i.test(String(c.type)) || /\.mkv(\?|$)/i.test(c.link) || /gdrive|gofile|hubcdn|cf storage/i.test(blob);
-    const isHls = /m3u8/i.test(String(c.type)) || /\.m3u8(\?|$)/i.test(c.link);
-    const webSafe = isHls || (!isMkv && /mp4|webm/i.test(String(c.type) || "mp4"));
-
-    out.push({
-      url: c.link,
-      quality, langs,
-      size: "",
-      host: `${c.provider} · ${c.server ?? ""}`.replace(/ ·$/, ""),
-      codecNote: isMkv ? "MKV / download link - VLC handles it (exe)" : "",
-      isHls,
-      webSafe,
-      isDirect: true,
-      codec: /hevc|x265|10bit|4k|2160/i.test(blob) ? "HEVC" : "H.264",
-      subs: Array.isArray(c.subtitles) ? c.subtitles : undefined,
-    });
-  }
-
-  /* HLS first (quality + audio menus in VidStack), then mp4, then the
-   * rest sorted by quality */
+const sortChips = (list: DubStream[]) => {
   const qOrder = (q: string) => (q.includes("1080") ? 0 : q.includes("2160") || /4k/i.test(q) ? 1 : q.includes("720") ? 2 : q.includes("Auto") ? 3 : 4);
-  return out.sort((a, b) =>
+  return list.sort((a, b) =>
     Number(b.isHls) - Number(a.isHls) ||
     Number(b.webSafe) - Number(a.webSafe) ||
     qOrder(a.quality) - qOrder(b.quality)
   );
+};
+
+/* one page of results from /api/vega (the site batches providers per
+ * request - `more` = providers still pending for this title) */
+async function fetchPage(type: "movie" | "tv", tmdbId: string | number, season?: number, episode?: number) {
+  const q = new URLSearchParams({ type, tmdb: String(tmdbId) });
+  if (type === "tv") { q.set("season", String(season ?? 1)); q.set("episode", String(episode ?? 1)); }
+  try {
+    const r = await fetch(`/api/vega?${q.toString()}`, { headers: { accept: "application/json" } });
+    const j = await r.json().catch(() => null);
+    const s: any[] = j?.streams ?? [];
+    const chips: VegaChip[] = Array.isArray(s) ? s.filter((c) => c?.link) : [];
+    return { chips, more: typeof j?.more === "number" ? (j.more as number) : 0 };
+  } catch {
+    return { chips: [] as VegaChip[], more: 0 };
+  }
 }
+
+/* full load: paint the first page instantly, then silently top up
+ * with the remaining provider batches (max 6 passes) */
+export async function fetchDubStreams(
+  type: "movie" | "tv",
+  tmdbId: string | number,
+  season?: number,
+  episode?: number,
+  onPartial?: (streams: DubStream[]) => void
+): Promise<DubStream[]> {
+  const { chips, more } = await fetchPage(type, tmdbId, season, episode);
+  let acc = chips.map(toDub);
+  if (!acc.length && !more) return [];
+  if (onPartial && acc.length) onPartial(sortChips([...acc]));
+
+  let remaining = more;
+  for (let pass = 0; remaining > 0 && pass < 6; pass++) {
+    const next = await fetchPage(type, tmdbId, season, episode);
+    remaining = next.more;
+    const seen = new Set(acc.map((d) => d.url));
+    const fresh = next.chips.map(toDub).filter((d) => !seen.has(d.url));
+    if (fresh.length) {
+      acc = [...acc, ...fresh];
+      onPartial?.(sortChips([...acc]));
+    }
+  }
+  return sortChips(acc);
+}
+
+

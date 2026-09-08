@@ -80,7 +80,11 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     let dead = false;
     setStreams(null);
     setError("");
-    fetchDubStreams(type, tmdbId, season, episode)
+    fetchDubStreams(type, tmdbId, season, episode, (partial) => {
+      /* progressive top-up: paint the first provider batch instantly,
+       * later batches append while the user browses the chips */
+      if (!dead && partial.length) setStreams(partial);
+    })
       .then((s) => { if (!dead) setStreams(s); })
       .catch(() => { if (!dead) setStreams([]); });
     return () => { dead = true; };
