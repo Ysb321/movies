@@ -275,9 +275,11 @@ if (!app.requestSingleInstanceLock()) {
      * window, so the postMessage must ALWAYS be executed on
      * win.webContents; the flag itself is the gate. */
     const DUB_MEDIA = /googleusercontent|drive\.usercontent|videoplayback|\.(m3u8|mp4|mkv|webm|m4v|avi|mov|mpd)(\?|$)/i;
-    const dubCapture = (url) => {
+    const dubCapture = (url, force) => {
       try {
-        if (typeof url === "string" && DUB_MEDIA.test(url) && !(site && url.startsWith(site)) && win && !win.isDestroyed()) {
+        /* force: triggered by an actual download event - any file the
+         * user tried to download from the embedded site counts */
+        if (typeof url === "string" && (force || DUB_MEDIA.test(url)) && !(site && url.startsWith(site)) && win && !win.isDestroyed()) {
           win.webContents.executeJavaScript(
             "if (window.__dubCapture) window.postMessage({yetflixDubUrl:" + JSON.stringify(url) + "}, '*')",
             false
@@ -312,7 +314,7 @@ if (!app.requestSingleInstanceLock()) {
       try {
         const url = item.getURL();
         e.preventDefault();
-        dubCapture(url);
+        dubCapture(url, true);
       } catch {}
     });
 
