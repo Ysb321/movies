@@ -14,6 +14,8 @@ import {
   isIOS,
   type WsRow,
 } from "@/lib/vlc";
+import { fmtTime } from "@/lib/player";
+import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 import SitePlayer from "@/components/SitePlayer";
 import { PlayIcon, RotateCcwIcon, CheckIcon, ChevronIcon } from "@/components/Icons";
 
@@ -38,6 +40,8 @@ const LOAD_LINES = [
  * or black screen) - shown as a heads-up, never a block */
 const NEEDS_VLC_HINT = /x265|hevc|h\.?265|ddp|dts|truehd|atmos/i;
 
+const isHlsFile = (u: string) => /\.m3u8(\?|#|$)/i.test(u);
+
 const platformHint = () =>
   isDesktopVlc()
     ? "Tap a source — it plays here, or opens in VLC"
@@ -59,15 +63,22 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     label: string;
     filename: string;
     rowKey: string;
+    startAt: number;
+    mountId: string;
   } | null>(null);
   const [playError, setPlayError] = useState(false);
   const [pnote, setPnote] = useState("");
   const [copied, setCopied] = useState(false);
   const [reload, setReload] = useState(0);
   const alive = useRef(true);
+  const lastSent = useRef(0);
   const [hint] = useState(platformHint);
   const [isPcWeb] = useState(() => !isDesktopVlc() && !isAndroid() && !isIOS());
   const [isPhone] = useState(() => isAndroid() || isIOS());
+
+  /* site-player resume lives beside (never inside) the server resume key -
+   * same title, different encodes, so positions must not leak across */
+  const siteKey = `${resumeKeyFor(type, tmdbId, season, episode)}:site`;
 
   /* fetch streams (IMDb first when TMDB knows it, TMDB fallback on empty) */
   useEffect(() => {
@@ -148,8 +159,9 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
   }, []);
 
   /* tap -> the resolver generates the playable link itself -> the inbuilt
-   * site player. VLC stays one tap away for whatever the browser can't
-   * decode; truly uncrackable pages fall back to open-in-new-tab. */
+   * site player (resuming where it left off). VLC stays one tap away for
+   * whatever the browser can't decode; truly uncrackable pages fall back
+   * to open-in-new-tab. */
   const play = useCallback(async (row: WsRow) => {
     const target = row.fileUrl || row.pageUrl;
     if (!target || busy) return;
@@ -165,6 +177,13 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
       const r = await resolveWsUrl(target);
       if (!alive.current) return;
       if (r.ok && r.kind === "file") {
+        const saved = getResume(siteKey);
+        const pos =
+          saved && saved.positionSec > 10 &&
+          (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
+            ? Math.floor(saved.positionSec)
+            : 0;
+        lastSent.current = pos;
         setPlayError(false);
         setPnote(r.stale ? "Link may be expired — trying anyway." : "");
         setPlayer({
@@ -172,6 +191,8 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
           label: row.quality ? `${row.quality} · ${row.source || row.file}` : row.source || row.file,
           filename: row.file,
           rowKey: row.key,
+          startAt: pos,
+          mountId: `${Date.now()}`,
         });
         setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
       } else if (r.ok) {
@@ -186,7 +207,62 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     } finally {
       if (alive.current) setBusy(null);
     }
-  }, [busy]);
+  }, [busy, siteKey]);
+
+  /* in-player source hop: resolve the picked row, then seamless-switch */
+  const pickSource = useCallback(async (key: string): Promise<string | null> => {
+    const row = rows.find((r) => r.key === key);
+    const target = row?.fileUrl || row?.pageUrl;
+    if (!row || !target) return null;
+    try {
+      const r = await resolveWsUrl(target);
+      if (!alive.current) return null;
+      if (r.ok && r.kind === "file") {
+        setPlayError(false);
+        setPnote(r.stale ? "Link may be expired — trying anyway." : "");
+        setPlayer((p) =>
+          p && {
+            ...p,
+            url: r.url,
+            label: row.quality ? `${row.quality} · ${row.source || row.file}` : row.source || row.file,
+            filename: row.file,
+            rowKey: row.key,
+          }
+        );
+        setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
+        return r.url;
+      }
+      if (r.ok) {
+        setPageFor((p) => ({ ...p, [row.key]: r.url }));
+        setNote((n) => ({ ...n, [row.key]: "Couldn't auto-generate this one — open it in your browser:" }));
+        return null;
+      }
+      setNote((n) => ({ ...n, [row.key]: `${r.error || "Couldn't generate a link"} — try another` }));
+      return null;
+    } catch {
+      return null;
+    }
+  }, [rows]);
+
+  /* site-player position tracking (throttled; cleared at the credits) */
+  const onSiteTime = useCallback((time: number, duration?: number) => {
+    if (!alive.current || time < 5) return;
+    if (duration && time > duration * 0.97) {
+      clearResume(siteKey);
+      lastSent.current = 0;
+      return;
+    }
+    if (time - lastSent.current < 5) return;
+    lastSent.current = time;
+    saveResume(siteKey, time, duration);
+  }, [siteKey]);
+
+  const startOver = useCallback(() => {
+    clearResume(siteKey);
+    lastSent.current = 0;
+    setPlayError(false);
+    setPlayer((p) => p && { ...p, startAt: 0, mountId: `${Date.now()}` });
+  }, [siteKey]);
 
   const vlcFromPlayer = useCallback(() => {
     if (!player) return;
@@ -203,6 +279,14 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     copy(player.url);
     setPnote("Download opened in a new tab (link also copied)");
   }, [player, copy]);
+
+  const reportSource = useCallback(() => {
+    if (!player) return;
+    copy(
+      `Yetflix report: ${type}/${tmdbId} s${season}e${episode}\nfile: ${player.filename}\nurl: ${player.url}`
+    );
+    setPnote("Report copied — send it to us and we'll fix the source");
+  }, [player, type, tmdbId, season, episode, copy]);
 
   /* ── inbuilt player ── */
   if (player) {
@@ -236,6 +320,16 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
             Copy link
           </button>
         </div>
+        {player.startAt > 10 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[12px]">
+            <span className="rounded-full bg-brand/20 px-2.5 py-0.5 font-semibold text-brand">
+              Resumed from {fmtTime(player.startAt)}
+            </span>
+            <button onClick={startOver} className="text-neutral-400 hover:text-white">
+              Start over
+            </button>
+          </div>
+        )}
         {codecHint && !playError && (
           <div className="border-b border-white/10 px-3 py-1.5 text-[11px] text-neutral-500">
             HEVC/Dolby file — if there&apos;s no picture or no sound, use Open in VLC.
@@ -261,12 +355,26 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
         )}
         <div className="min-h-0 flex-1">
           <SitePlayer
-            key={player.url}
+            key={`${player.mountId}-${isHlsFile(player.url) ? "h" : "p"}`}
+            mountId={player.mountId}
             url={player.url}
             title={player.filename}
+            sources={rows.map((r) => ({
+              key: r.key,
+              quality: r.quality,
+              size: r.size,
+              source: r.source,
+              file: r.file,
+              audio: r.audio,
+            }))}
+            currentKey={player.rowKey}
+            startAt={player.startAt}
+            onPickSource={pickSource}
+            onTimeupdate={onSiteTime}
             onError={() => alive.current && setPlayError(true)}
             onVlc={vlcFromPlayer}
             onDownload={downloadFromPlayer}
+            onReport={reportSource}
           />
         </div>
         {copied && (
