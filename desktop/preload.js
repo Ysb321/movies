@@ -4,5 +4,5 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("yetflixVlc", {
-  play: (url) => ipcRenderer.invoke("vlc-play", url),
+  play: (url, headers) => ipcRenderer.invoke("vlc-play", url, headers),
 });

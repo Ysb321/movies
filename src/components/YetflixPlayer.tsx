@@ -123,7 +123,10 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
       const bridge = (window as any).yetflixVlc;
       if (bridge?.play) {
         try {
-          const ok = await bridge.play(st.url);
+          /* proxied links are relative paths on our own server - VLC
+           * needs the absolute http://localhost:3000/... form */
+          const vlcUrl = st.url.startsWith("/") ? new URL(st.url, window.location.origin).toString() : st.url;
+          const ok = await bridge.play(vlcUrl, st.headers ?? undefined);
           if (ok) {
             setPlayUrl(null);
             flashNotice("Playing in VLC - switch audio / subtitles with its menus (keys b / v).");

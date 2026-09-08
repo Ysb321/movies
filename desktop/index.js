@@ -333,16 +333,23 @@ if (!app.requestSingleInstanceLock()) {
     ];
     return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) ?? null;
   };
-  ipcMain.handle("vlc-play", (_e, url) => {
+  ipcMain.handle("vlc-play", (_e, url, headers) => {
     try {
       if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
       const exe = vlcExe();
       if (!exe) return false;
-      const child = spawn(
-        exe,
-        [url, "--play-and-exit", "--no-qt-privacy-ask", "--no-plugins-scan", "--no-one-instance"],
-        { detached: true, stdio: "ignore" }
-      );
+      /* stream options (apply to the preceding MRL): some hosts
+       * (gofile, embed CDNs) require Referer/Cookie to serve video */
+      const args = [url];
+      const h = headers && typeof headers === "object" ? headers : {};
+      const ref = h.Referer || h.referer;
+      const cookie = h.Cookie || h.cookie;
+      const ua = h["User-Agent"] || h["user-agent"];
+      if (ref) args.push(`:http-referrer=${ref}`);
+      if (cookie) args.push(`:http-cookie=${cookie}`);
+      if (ua) args.push(`:http-user-agent=${ua}`);
+      args.push("--play-and-exit", "--no-qt-privacy-ask", "--no-plugins-scan", "--no-one-instance");
+      const child = spawn(exe, args, { detached: true, stdio: "ignore" });
       child.unref();
       return true;
     } catch {

@@ -15,6 +15,7 @@ export type DubStream = {
   webSafe: boolean;     // browser-playable with sound
   isDirect?: boolean;   // always true
   codec: string;        // "H.264" | "HEVC" (download links are usually HEVC mkv)
+  headers?: Record<string, string>; // host requires Referer/Cookie (gofile, embed CDNs)
   subs?: { title: string; language: string; uri: string; type: string }[];
 };
 
@@ -30,6 +31,13 @@ type VegaChip = {
   subtitles?: { title: string; language: string; uri: string; type: string }[];
 };
 
+const needsProxy = (c: VegaChip): boolean => {
+  const h = c.headers;
+  if (!h || typeof h !== "object") return false;
+  const keys = Object.keys(h).map((k) => k.toLowerCase());
+  return keys.includes("referer") || keys.includes("cookie") || keys.includes("user-agent");
+};
+
 const toDub = (c: VegaChip): DubStream => {
   const blob = `${c.server ?? ""} ${c.title ?? ""}`;
   const quality = c.quality ? `${c.quality}p` : (/2160|4k/i.test(blob) ? "2160p" : /1080/i.test(blob) ? "1080p" : /720/i.test(blob) ? "720p" : "Auto");
@@ -38,8 +46,18 @@ const toDub = (c: VegaChip): DubStream => {
   const isMkv = /mkv/i.test(String(c.type)) || /\.mkv(\?|$)/i.test(c.link) || /gdrive|gofile|hubcdn|cf storage/i.test(blob);
   const isHls = /m3u8/i.test(String(c.type)) || /\.m3u8(\?|$)/i.test(c.link);
   const webSafe = isHls || (!isMkv && /mp4|webm/i.test(String(c.type) || "mp4"));
+  const hdrs = (c.headers && typeof c.headers === "object" ? c.headers : undefined) as Record<string, string> | undefined;
+  let url = c.link;
+  if (hdrs && needsProxy(c)) {
+    const q = new URLSearchParams({ u: c.link });
+    const ref = hdrs.Referer ?? hdrs.referer;
+    const cookie = hdrs.Cookie ?? hdrs.cookie;
+    if (ref) q.set("r", ref);
+    if (cookie) q.set("c", cookie);
+    url = `/api/stream-proxy?${q.toString()}`;
+  }
   return {
-    url: c.link,
+    url,
     quality, langs,
     size: "",
     host: `${c.provider} · ${c.server ?? ""}`.replace(/ ·$/, ""),
@@ -48,6 +66,7 @@ const toDub = (c: VegaChip): DubStream => {
     webSafe,
     isDirect: true,
     codec: /hevc|x265|10bit|4k|2160/i.test(blob) ? "HEVC" : "H.264",
+    headers: c.headers && typeof c.headers === "object" ? c.headers : undefined,
     subs: Array.isArray(c.subtitles) ? c.subtitles : undefined,
   };
 };
