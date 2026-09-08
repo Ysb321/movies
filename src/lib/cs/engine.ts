@@ -26,7 +26,7 @@ export type CsDebug = {
   budget?: boolean;
 };
 
-export type CsMeta = { title: string; year: number };
+export type CsMeta = { title: string; year: number; imdbId?: string };
 export type CsOpts = { maxFetches?: number };
 
 /* ---- strict title matching (wrong-movie links unacceptable) ---- */
@@ -66,11 +66,14 @@ export async function listAll(
     const d: CsDebug = { provider: m.value, posts: 0, titles: [], matched: null, links: 0, linkSamples: [], chips: 0, err: null };
     dbg?.push(d);
     try {
-      const posts = await m.search(meta.title, budget);
+      const posts = await m.search(meta.title, budget, { year: meta.year, imdbId: meta.imdbId });
       const clean = (posts ?? []).filter((p) => p?.link && p?.title);
       d.posts = clean.length;
       d.titles = clean.slice(0, 6).map((p) => String(p.title).slice(0, 60));
-      const hit = clean.find((p) => postMatches(p.title, meta.title, meta.year));
+      /* imdb-id match first (bulletproof), then strict title+year */
+      const hit =
+        clean.find((p) => p.imdbId && meta.imdbId && p.imdbId === meta.imdbId) ??
+        clean.find((p) => postMatches(p.title, meta.title, meta.year));
       d.matched = hit?.title ?? null;
       if (!hit) return [];
 

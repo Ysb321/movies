@@ -51,6 +51,36 @@ export async function rawGet(
   return text;
 }
 
+/* hubcloud & co block Cloudflare-worker egress (403) but serve
+ * normal IPs fine - when the direct fetch is forbidden, retry via
+ * public read-proxies with non-CF servers (site path only; the exe
+ * never needs this) */
+export async function rawGetResilient(
+  url: string,
+  budget: Budget,
+  opts: { headers?: Record<string, string>; timeoutMs?: number } = {}
+): Promise<string> {
+  try {
+    return await rawGet(url, budget, opts);
+  } catch (e: any) {
+    const msg = String(e?.message ?? e);
+    if (!/HTTP 403|HTTP 429|HTTP 451/i.test(msg)) throw e;
+    const proxies = [
+      `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    ];
+    for (const px of proxies) {
+      try {
+        const text = await rawGet(px, budget, { ...opts, timeoutMs: opts.timeoutMs ?? 15000 });
+        if (text && text.length > 200) return text;
+      } catch {
+        /* next proxy */
+      }
+    }
+    throw e;
+  }
+}
+
 export async function rawGetJson<T = any>(
   url: string,
   budget: Budget,

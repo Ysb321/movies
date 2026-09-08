@@ -3,7 +3,7 @@
  * hdhub4u family) and GDFlix / DriveSeed / Driveleech file pages
  * (moviesmod / moviesdrive family). Everything returned here is a
  * DIRECT downloadable / streamable URL - exactly what VLC needs. */
-import { rawGet, headFinalUrl, buzzRedirect, absolutize, Budget, csxUrls } from "./http";
+import { rawGet, rawGetResilient, headFinalUrl, buzzRedirect, absolutize, Budget, csxUrls } from "./http";
 import * as cheerio from "cheerio";
 
 export type HostChip = {
@@ -61,9 +61,9 @@ export async function resolveCard(url: string, budget: Budget): Promise<HostChip
   const remapped = await remapDomain(url, budget);
   let html: string;
   try {
-    html = await rawGet(remapped, budget);
+    html = await rawGetResilient(remapped, budget);
   } catch {
-    html = await rawGet(url, budget); /* old domain still alive? */
+    html = await rawGetResilient(url, budget); /* old domain still alive? */
   }
   url = remapped;
   const base = new URL(url).origin;
@@ -91,7 +91,7 @@ export async function resolveCard(url: string, budget: Budget): Promise<HostChip
   if (!/^https?:/i.test(link)) link = absolutize(link, base);
   if (!/^https?:/i.test(link)) return [];
 
-  const cardHtml = await rawGet(link, budget);
+  const cardHtml = await rawGetResilient(link, budget);
   const c = cheerio.load(cardHtml);
   const header = c("div.card-header").text().trim();
   const size = c("i#size").text().trim();
@@ -138,7 +138,7 @@ export async function resolveGdflix(url: string, budget: Budget): Promise<HostCh
   let pageUrl = url;
   /* driveseed/driveleech add ?type=d for the video file page */
   if (/driveseed|driveleech/i.test(url) && !/[?&]type=/.test(url)) pageUrl = `${url}${url.includes("?") ? "&" : "?"}type=d`;
-  const html = await rawGet(pageUrl, budget);
+  const html = await rawGetResilient(pageUrl, budget);
   const $ = cheerio.load(html);
 
   const nameItem = $("ul > li.list-group-item")

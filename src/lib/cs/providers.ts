@@ -7,14 +7,15 @@
 import { rawGet, rawGetJson, csxUrls, absolutize, Budget, firstAliveBase } from "./http";
 import * as cheerio from "cheerio";
 
-export type CsPost = { title: string; link: string };
+export type CsPost = { title: string; link: string; imdbId?: string };
+export type SearchHints = { year?: number; imdbId?: string };
 export type CsLink = { link: string; text: string };
 export type CsProvider = {
   value: string;
   name: string;
   domains: string[];
   urlsKey?: string; // CSX urls.json override
-  search(query: string, budget: Budget): Promise<CsPost[]>;
+  search(query: string, budget: Budget, hints?: SearchHints): Promise<CsPost[]>;
   /** host-page links (vcloud/hubcloud/gdflix/...) for the wanted ep */
   hostLinks(
     post: CsPost,
@@ -45,21 +46,38 @@ async function trySearch(
 
 /* search.php JSON family (vegamovies + moviesdrive): hits[].document
  * keys come in snake_case AND camelCase; permalinks may be relative */
-const searchPhp = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
-  const j = await rawGetJson<any>(
-    `${base}/search.php?q=${encodeURIComponent(query)}&page=1`,
-    budget
-  );
-  const hits: any[] = j?.hits ?? j?.results ?? [];
-  return hits
-    .map((h) => {
-      const d = h?.document ?? h;
-      return {
-        title: String(d?.post_title ?? d?.postTitle ?? ""),
-        link: absolutize(String(d?.permalink ?? d?.url ?? ""), base),
-      };
-    })
-    .filter((p) => p.title && /^https?:/.test(p.link));
+const searchPhp = async (
+  base: string,
+  query: string,
+  budget: Budget,
+  hints?: SearchHints
+): Promise<CsPost[]> => {
+  /* exact imdb-code query first (the Typesense backends index the
+   * imdb_id), then the plain title */
+  const qs = hints?.imdbId ? [hints.imdbId, query] : [query];
+  for (const q of qs) {
+    try {
+      const j = await rawGetJson<any>(
+        `${base}/search.php?q=${encodeURIComponent(q)}&page=1`,
+        budget
+      );
+      const hits: any[] = j?.hits ?? j?.results ?? [];
+      const posts = hits
+        .map((h) => {
+          const d = h?.document ?? h;
+          return {
+            title: String(d?.post_title ?? d?.postTitle ?? ""),
+            link: absolutize(String(d?.permalink ?? d?.url ?? ""), base),
+            imdbId: d?.imdb_id ? String(d?.imdb_id) : undefined,
+          };
+        })
+        .filter((p) => p.title && /^https?:/.test(p.link));
+      if (posts.length) return posts;
+    } catch {
+      /* try next query form */
+    }
+  }
+  return [];
 };
 
 /* ---------- shared generic crawler (intermediate download pages) ---------- */
@@ -143,18 +161,18 @@ export async function crawlHostLinks(
 
 /* ---------- vegamovies (CSX port) ---------- */
 
-const vegaSearch = (base: string, query: string, budget: Budget): Promise<CsPost[]> =>
-  searchPhp(base, query, budget);
+const vegaSearch = (base: string, query: string, budget: Budget, hints?: SearchHints): Promise<CsPost[]> =>
+  searchPhp(base, query, budget, hints);
 
 export const vegamovies: CsProvider = {
   value: "vegamovies",
   name: "VegaMovies",
   domains: ["https://vegamovies.mq", "https://new2.vegamovies.futbol", "https://vegamovies.pet"],
   urlsKey: "vegamovies",
-  search: async (query, budget) => {
+  search: async (query, budget, hints) => {
     const urls = await csxUrls(budget);
     const bases = [urls.vegamovies, ...vegamovies.domains].filter(Boolean) as string[];
-    return trySearch(bases, (b) => vegaSearch(b, query, budget));
+    return trySearch(bases, (b) => vegaSearch(b, query, budget, hints));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -225,18 +243,18 @@ export const vegamovies: CsProvider = {
 
 /* ---------- moviesdrive (CSX port) ---------- */
 
-const mdSearch = (base: string, query: string, budget: Budget): Promise<CsPost[]> =>
-  searchPhp(base, query, budget);
+const mdSearch = (base: string, query: string, budget: Budget, hints?: SearchHints): Promise<CsPost[]> =>
+  searchPhp(base, query, budget, hints);
 
 export const moviesdrive: CsProvider = {
   value: "moviesdrive",
   name: "MoviesDrive",
   domains: ["https://moviesdrive.forum", "https://new3.moviesdrive.christmas", "https://moviesdrive.zone"],
   urlsKey: "moviesdrive",
-  search: async (query, budget) => {
+  search: async (query, budget, hints) => {
     const urls = await csxUrls(budget);
     const bases = [urls.moviesdrive, ...moviesdrive.domains].filter(Boolean) as string[];
-    return trySearch(bases, (b) => mdSearch(b, query, budget));
+    return trySearch(bases, (b) => mdSearch(b, query, budget, hints));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -289,16 +307,30 @@ const mmParse = (html: string, base: string): CsPost[] => {
   return from;
 };
 
-const mmSearch = async (base: string, query: string, budget: Budget): Promise<CsPost[]> => {
-  /* theme A: /search/<q>/page/1 (moviesleech style) */
-  try {
-    const r = mmParse(await rawGet(`${base}/search/${encodeURIComponent(query)}/page/1`, budget), base);
-    if (r.length) return r;
-  } catch {
-    /* theme B below */
+const mmSearch = async (base: string, query: string, budget: Budget, hints?: SearchHints): Promise<CsPost[]> => {
+  /* the site's own tips: search by IMDb code or "Title (Year)" */
+  const qs = [
+    ...(hints?.imdbId ? [hints.imdbId] : []),
+    ...(hints?.year ? [`${query} (${hints.year})`] : []),
+    query,
+  ];
+  for (const q of qs) {
+    /* theme A: /search/<q> (redirects) */
+    try {
+      const r = mmParse(await rawGet(`${base}/search/${encodeURIComponent(q)}`, budget), base);
+      if (r.length) return r;
+    } catch {
+      /* theme B below */
+    }
+    /* theme B: plain wordpress ?s= */
+    try {
+      const r = mmParse(await rawGet(`${base}/?s=${encodeURIComponent(q)}`, budget), base);
+      if (r.length) return r;
+    } catch {
+      /* next query form */
+    }
   }
-  /* theme B: plain wordpress ?s= */
-  return mmParse(await rawGet(`${base}/?s=${encodeURIComponent(query)}`, budget), base);
+  return [];
 };
 
 export const moviesmod: CsProvider = {
@@ -306,14 +338,14 @@ export const moviesmod: CsProvider = {
   name: "Moviesmod",
   domains: ["https://moviesleech.rest", "https://moviesleech.art", "https://moviesmod.zone"],
   urlsKey: "moviesmod",
-  search: async (query, budget) => {
+  search: async (query, budget, hints) => {
     const urls = await csxUrls(budget);
     const bases = [
       urls.moviesmod,
       urls.topmovies,
       ...moviesmod.domains,
     ].filter(Boolean) as string[];
-    return trySearch(bases, (b) => mmSearch(b, query, budget));
+    return trySearch(bases, (b) => mmSearch(b, query, budget, hints));
   },
   hostLinks: async (post, opts, budget) => {
     const html = await rawGet(post.link, budget);
@@ -400,6 +432,7 @@ const hduSearch = async (query: string, budget: Budget): Promise<CsPost[]> => {
     .map((r: any) => ({
       title: String(r?.document?.post_title ?? ""),
       link: String(r?.document?.permalink ?? r?.document?.url ?? ""),
+      imdbId: r?.document?.imdb_id ? String(r?.document?.imdb_id) : undefined,
     }))
     .filter((p: CsPost) => p.title && /^https?:/.test(p.link));
 };

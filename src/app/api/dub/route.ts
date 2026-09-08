@@ -15,7 +15,7 @@ const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
 const BATCH = 2;
 const SITE_FETCH_BUDGET = 38; /* ~50 CF subrequests minus TMDB/urls.json */
 const CACHE_TTL = 1800; // 30 min
-const CACHE_V = "cs2";
+const CACHE_V = "cs3";
 const MAX_TRIES = 4;
 
 type CacheState = { chips: CsChip[]; done: string[]; tries?: Record<string, number> };
@@ -58,20 +58,25 @@ export async function GET(req: NextRequest) {
   const episode = parseInt(sp.get("episode") ?? "1", 10) || 1;
   if (!/^\d+$/.test(tmdb)) return NextResponse.json({ streams: [], error: "bad id" });
 
-  let meta = { title: "", year: 0 };
+  let meta = { title: "", year: 0, imdbId: "" };
   const oTitle = sp.get("title");
   const oYear = parseInt(sp.get("year") ?? "0", 10) || 0;
+  const oImdb = sp.get("imdb");
   if (oTitle) {
-    meta = { title: oTitle, year: oYear };
+    meta = { title: oTitle, year: oYear, imdbId: oImdb ?? "" };
   } else {
     try {
-      const r = await fetch(`https://api.themoviedb.org/3/${type}/${tmdb}?api_key=${TMDB_KEY}`, {
-        signal: AbortSignal.timeout(7000),
-        cache: "no-store",
-      });
+      const r = await fetch(
+        `https://api.themoviedb.org/3/${type}/${tmdb}?api_key=${TMDB_KEY}&append_to_response=external_ids`,
+        { signal: AbortSignal.timeout(7000), cache: "no-store" }
+      );
       const j = await r.json().catch(() => null);
       const date: string = j?.release_date ?? j?.first_air_date ?? "";
-      meta = { title: j?.title ?? j?.name ?? "", year: parseInt(date.slice(0, 4), 10) || 0 };
+      meta = {
+        title: j?.title ?? j?.name ?? "",
+        year: parseInt(date.slice(0, 4), 10) || 0,
+        imdbId: j?.external_ids?.imdb_id ?? "",
+      };
     } catch {}
     if (!meta.title)
       return NextResponse.json({ streams: [], error: "no meta" }, { headers: { "cache-control": "no-store" } });
