@@ -115,18 +115,19 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
   /* every HdHub stream is a direct link - instant play.
    * Codec-limited files (MKV / Dolby / DTS - silent in any browser
    * engine) go to VLC in the exe; falls back to the in-app player. */
-  /* every Vega chip is a DIRECT link - instant play (VLC in the exe
-   * for MKV/download links, VidStack otherwise) */
+  /* every Multi Dub chip is a DIRECT download link - tapping it
+   * opens VLC (exe spawns vlc.exe with host headers; the website /
+   * phone uses the vlc:// / intent:// / x-callback deep link). If VLC
+   * can't be reached, browser-playable files still play in-app. */
   const playStream = async (st: DubStream, idx: number) => {
     setError(""); setCurrent(idx);
-    if (inApp && !st.webSafe) {
+    const url = st.url.startsWith("/") ? new URL(st.url, window.location.origin).toString() : st.url;
+
+    if (inApp) {
       const bridge = (window as any).yetflixVlc;
       if (bridge?.play) {
         try {
-          /* proxied links are relative paths on our own server - VLC
-           * needs the absolute http://localhost:3000/... form */
-          const vlcUrl = st.url.startsWith("/") ? new URL(st.url, window.location.origin).toString() : st.url;
-          const ok = await bridge.play(vlcUrl, st.headers ?? undefined);
+          const ok = await bridge.play(url, st.headers ?? undefined);
           if (ok) {
             setPlayUrl(null);
             flashNotice("Playing in VLC - switch audio / subtitles with its menus (keys b / v).");
@@ -134,6 +135,32 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           }
         } catch {}
       }
+    } else {
+      /* copy first so the user always has a fallback in VLC's network
+       * stream dialog if the protocol handler is missing */
+      try { await navigator.clipboard?.writeText(url); } catch {}
+      const ua = navigator.userAgent;
+      try {
+        if (/android/i.test(ua)) {
+          const u = new URL(url);
+          const intent =
+            `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${u.protocol.replace(":", "")}` +
+            `;package=org.videolan.vlc;action=android.intent.action.VIEW;end`;
+          window.location.href = intent;
+        } else if (/iphone|ipad|ipod/i.test(ua)) {
+          window.location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(url)}`;
+        } else {
+          window.location.href = `vlc://${url}`;
+        }
+        flashNotice("Opening in VLC — link copied as backup (in VLC: Media → Open Network Stream).");
+        return;
+      } catch {}
+    }
+
+    /* VLC unavailable - play here when the browser can */
+    if (!st.webSafe) {
+      flashNotice("VLC didn't respond - this file type needs it. The link is copied to your clipboard.");
+      return;
     }
     resumed.current = false;
     pendingSubs.current = st.subs;
@@ -205,7 +232,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
     clearTimeout(stallTimer.current);
     /* guard against a zero-volume start (the 'no audio' report) */
     if (p.volume === 0 && !p.muted) p.volume = 0.9;
-    /* provider-bundled subtitles (Vega streams) -> Captions menu */
+    /* provider subtitles (if any) -> Captions menu */
     if (pendingSubs.current?.length) {
       const subs = pendingSubs.current;
       pendingSubs.current = undefined;
@@ -297,8 +324,8 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <span className="text-3xl">🌐</span>
             <p className="text-sm font-bold">Pick a source below</p>
-            <p className="text-[12.5px] text-neutral-400">Multi-audio files from 50 source sites (Hindi + English) - tap a chip, it plays instantly.</p>
-            {inApp ? <p className="text-[11.5px] text-neutral-500">Amber chips open in VLC (MKV / Dolby - full audio support).</p> : null}
+            <p className="text-[12.5px] text-neutral-400">Direct download links (Hindi + English multi-audio) - tap one and it opens in VLC.</p>
+            <p className="text-[11.5px] text-neutral-500">Make sure VLC is installed (PC: videolan.org, phone: Play Store / App Store).</p>
           </div>
         ) : (
           <>
