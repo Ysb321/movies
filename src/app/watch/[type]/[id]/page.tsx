@@ -14,6 +14,7 @@ import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
 import VlcSources from "@/components/VlcSources";
 import HindiSources from "@/components/HindiSources";
+import DdlSources from "@/components/DdlSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -122,7 +123,7 @@ function WatchContent() {
   const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
-    /* WebStreamr (Server 9) renders its own source list (VlcSources/HindiSources) - no
+    /* WebStreamr (Server 9) renders its own source list (VlcSources/HindiSources/DdlSources) - no
      * iframe embed to build; clear any stale one from another server. */
     if (provider.vlcOnly) {
       setEmbed(null);
@@ -316,6 +317,17 @@ function WatchContent() {
                 type={t}
                 tmdbId={String(id)}
                 title={title}
+                season={season}
+                episode={episode}
+              />
+            ) : provider.id === "desiddl" ? (
+              <DdlSources
+                key={`dd-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
                 season={season}
                 episode={episode}
               />
