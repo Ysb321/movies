@@ -346,7 +346,7 @@ function postMatches(title: string, wantTitle: string, year: number): boolean {
     !year || !years.length || years.some((y) => (exact ? y === year : Math.abs(y - year) <= 1));
   if (t.startsWith(want) && yearOk(false)) return true;
   const tokens = want.split(" ").filter((w) => w.length > 3);
-  if (!tokens.length) return false;
+  if (!tokens.length || !years.length) return false;
   return tokens.every((tk) => t.includes(tk)) && yearOk(true);
 }
 
@@ -412,29 +412,65 @@ export async function listAll(
       const hit = clean.find((p: any) => postMatches(p.title, meta.title, meta.year));
       d.matched = hit?.title ?? null;
       if (!hit) return [];
-      let link: string = absolutize(hit.link, origin);
+      const runStream = async (rawLink: string): Promise<any[]> => {
+        const link = absolutize(rawLink, origin);
+        try {
+          const streams = await m.stream.getStream({
+            link, type: type === "tv" ? "series" : "movie", signal,
+            providerContext: makeContext(origin), isDownload: false,
+          });
+          return (streams ?? []).filter((x: any) => x?.link);
+        } catch { return []; }
+      };
+      const toChips = (raw: any[]): VegaChip[] =>
+        raw
+          .map((s: any) => {
+            let url: string = s?.link ?? "";
+            if (url && !/^https?:/i.test(url) && origin.base) {
+              try { url = new URL(url, origin.base).toString(); } catch {}
+            }
+            return { s, url };
+          })
+          .filter((x: any) => x.url && /^https?:/i.test(x.url) && x.s)
+          .map((x: any) => ({
+            provider: m.value, server: x.s.server ?? m.name, link: x.url, type: x.s.type ?? "",
+            quality: x.s.quality || (typeof x.s.title === "string" ? (x.s.title.match(/480|720|1080|2160|4k/i)?.[0] ?? "") : ""),
+            title: hit.title, headers: x.s.headers, subtitles: x.s.subtitles,
+          }));
+
+      let chips: VegaChip[] = [];
       if (type === "tv") {
         const epLink = await resolveEpisodeLink(m, hit.link, season ?? 1, episode ?? 1, signal, origin);
         if (!epLink) { d.err = "episode not resolved"; return []; }
-        link = absolutize(epLink, origin);
-      }
-      const streams = await m.stream.getStream({
-        link, type: type === "tv" ? "series" : "movie", signal,
-        providerContext: makeContext(origin), isDownload: false,
-      });
-      const chips = (streams ?? [])
-        .map((s: any) => {
-          let url: string = s?.link ?? "";
-          if (url && !/^https?:/i.test(url) && origin.base) {
-            try { url = new URL(url, origin.base).toString(); } catch {}
+        chips = toChips(await runStream(epLink));
+      } else {
+        /* linkList-style: post page -> quality entries -> host links */
+        let entries: any[] = [];
+        if (m.meta) {
+          try {
+            const info = await m.meta.getMeta({ link: absolutize(hit.link, origin), providerContext: makeContext(origin), signal });
+            entries = (info?.linkList ?? []).filter((e: any) => e);
+          } catch { entries = []; }
+        }
+        const targets: string[] = [];
+        if (entries.length) {
+          for (const e of entries.slice(0, 4)) {
+            const dls = Array.isArray(e.directLinks) ? e.directLinks.slice(0, 4) : [];
+            if (dls.length) {
+              for (const dl of dls) if (dl?.link) targets.push(dl.link);
+            } else if (e.link) targets.push(e.link);
+            if (targets.length >= 6) break;
           }
-          return { s, url };
-        })
-        .filter((x: any) => x.url && /^https?:/i.test(x.url) && x.s)
-        .map((x: any) => ({
-          provider: m.value, server: x.s.server ?? m.name, link: x.url, type: x.s.type ?? "",
-          quality: x.s.quality, title: hit.title, headers: x.s.headers, subtitles: x.s.subtitles,
-        }));
+        }
+        if (targets.length) {
+          const batches = await Promise.all(targets.slice(0, 6).map((t) => runStream(t)));
+          chips = toChips(batches.flat());
+        } else {
+          /* embed-style provider: stream straight off the post page */
+          chips = toChips(await runStream(hit.link));
+        }
+        if (chips.length > 12) chips = chips.slice(0, 12);
+      }
       d.chips = chips.length;
       return chips;
     } catch (e: any) {

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "edge"; // Cloudflare Pages
 
 const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
-const BATCH = 8;
+const BATCH = 6;
 const CACHE_TTL = 1800; // 30 min merged-state TTL
 
 type CacheState = { chips: VegaChip[]; done: string[] };
