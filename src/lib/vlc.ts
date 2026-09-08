@@ -164,6 +164,21 @@ export function vlcIosUrl(fileUrl: string): string {
   return `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(fileUrl)}`;
 }
 
+/** download a direct file (cross-origin links open in a tab - the browser
+ *  then downloads whatever it can't play natively) */
+export function downloadFile(url: string, filename: string) {
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    a.download = filename || "video";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {}
+}
+
 /** hand a direct file url to the installed VLC (or report exactly why not) */
 export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: string }> {
   const copyLink = async () => {

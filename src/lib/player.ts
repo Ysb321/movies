@@ -55,14 +55,16 @@
  *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
  *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
  *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
- *    /api/webstreamr routes and handed to the installed VLC (desktop:
- *    bundled vlc.exe; Android: vlc intent; iOS: vlc-x-callback; PC web:
- *    copy-link). No iframe - the watch page renders the source list
- *    (VlcSources) instead, and the resolver generates every playable
- *    link itself (redirect-following, cookie sessions, generator-page
- *    scraping, sibling-index fallback, quota checks) - nothing ever
- *    embeds. Truly uncrackable pages open in a new tab. New/cam
- *    releases may have zero sources (empty state).
+ *    /api/webstreamr routes. Tap a source and it plays in the inbuilt
+ *    site player (SitePlayer: ArtPlayer-based, Multiverse-style UI with
+ *    Download + Open-in-VLC controls); VLC handoff per platform
+ *    (desktop: bundled vlc.exe; Android: vlc intent; iOS: vlc-x-callback;
+ *    PC web: desktop-app bridge + copy-link) covers whatever the browser
+ *    can't decode (HEVC/Dolby). No iframe - the resolver generates every
+ *    playable link itself (redirect-following, cookie sessions,
+ *    generator-page scraping, sibling-index fallback, quota checks).
+ *    Truly uncrackable pages open in a new tab. New/cam releases may
+ *    have zero sources (empty state).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 

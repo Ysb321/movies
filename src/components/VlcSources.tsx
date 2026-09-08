@@ -6,14 +6,15 @@ import {
   fetchWsStreams,
   resolveWsUrl,
   openInVlc,
+  downloadFile,
   parseStream,
   wsIds,
   isDesktopVlc,
   isAndroid,
   isIOS,
-  playableInBrowser,
   type WsRow,
 } from "@/lib/vlc";
+import SitePlayer from "@/components/SitePlayer";
 import { PlayIcon, RotateCcwIcon, CheckIcon, ChevronIcon } from "@/components/Icons";
 
 type Props = {
@@ -33,74 +34,16 @@ const LOAD_LINES = [
   "Almost there — resolving the last sources…",
 ];
 
+/* release-name hints that the browser probably can't decode (silent audio
+ * or black screen) - shown as a heads-up, never a block */
+const NEEDS_VLC_HINT = /x265|hevc|h\.?265|ddp|dts|truehd|atmos/i;
+
 const platformHint = () =>
   isDesktopVlc()
-    ? "Tap a source — it opens in VLC"
+    ? "Tap a source — it plays here, or opens in VLC"
     : isAndroid() || isIOS()
-      ? "Tap a source — it opens in your VLC app"
-      : "Tap a source — opens in VLC via the desktop app (link copied too)";
-
-/** inline player for browser-compatible files (mp4/webm native, HLS via
- *  hls.js) - instant playback with zero installs; .mkv/Dolby still needs
- *  real VLC, so rows only offer this when the resolved file qualifies. */
-function BrowserVideo({ url }: { url: string }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
-  const [failed, setFailed] = useState(false);
-  const isHls = /\.m3u8(\?|#|$)/i.test(url);
-  useEffect(() => {
-    const v = ref.current;
-    if (!v || !isHls) return;
-    let hls: { destroy: () => void } | null = null;
-    let dead = false;
-    import("hls.js")
-      .then(({ default: Hls }: any) => {
-        if (dead || !ref.current) return;
-        if (Hls.isSupported()) {
-          const h = new Hls({ maxBufferLength: 30 });
-          hls = h;
-          h.loadSource(url);
-          h.attachMedia(ref.current);
-          h.on(Hls.Events.ERROR, (_evt: any, data: any) => {
-            if (!dead && data.fatal) setFailed(true);
-          });
-        } else if (ref.current.canPlayType("application/vnd.apple.mpegurl")) {
-          ref.current.src = url; /* Safari plays HLS natively */
-        } else {
-          setFailed(true);
-        }
-      })
-      .catch(() => {
-        if (!dead) setFailed(true);
-      });
-    return () => {
-      dead = true;
-      try {
-        hls?.destroy();
-      } catch {}
-    };
-  }, [url, isHls]);
-  if (failed) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-[13px] font-bold">This browser can&apos;t play this file</p>
-        <p className="max-w-xs text-[11.5px] text-neutral-400">
-          Open it in VLC instead — the link is on its row.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <video
-      ref={ref}
-      className="h-full w-full bg-black"
-      controls
-      autoPlay
-      playsInline
-      src={isHls ? undefined : url}
-      onError={() => setFailed(true)}
-    />
-  );
-}
+      ? "Tap a source — it plays here, or opens in your VLC app"
+      : "Tap a source — it plays here, or opens in VLC via the desktop app";
 
 export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Props) {
   const [status, setStatus] = useState<Status>("loading");
@@ -111,8 +54,14 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
   const [note, setNote] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [pageFor, setPageFor] = useState<Record<string, string>>({});
-  const [watchable, setWatchable] = useState<Record<string, string>>({});
-  const [watch, setWatch] = useState<{ url: string; label: string } | null>(null);
+  const [player, setPlayer] = useState<{
+    url: string;
+    label: string;
+    filename: string;
+    rowKey: string;
+  } | null>(null);
+  const [playError, setPlayError] = useState(false);
+  const [pnote, setPnote] = useState("");
   const [copied, setCopied] = useState(false);
   const [reload, setReload] = useState(0);
   const alive = useRef(true);
@@ -198,9 +147,9 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     setTimeout(() => alive.current && setCopied(false), 1600);
   }, []);
 
-  /* tap -> the resolver generates the playable link itself -> VLC. Nothing
-   * ever embeds; truly uncrackable pages fall back to open-in-new-tab, and
-   * browser-compatible files also offer instant inline playback. */
+  /* tap -> the resolver generates the playable link itself -> the inbuilt
+   * site player. VLC stays one tap away for whatever the browser can't
+   * decode; truly uncrackable pages fall back to open-in-new-tab. */
   const play = useCallback(async (row: WsRow) => {
     const target = row.fileUrl || row.pageUrl;
     if (!target || busy) return;
@@ -216,17 +165,15 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
       const r = await resolveWsUrl(target);
       if (!alive.current) return;
       if (r.ok && r.kind === "file") {
-        if (playableInBrowser(r.url)) {
-          setWatchable((w) => ({ ...w, [row.key]: r.url }));
-        }
-        setNote((n) => ({ ...n, [row.key]: "Opening VLC…" }));
-        const out = await openInVlc(r.url);
-        if (!alive.current) return;
-        setSent((s) => ({ ...s, [row.key]: out.ok }));
-        setNote((n) => ({
-          ...n,
-          [row.key]: r.stale ? `${out.note} (link may be expired)` : out.note,
-        }));
+        setPlayError(false);
+        setPnote(r.stale ? "Link may be expired — trying anyway." : "");
+        setPlayer({
+          url: r.url,
+          label: row.quality ? `${row.quality} · ${row.source || row.file}` : row.source || row.file,
+          filename: row.file,
+          rowKey: row.key,
+        });
+        setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
       } else if (r.ok) {
         setPageFor((p) => ({ ...p, [row.key]: r.url }));
         setNote((n) => ({ ...n, [row.key]: "Couldn't auto-generate this one — open it in your browser:" }));
@@ -241,27 +188,86 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     }
   }, [busy]);
 
-  /* ── inline playback ── */
-  if (watch) {
+  const vlcFromPlayer = useCallback(() => {
+    if (!player) return;
+    openInVlc(player.url).then((out) => {
+      if (!alive.current) return;
+      setSent((s) => ({ ...s, [player.rowKey]: out.ok }));
+      setPnote(out.note);
+    });
+  }, [player]);
+
+  const downloadFromPlayer = useCallback(() => {
+    if (!player) return;
+    downloadFile(player.url, player.filename);
+    copy(player.url);
+    setPnote("Download opened in a new tab (link also copied)");
+  }, [player, copy]);
+
+  /* ── inbuilt player ── */
+  if (player) {
+    const codecHint = NEEDS_VLC_HINT.test(player.filename);
     return (
       <div className="flex h-full flex-col bg-black">
-        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-[12px]">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 px-3 py-2 text-[12px]">
           <button
-            onClick={() => setWatch(null)}
+            onClick={() => setPlayer(null)}
             className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
           >
             <ChevronIcon dir="left" className="h-3.5 w-3.5" /> Sources
           </button>
-          <span className="min-w-0 flex-1 truncate text-neutral-400">{watch.label}</span>
+          <span className="min-w-0 flex-1 truncate text-neutral-400">{player.label}</span>
           <button
-            onClick={() => copy(watch.url)}
+            onClick={vlcFromPlayer}
+            className="rounded-full bg-brand px-2.5 py-1 font-bold text-white"
+          >
+            Open in VLC
+          </button>
+          <button
+            onClick={downloadFromPlayer}
+            className="rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
+          >
+            Download
+          </button>
+          <button
+            onClick={() => copy(player.url)}
             className="rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
           >
             Copy link
           </button>
         </div>
+        {codecHint && !playError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11px] text-neutral-500">
+            HEVC/Dolby file — if there&apos;s no picture or no sound, use Open in VLC.
+          </div>
+        )}
+        {playError && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[11.5px]">
+            <span className="font-semibold text-amber-300">
+              This browser can&apos;t play the file.
+            </span>
+            <button
+              onClick={vlcFromPlayer}
+              className="rounded-full bg-brand px-2.5 py-1 text-[11px] font-bold text-white"
+            >
+              Open in VLC
+            </button>
+          </div>
+        )}
+        {pnote && !playError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-brand">
+            {pnote}
+          </div>
+        )}
         <div className="min-h-0 flex-1">
-          <BrowserVideo url={watch.url} />
+          <SitePlayer
+            key={player.url}
+            url={player.url}
+            title={player.filename}
+            onError={() => alive.current && setPlayError(true)}
+            onVlc={vlcFromPlayer}
+            onDownload={downloadFromPlayer}
+          />
         </div>
         {copied && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
@@ -406,23 +412,6 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
                     className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/20"
                   >
                     Copy link
-                  </button>
-                </span>
-              )}
-              {watchable[row.key] && (
-                <span className="mt-1 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() =>
-                      setWatch({
-                        url: watchable[row.key],
-                        label: row.quality
-                          ? `${row.quality} · ${row.source || row.file}`
-                          : row.source || row.file,
-                      })
-                    }
-                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/20"
-                  >
-                    Play here
                   </button>
                 </span>
               )}
