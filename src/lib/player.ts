@@ -31,8 +31,8 @@
  *    Cineverse (cineverse.modiplay.xyz/embed/{slug} - slug-keyed,
  *    movies only; slugs mirror multimovies slugs and are derived
  *    from the TMDB title at runtime), GDMirror (their "Recommended"
- *    tag: pro.iqsmartgames.com/evid/{token} - opaque per-title tokens
- *    resolved at runtime via /api/gdmirror, movies only), Nxsha
+ *    tag: streams.iqsmartgames.com/embed - direct multi-server player,
+ *    movies + TV; TV needs the fixed site key), Nxsha
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
  *    + TV, Hindi audio by default) and Vidout (vidout.pages.dev -
@@ -63,9 +63,6 @@ export type EmbedSubPlayer = {
   /** slug-keyed player (Cineverse): the watch page passes a slugified
    *  TMDB title as the id instead of the TMDB id */
   slugTitle?: boolean;
-  /** async player (GDMirror): no buildable URL - the watch page
-   *  resolves the per-title embed via /api/gdmirror at runtime */
-  needsResolve?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -126,6 +123,11 @@ export const slugify = (s: string) =>
 /** default iframe armor: no popups, no modals, no top-navigation hijack */
 export const PLAYER_SANDBOX =
   "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock";
+
+/** GDMirror TV key: fixed site-wide (same key serves every title -
+ *  verified with the key from a movie embed on a TV embed). Movies do
+ *  not need it, so only TV URLs carry it (less to break if it rotates). */
+const GDMIRROR_KEY = "e11a7debaaa4f5d25b671706ffe4d2acb56efbd4";
 
 export const PROVIDERS: EmbedProvider[] = [
   {
@@ -229,11 +231,10 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     /* Server 8 - the multimovies.beer sources, embedded as-is (their
      * player), in the site's own source order. Nxsha + screenscape +
-     * Vidout are TMDB-keyed (verified live 2026-09-08); Cineverse is
-     * slug-keyed (/embed/{slug}, slugs mirror multimovies slugs);
-     * GDMirror tokens resolve at runtime via /api/gdmirror. Same
-     * iframe armor throughout (unsandboxed + popups revoked +
-     * noScroll). Multiverse 500s on every route - left out. */
+     * Vidout + GDMirror are TMDB-keyed (verified live 2026-09-08);
+     * Cineverse is slug-keyed (/embed/{slug}, slugs mirror multimovies
+     * slugs). Same iframe armor throughout (unsandboxed + popups
+     * revoked + noScroll). Multiverse 500s on every route - left out. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -257,18 +258,18 @@ export const PROVIDERS: EmbedProvider[] = [
         tv: () => "",
       },
       {
-        /* GDMIRROR (their "Recommended" tag): opaque per-title token
-         * embeds - pro.iqsmartgames.com/evid/{id} (302 -> the svid
-         * player, no frame block). Resolved at runtime via our
-         * /api/gdmirror (slug -> movie page -> player AJAX). Verified
-         * 2026-09-08: Spider-Man embeds /evid/vouoyr7 with 6
-         * in-player servers. Movies only for now. */
+        /* GDMIRROR (their "Recommended" tag): direct multi-server
+         * embed player - streams.iqsmartgames.com/embed/movie/{tmdb}
+         * + /embed/tv/{tmdb}/{s}/{e} (verified 2026-09-08: Fight Club
+         * + Breaking Bad S1:E1 incl. a Hindi-dubbed source). In-player
+         * servers include multi-audio backends (Autoembed / Videasy /
+         * Vidsrc.wtf). Movies need no key; TV needs the fixed site key.
+         * No frame block on their side. */
         id: "gdmirror",
         name: "GDMirror",
-        movieOnly: true,
-        needsResolve: true,
-        movie: () => "",
-        tv: () => "",
+        movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}`,
+        tv: (id, s, e) =>
+          `https://streams.iqsmartgames.com/embed/tv/${id}/${s}/${e}?key=${GDMIRROR_KEY}`,
       },
       {
         /* https://web.nxsha.app/embed docs: /embed/movie/{tmdb} +

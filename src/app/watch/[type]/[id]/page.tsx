@@ -12,7 +12,6 @@ import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
 import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX, slugify } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
-import { findGDMirrorUrl } from "@/lib/gdmirror";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -111,19 +110,7 @@ function WatchContent() {
   );
 
   /* ── resume: pick up exactly where the user left off (startAt) ── */
-  const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number; err?: "gdmirror"; gdmDetail?: string } | null>(null);
-  /* async sub-players (GDMirror): resolve the per-title token embed.
-   * Token-guarded so a stale resolution can never overwrite a newer
-   * player choice. */
-  const resolveToken = useRef(0);
-  const loadResolved = () => {
-    const my = ++resolveToken.current;
-    setEmbed(null); /* resolving - skeleton shows */
-    findGDMirrorUrl(slug, t, season, episode).then(({ url, detail }) => {
-      if (resolveToken.current !== my) return;
-      setEmbed({ src: url ?? "", err: url ? undefined : "gdmirror", gdmDetail: url ? undefined : detail });
-    });
-  };
+  const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,13 +127,6 @@ function WatchContent() {
         setEmbed(aniId ? { src: `https://megaplay.buzz/stream/ani/${aniId}/${ep}/sub` } : { src: "" });
       });
       return () => { cancelled = true; };
-    }
-    /* async sub-players (GDMirror): per-title token embeds resolved
-     * at runtime (skeleton until the URL arrives) */
-    if (subPlayer?.needsResolve) {
-      if (!d) { setEmbed(null); return; }
-      loadResolved();
-      return;
     }
     /* slug-keyed sub-players (Cineverse) need the TMDB title first -
      * skeleton until it arrives (same as the MegaPlay resolving state) */
@@ -168,8 +148,6 @@ function WatchContent() {
     clearResume(resumeKeyFor(t, id, season, episode));
     lastTime.current = null;
     lastSaved.current = 0;
-    /* async players re-resolve their per-title URL */
-    if (subPlayer?.needsResolve) { loadResolved(); return; }
     /* rebuild the CURRENT player (Server 8 keeps the picked sub-player) */
     setEmbed({ src: currentSrc() });
   };
@@ -329,15 +307,6 @@ function WatchContent() {
                 allowFullScreen={!provider.denyFullscreen}
                 referrerPolicy="origin"
               />
-            ) : embed.err === "gdmirror" ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                <span className="text-4xl">📡</span>
-                <p className="text-sm font-bold">GDMirror doesn&rsquo;t have this title right now</p>
-                <p className="text-[12.5px] text-neutral-400">Try another player above.</p>
-                {embed.gdmDetail ? (
-                  <p className="font-mono text-[11px] text-neutral-600">({embed.gdmDetail})</p>
-                ) : null}
-              </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                 <span className="text-4xl">🌸</span>
