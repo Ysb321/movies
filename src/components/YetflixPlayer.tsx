@@ -296,7 +296,7 @@ export default function YetflixPlayer({ type, tmdbId, season, episode }: Props) 
               {inApp ? (
                 <>Tap <span className="font-bold text-white">Generate / Download</span> below — the video auto-plays here</>
               ) : (
-                <>This host needs one manual step — <span className="font-bold text-white">generate the link</span>, copy it and paste it below</>
+                <>This host needs one manual step — <span className="font-bold text-white">right-click "Download Here" → Copy link address</span>, then paste it below</>
               )}
             </div>
             {!inApp && (

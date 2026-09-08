@@ -27,6 +27,16 @@ export async function GET(req: NextRequest) {
     const finalUrl = r.url;
     const ct = r.headers.get("content-type") ?? "";
 
+    /* HubCloud generator pattern (verified live): the extract URL
+     * redirects to gamerxyt.com/dl.php?link=<DIRECT googleusercontent
+     * file URL> - the playable link rides in the query string */
+    const lm = finalUrl.match(/[?&]link=(https?[^&#]+)/);
+    if (lm) {
+      let link = lm[1];
+      try { link = decodeURIComponent(link); } catch {}
+      if (/^https?:\/\//.test(link)) return NextResponse.json({ url: link });
+    }
+
     /* landed back on an HTML page = the host wants a manual generation
      * step (some extractors) - the player shows its generator frame */
     if (/text\/html/i.test(ct) && !/\.(mp4|mkv|m3u8|webm)/i.test(finalUrl)) {
