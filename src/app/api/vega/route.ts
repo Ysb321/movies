@@ -39,9 +39,10 @@ export async function GET(req: NextRequest) {
   if (!meta.title) return NextResponse.json({ streams: [], error: "no meta" });
 
   try {
-    const chips = await listAll(meta, type, season, episode);
+    const dbg = sp.get("debug") === "1" ? [] : undefined;
+    const chips = await listAll(meta, type, season, episode, dbg);
     return NextResponse.json(
-      { streams: chips },
+      dbg ? { streams: chips, debug: dbg } : { streams: chips },
       { headers: chips.length ? { "cache-control": "public, max-age=300" } : { "cache-control": "no-store" } }
     );
   } catch (e: any) {

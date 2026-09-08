@@ -366,31 +366,39 @@ export async function listAll(
   meta: VegaMeta,
   type: "movie" | "tv",
   season?: number,
-  episode?: number
+  episode?: number,
+  dbg?: { provider: string; posts: number; matched: string | null; chips: number; err: string | null }[]
 ): Promise<VegaChip[]> {
   const signal = AbortSignal.timeout(24000);
   const jobs = PROVIDERS.map(async (m): Promise<VegaChip[]> => {
+    const d = { provider: m.value, posts: 0, matched: null as string | null, chips: 0, err: null as string | null };
+    dbg?.push(d);
     try {
       const posts = await searchProvider(m, meta.title, signal);
+      d.posts = posts.length;
       const hit = posts.find((p: any) => postMatches(p.title, meta.title, meta.year));
+      d.matched = hit?.title ?? null;
       if (!hit) return [];
       let link: string = hit.link;
       if (type === "tv") {
         const epLink = await resolveEpisodeLink(m, hit.link, season ?? 1, episode ?? 1, signal);
-        if (!epLink) return [];
+        if (!epLink) { d.err = "episode not resolved"; return []; }
         link = epLink;
       }
       const streams = await m.stream.getStream({
         link, type: type === "tv" ? "series" : "movie", signal,
         providerContext: makeContext(), isDownload: false,
       });
-      return (streams ?? [])
+      const chips = (streams ?? [])
         .filter((s: any) => s?.link && /^https?:/i.test(s.link))
         .map((s: any) => ({
           provider: m.value, server: s.server ?? m.name, link: s.link, type: s.type ?? "",
           quality: s.quality, title: hit.title, headers: s.headers, subtitles: s.subtitles,
         }));
-    } catch {
+      d.chips = chips.length;
+      return chips;
+    } catch (e: any) {
+      d.err = String(e?.message ?? e).slice(0, 140);
       return [];
     }
   });
