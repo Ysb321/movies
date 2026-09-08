@@ -78,7 +78,8 @@
  *    (HindiSources list, own :site-nm resume namespace). Netflix-direct is
  *    verified live; NewTV Hotstar/Prime/Disney fan-out best-effort.
  *  - DesiDDL (Server 20, vlcOnly Hindi-DDL lane): VegaMovies + MoviesDrive
- *    dual-audio DDL posts via /api/desiddl - search, IMDb-hit verify, hub
+ *    + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix) DDL posts via
+ *    /api/desiddl - search, IMDb-hit verify, hub
  *    links (V-Cloud/HubCloud/GDFlix/GDLink) cracked on tap with FSL fast
  *    links first, played in the site player (DdlSources list, own :site-dd
  *    resume namespace). Ported from the Megix CSX CloudStream providers.
@@ -409,7 +410,8 @@ export const PROVIDERS: EmbedProvider[] = [
      * verify, hub links cracked on tap (FSL fast links first). Ported
      * from the Megix CSX providers; search.php verified live 2026-09-09
      * (Fight Club dual-audio exact hit) - post selectors need a live
-     * check after deploy. */
+     * check after deploy. HDMovie2 (newhdmovie2.best -> hdm.im ->
+     * GDFlix) rides the same lane (blog tag "HDMovie2"). */
     id: "desiddl",
     name: "DesiDDL",
     vlcOnly: true,

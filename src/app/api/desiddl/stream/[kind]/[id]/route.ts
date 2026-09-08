@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 /* Server 20 (DesiDDL) stream API - Hindi DDL blogs NOT covered by Server 9
  * (WebStreamrMBG only scrapes 4KHDHub/HDHub4u for Hindi): VegaMovies +
- * MoviesDrive, ported from the Megix CSX CloudStream providers
+ * MoviesDrive (ported from the Megix CSX CloudStream providers) +
+ * HDMovie2 (newhdmovie2.best posts -> hdm.im download pages -> GDFlix)
  * (VegaMoviesProvider/MoviesDriveProvider, Kotlin -> edge TS). Flow per
  * blog: Typesense JSON search.php -> IMDb-verified hit (Vega hits carry
  * imdb_id; MoviesDrive falls back to title+year fuzzy) -> post page ->
@@ -21,6 +22,7 @@ const URLS_JSON =
 const FALLBACK: Record<string, string> = {
   vegamovies: "https://new2.vegamovies.futbol",
   moviesdrive: "https://new3.moviesdrive.christmas",
+  hdmovie2: "https://newhdmovie2.best",
 };
 const UA = {
   "User-Agent":
@@ -336,6 +338,66 @@ async function mdriveSeries(
   return out;
 }
 
+/* ── HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix) ── */
+async function searchHdmovie2(base: string, title: string): Promise<Hit[]> {
+  const html = await getHtml(`${base}/?s=${encodeURIComponent(title)}`, 10000);
+  const seen = new Map<string, string>();
+  for (const m of html.matchAll(/<a\b[^>]*href="([^"]*\/movie\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const url = abs(m[1], base);
+    const text = strip(m[2]);
+    if (!text) continue;
+    const prev = seen.get(url);
+    if (prev === undefined || text.length > prev.length) seen.set(url, text);
+  }
+  return [...seen].map(([url, t]) => ({ title: t, url, imdb: "" }));
+}
+async function hdmovie2Rows(
+  base: string, postUrl: string, postTitle: string, series: boolean, s: number, e: number
+): Promise<Row[]> {
+  const post = await getHtml(postUrl, 15000);
+  const audio = parseAudio(postTitle);
+  const links: { url: string; text: string }[] = [];
+  for (const m of post.matchAll(/<a\b[^>]*href="(https?:\/\/hdm\.im\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    links.push({ url: m[1], text: strip(m[2]) });
+  }
+  const uniq = [...new Map(links.map((l) => [l.url, l])).values()];
+  const parsed = uniq.map((l) => ({ l, m: /season-(\d+)-ep0*(\d+)/i.exec(l.url) }));
+  const anyParsed = parsed.some((x) => x.m);
+  const wanted = series
+    ? parsed
+        .filter((x) => (x.m ? Number(x.m[1]) === s && Number(x.m[2]) === e : !anyParsed))
+        .map((x) => x.l)
+    : uniq;
+  const out: Row[] = [];
+  await Promise.all(
+    wanted.slice(0, 12).map(async (l, i) => {
+      try {
+        const h = await getHtml(l.url, 12000);
+        const epTag = /season-\d+-(ep0*\d+(?:-bonus-episode)?)/i.exec(l.url)?.[1] || "";
+        for (const a of anchors(h)) {
+          if (!/gdflix/i.test(a.href)) continue;
+          const qm = /(\d{3,4})[pP]\s*\[([^\]]+)\]\s*([\d.]+\s*[MG]B)?/i.exec(a.text);
+          if (!qm) continue;
+          out.push({
+            key: `hdm2-${qm[1]}p-${i}-${out.length}`,
+            blog: "HDMovie2",
+            quality: `${qm[1]}p`,
+            size: qm[3] || "",
+            source: "GDFlix",
+            file: `${strip(postTitle).slice(0, 70)}${epTag ? ` ${epTag.toUpperCase()}` : ""}`,
+            audio,
+            hub: abs(a.href, base),
+            hubKind: "gdflix",
+          });
+        }
+      } catch {
+        /* skip */
+      }
+    })
+  );
+  return out;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ kind: string; id: string }> }) {
   const { kind, id } = await params;
   if ((kind !== "movie" && kind !== "series") || !/^\d+$/.test(id)) {
@@ -353,6 +415,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
   const runBlog = async (key: string): Promise<Row[]> => {
     try {
       const base = await blogBase(key);
+      if (key === "hdmovie2") {
+        const hits = await searchHdmovie2(base, title);
+        const hit = pickHit(hits, title, year, imdb);
+        if (!hit) return [];
+        return hdmovie2Rows(base, hit.url, hit.title, series, s, e);
+      }
       const hits = await searchBlog(base, title);
       const hit = pickHit(hits, title, year, imdb);
       if (!hit) return [];
@@ -367,7 +435,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
       return [];
     }
   };
-  const [vega, mdrive] = await Promise.all([runBlog("vegamovies"), runBlog("moviesdrive")]);
-  const rows = [...vega, ...mdrive].slice(0, 24);
+  const [vega, mdrive, hdm2] = await Promise.all([
+    runBlog("vegamovies"),
+    runBlog("moviesdrive"),
+    runBlog("hdmovie2"),
+  ]);
+  const rows = [...vega, ...mdrive, ...hdm2].slice(0, 30);
   return NextResponse.json({ title, rows }, { headers: { "cache-control": "no-store" } });
 }

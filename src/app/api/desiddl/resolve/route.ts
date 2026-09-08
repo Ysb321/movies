@@ -263,19 +263,25 @@ async function gdflixResolve(entry: string): Promise<{ cands: Cand[]; file: stri
       /* skip */
     }
   }
-  /* Instant DL: location after url= */
+  /* Instant DL: newer GDFlix pages link the CDN file directly (and older
+   * ones redirect with a url= tail) - take the href AND the dance. */
   const inst = btns.find((x) => /Instant DL/i.test(x.text));
   if (inst) {
+    const href = abs(inst.href, base);
+    cands.push({ url: href, server: "Instant" });
     try {
-      const ir = await fetch(abs(inst.href, base), {
+      const ir = await fetch(href, {
         redirect: "manual",
         headers: UA,
         signal: AbortSignal.timeout(10000),
       });
       const loc = ir.headers.get("location") || "";
-      if (loc.includes("url=")) cands.push({ url: loc.substring(loc.indexOf("url=") + 4), server: "Instant" });
+      if (loc.includes("url=")) {
+        const u2 = loc.substring(loc.indexOf("url=") + 4);
+        if (u2 && u2 !== href) cands.push({ url: u2, server: "Instant" });
+      }
     } catch {
-      /* skip */
+      /* href stands alone */
     }
   }
   /* Pixeldrain: rewrite from the link itself */

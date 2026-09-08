@@ -40,7 +40,7 @@ type DdRow = {
 
 const LOAD_LINES = [
   "Contacting Hindi DDL blogs…",
-  "Searching VegaMovies · MoviesDrive…",
+  "Searching VegaMovies · MoviesDrive · HDMovie2…",
   "Still searching — the blogs are slow right now…",
   "Almost there — reading the quality sections…",
 ];
