@@ -70,10 +70,7 @@ function WatchContent() {
     () => !!d && (d.genres ?? []).some((g: any) => g.id === 16) && ["ja", "zh", "ko"].includes(d.original_language ?? ""),
     [d]
   );
-  const providers = useMemo(
-    () => PROVIDERS.filter((p) => (!p.animeOnly || isAnime) && (!p.movieOnly || t === "movie")),
-    [isAnime, t]
-  );
+  const providers = useMemo(() => PROVIDERS.filter((p) => !p.animeOnly || isAnime), [isAnime]);
   const activeId = providers.some((p) => p.id === serverId) ? serverId : providers[0]?.id ?? serverId;
   const provider = getProvider(activeId);
 
