@@ -64,7 +64,7 @@ const searchPhp = async (base: string, query: string, budget: Budget): Promise<C
 
 /* ---------- shared generic crawler (intermediate download pages) ---------- */
 
-const HOST_RE = /vcloud|hubcloud|gdflix|gdlink|driveseed|driveleech/i;
+const HOST_RE = /vcloud|hubcloud|zcloud|gdflix|gdlink|driveseed|driveleech/i;
 const FILE_RE = /\.(mp4|mkv|m3u8|webm)(\?|$)/i;
 const INTERMEDIATE_TEXT = /download|quality|480|720|1080|2160|4k|episode|season|online|watch/i;
 

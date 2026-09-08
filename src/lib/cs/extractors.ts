@@ -31,9 +31,9 @@ const atob2 = (s: string): string => {
   }
 };
 
-const isVcloudFamily = (u: string) => /vcloud|hubcloud/i.test(u);
+const isVcloudFamily = (u: string) => /vcloud|hubcloud|zcloud/i.test(u);
 export const isKnownHost = (u: string) =>
-  /vcloud|hubcloud|gdflix|gdlink|driveseed|driveleech/i.test(u);
+  /vcloud|hubcloud|zcloud|gdflix|gdlink|driveseed|driveleech/i.test(u);
 
 /* VCloud / HubCloud card flow:
  * 1. host page -> var url = atob(atob('..')) (vcloud) | var url = '...' | div.vd > center > a
@@ -46,7 +46,7 @@ export const isKnownHost = (u: string) =>
 async function remapDomain(url: string, budget: Budget): Promise<string> {
   try {
     const urls = await csxUrls(budget);
-    const key = /hubcloud/i.test(url) ? "hubcloud" : /vcloud/i.test(url) ? "vcloud" : null;
+    const key = /hubcloud/i.test(url) ? "hubcloud" : /vcloud/i.test(url) ? "vcloud" : /zcloud/i.test(url) ? "zcloud" : null;
     if (key && urls[key]) {
       const latest = urls[key].replace(/\/$/, "");
       if (latest && !url.startsWith(latest)) return url.replace(new URL(url).origin, latest);
@@ -171,11 +171,8 @@ export async function resolveGdflix(url: string, budget: Budget): Promise<HostCh
 }
 
 export async function resolveHostLink(url: string, budget: Budget): Promise<HostChip[]> {
-  try {
-    if (isVcloudFamily(url)) return await resolveCard(url, budget);
-    if (/gdflix|gdlink|driveseed|driveleech/i.test(url)) return await resolveGdflix(url, budget);
-  } catch {
-    return [];
-  }
+  /* errors propagate - the engine records them in debug output */
+  if (isVcloudFamily(url)) return await resolveCard(url, budget);
+  if (/gdflix|gdlink|driveseed|driveleech/i.test(url)) return await resolveGdflix(url, budget);
   return [];
 }

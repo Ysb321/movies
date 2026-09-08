@@ -20,6 +20,7 @@ export type CsDebug = {
   titles: string[];
   matched: string | null;
   links: number;
+  linkSamples: string[];
   chips: number;
   err: string | null;
   budget?: boolean;
@@ -62,13 +63,13 @@ export async function listAll(
     : CS_PROVIDERS;
 
   const jobs = mods.map(async (m): Promise<CsChip[]> => {
-    const d: CsDebug = { provider: m.value, posts: 0, titles: [], matched: null, links: 0, chips: 0, err: null };
+    const d: CsDebug = { provider: m.value, posts: 0, titles: [], matched: null, links: 0, linkSamples: [], chips: 0, err: null };
     dbg?.push(d);
     try {
       const posts = await m.search(meta.title, budget);
       const clean = (posts ?? []).filter((p) => p?.link && p?.title);
       d.posts = clean.length;
-      d.titles = clean.slice(0, 3).map((p) => String(p.title).slice(0, 60));
+      d.titles = clean.slice(0, 6).map((p) => String(p.title).slice(0, 60));
       const hit = clean.find((p) => postMatches(p.title, meta.title, meta.year));
       d.matched = hit?.title ?? null;
       if (!hit) return [];
@@ -79,15 +80,23 @@ export async function listAll(
         budget
       );
       d.links = hostLinks.length;
+      d.linkSamples = hostLinks.slice(0, 3).map((l) => l.replace(/^https?:\/\//, "").slice(0, 70));
       if (!hostLinks.length) {
         d.err = "no host links";
         return [];
       }
 
       const chips: CsChip[] = [];
+      const linkErrs: string[] = [];
       for (const hl of hostLinks.slice(0, 4)) {
         if (budget.left <= 3) break;
-        const resolved = await resolveHostLink(hl, budget);
+        let resolved;
+        try {
+          resolved = await resolveHostLink(hl, budget);
+        } catch (e: any) {
+          linkErrs.push(`${hl.replace(/^https?:\/\//, "").slice(0, 40)}: ${String(e?.message ?? e).slice(0, 60)}`);
+          continue;
+        }
         for (const r of resolved) {
           chips.push({
             provider: m.value,
@@ -101,7 +110,7 @@ export async function listAll(
         if (chips.length >= 10) break;
       }
       d.chips = chips.length;
-      d.err = chips.length ? null : d.err;
+      if (!chips.length && linkErrs.length) d.err = linkErrs.join(" | ").slice(0, 140);
       return chips;
     } catch (e: any) {
       if (e instanceof BudgetError || e?.__budget) d.budget = true;
