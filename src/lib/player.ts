@@ -64,6 +64,13 @@ export type EmbedSubPlayer = {
   /** slug-keyed player (Cineverse): the watch page passes a slugified
    *  TMDB title as the id instead of the TMDB id */
   slugTitle?: boolean;
+  /** iframe armor overrides (undefined = inherit the provider's).
+   *  sandbox: false forces unsandboxed, a string forces that sandbox
+   *  token list (PLAYER_SANDBOX for the default no-popups sandbox). */
+  sandbox?: false | string;
+  denyPopups?: boolean;
+  noScroll?: boolean;
+  denyFullscreen?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -121,7 +128,11 @@ export const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-/** default iframe armor: no popups, no modals, no top-navigation hijack */
+/** default iframe armor: no popups, no modals, no top-navigation hijack.
+ *  NB: omitting allow-popups is what REALLY kills popups (window.open
+ *  returns null even on a user tap); the "popups 'none'" allow token is
+ *  only a hint some engines honor. Unsandboxed providers rely on the
+ *  browser's own popup blocker instead. */
 export const PLAYER_SANDBOX =
   "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock";
 
@@ -236,8 +247,9 @@ export const PROVIDERS: EmbedProvider[] = [
      * player), in the site's own source order. Nxsha + screenscape +
      * Vidout + GDMirror are TMDB-keyed (verified live 2026-09-08);
      * Cineverse + Multiverse are slug-keyed (/embed/{slug}, slugs
-     * mirror multimovies slugs). Same iframe armor throughout
-     * (unsandboxed + popups revoked + noScroll). */
+     * mirror multimovies slugs). Base armor is unsandboxed + popups
+     * revoked + noScroll; GDMirror overrides to the default sandbox
+     * (its ad popups died only under a real sandbox). */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -273,6 +285,11 @@ export const PROVIDERS: EmbedProvider[] = [
          * backend (rpmshare mirror servers). No frame block. */
         id: "gdmirror",
         name: "GDMirror",
+        /* sandboxed (default tokens, NO allow-popups): their player
+         * throws ad popups on taps, and only a real sandbox kills
+         * window.open even under a user gesture. Playback + Download
+         * (+ fullscreen via the allow list) still work sandboxed. */
+        sandbox: PLAYER_SANDBOX,
         movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}?key=${GDMIRROR_KEY}`,
         tv: (id, s, e) =>
           `https://streams.iqsmartgames.com/embed/tv/${id}/${s}/${e}?key=${GDMIRROR_KEY}`,

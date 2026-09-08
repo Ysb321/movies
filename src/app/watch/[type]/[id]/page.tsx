@@ -85,6 +85,13 @@ function WatchContent() {
     [provider, t]
   );
   const subPlayer = subPlayers.find((sp) => sp.id === subPlayerId) ?? subPlayers[0] ?? null;
+  /* effective iframe armor: a sub-player override wins, otherwise the
+   * provider's (GDMirror runs sandboxed = no popups; its Server 8
+   * siblings stay unsandboxed). */
+  const effSandbox = subPlayer?.sandbox !== undefined ? subPlayer.sandbox : provider.sandbox;
+  const effDenyPopups = subPlayer?.denyPopups ?? provider.denyPopups;
+  const effNoScroll = subPlayer?.noScroll ?? provider.noScroll;
+  const effDenyFullscreen = subPlayer?.denyFullscreen ?? provider.denyFullscreen;
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -301,10 +308,10 @@ function WatchContent() {
                 src={embed.src}
                 title={title}
                 className="h-full w-full"
-                allow={`autoplay; encrypted-media; ${provider.denyFullscreen ? "" : "fullscreen; "}picture-in-picture; accelerometer${provider.denyPopups ? "; popups 'none'" : ""}`}
-                sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
-                scrolling={provider.noScroll ? "no" : undefined}
-                allowFullScreen={!provider.denyFullscreen}
+                allow={`autoplay; encrypted-media; ${effDenyFullscreen ? "" : "fullscreen; "}picture-in-picture; accelerometer${effDenyPopups ? "; popups 'none'" : ""}`}
+                sandbox={effSandbox === false ? undefined : effSandbox || PLAYER_SANDBOX}
+                scrolling={effNoScroll ? "no" : undefined}
+                allowFullScreen={!effDenyFullscreen}
                 referrerPolicy="origin"
               />
             ) : (
