@@ -9,7 +9,7 @@ import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
-import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
+import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX, slugify } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
 import {
@@ -72,8 +72,9 @@ function WatchContent() {
   const provider = getProvider(activeId);
 
   /* Server 8 (MultiMovies): named sub-players - which of their
-   * TMDB-keyed players is embedded. Reset whenever the server or the
-   * title type changes; defaults to the first player for the type. */
+   * players is embedded (TMDB ids, except slug-keyed Cineverse).
+   * Reset whenever the server or the title type changes; defaults
+   * to the first player for the type. */
   const [subPlayerId, setSubPlayerId] = useState<string | null>(null);
   useEffect(() => { setSubPlayerId(null); }, [serverId, t]);
   const subPlayers = useMemo(
@@ -88,6 +89,21 @@ function WatchContent() {
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
   const title = d ? titleOf(d) : "Loading…";
+  /* Cineverse is slug-keyed (/embed/{slug}, slugs mirror multimovies
+   * slugs): derive from the TMDB title, original titles as fallback
+   * for non-English names. */
+  const slug =
+    slugify(titleOf(d)) || slugify(d?.original_title || d?.original_name || "") || String(id);
+  /* URL for the CURRENT player choice (Server 8 keeps its sub-player;
+   * slug-keyed players get the title slug instead of the TMDB id) */
+  const currentSrc = (startAt?: number) => {
+    const pid = subPlayer?.slugTitle ? slug : embedId;
+    return subPlayer
+      ? t === "movie"
+        ? subPlayer.movie(pid)
+        : subPlayer.tv(pid, season, episode)
+      : embedUrl(provider, t, embedId, { s: season, e: episode, startAt });
+  };
   const seasons = useMemo(
     () => (d?.seasons ?? []).filter((s: any) => s.season_number > 0 && s.episode_count > 0),
     [d]
@@ -112,18 +128,17 @@ function WatchContent() {
       });
       return () => { cancelled = true; };
     }
+    /* slug-keyed sub-players (Cineverse) need the TMDB title first -
+     * skeleton until it arrives (same as the MegaPlay resolving state) */
+    if (subPlayer?.slugTitle && !d) { setEmbed(null); return; }
     const rkey = resumeKeyFor(t, id, season, episode);
     const saved = getResume(rkey);
     const resume =
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    /* Server 8: embed the SELECTED sub-player (their player, TMDB-keyed) */
-    const src = subPlayer
-      ? t === "movie"
-        ? subPlayer.movie(embedId)
-        : subPlayer.tv(embedId, season, episode)
-      : embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume });
+    /* Server 8: embed the SELECTED sub-player (their player as-is) */
+    const src = currentSrc(resume);
     setEmbed({ src, resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,7 +148,8 @@ function WatchContent() {
     clearResume(resumeKeyFor(t, id, season, episode));
     lastTime.current = null;
     lastSaved.current = 0;
-    setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode }) });
+    /* rebuild the CURRENT player (Server 8 keeps the picked sub-player) */
+    setEmbed({ src: currentSrc() });
   };
 
   /* ── listen to player postMessage events → persist exact position ── */

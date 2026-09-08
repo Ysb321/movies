@@ -27,18 +27,20 @@
  *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
  *    revoked; noScroll crops their chrome.
  *  - MultiMovies (Server 8): the sources on multimovies.beer, embedded
- *    AS-IS (their player, not ours) and keyed purely by TMDB ids, in the
- *    site's own source order: Cineverse (cineverse.pages.dev - movies
- *    only, its TV routes serve an error page), Nxsha
+ *    AS-IS (their player, not ours), in the site's own source order:
+ *    Cineverse (cineverse.modiplay.xyz/embed/{slug} - slug-keyed,
+ *    movies only; slugs mirror multimovies slugs and are derived
+ *    from the TMDB title at runtime), Nxsha
  *    (web.nxsha.app/embed - documented embed API, movies + TV),
  *    screenscape (screenscape.me/embed - documented embed API, movies
  *    + TV, Hindi audio by default) and Vidout (vidout.pages.dev -
- *    movies + TV). GDMIRROR (their "Recommended" tag) is NOT
- *    TMDB-addressable: per-file tokens from multimovies' private AJAX
- *    (gdmirrorbot.nl now redirects to a token-walled aggregator) so
- *    it cannot be embedded via TMDB id - left out by design.
- *    Multiverse (multiverse.pages.dev) is DOWN (HTTP 500 on every
- *    route) - left out until it recovers.
+ *    movies + TV). NB: cineverse.pages.dev is an unrelated info-only
+ *    demo, NOT the site's Cineverse - never use it. GDMIRROR (their
+ *    "Recommended" tag) is NOT TMDB-addressable: per-file tokens
+ *    from multimovies' private AJAX (gdmirrorbot.nl now redirects to
+ *    a token-walled aggregator) so it cannot be embedded via TMDB id
+ *    - left out by design. Multiverse (multiverse.pages.dev) is DOWN
+ *    (HTTP 500 on every route) - left out until it recovers.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -59,6 +61,9 @@ export type EmbedSubPlayer = {
   name: string; /* chip label (e.g. "Cineverse") */
   /** movies-only player - hidden on TV titles */
   movieOnly?: boolean;
+  /** slug-keyed player (Cineverse): the watch page passes a slugified
+   *  TMDB title as the id instead of the TMDB id */
+  slugTitle?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -103,6 +108,18 @@ const qs = (params: Record<string, string | number | undefined>) => {
   const s = p.toString();
   return s ? `?${s}` : "";
 };
+
+/** WordPress-style slug ("Spider-Man: Brand New Day" ->
+ *  "spider-man-brand-new-day"). Cineverse embeds are slug-keyed and
+ *  their slugs mirror multimovies slugs, so the watch page derives
+ *  this from the TMDB title at runtime. */
+export const slugify = (s: string) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
 /** default iframe armor: no popups, no modals, no top-navigation hijack */
 export const PLAYER_SANDBOX =
@@ -209,14 +226,12 @@ export const PROVIDERS: EmbedProvider[] = [
   },
   {
     /* Server 8 - the multimovies.beer sources, embedded as-is (their
-     * player, TMDB ids only), in the site's own source order. All four
-     * verified live 2026-09-08 (Spider-Man: Brand New Day, TMDB 969681,
-     * resolves by title on each). Cineverse + Vidout are the VidOut
-     * app family (unsandboxed + popups revoked + noScroll crops their
-     * chrome); Nxsha + screenscape are documented embed APIs kept on
-     * the same armor for consistency. Cineverse TV routes serve an
-     * error page -> movieOnly. GDMIRROR is per-file tokens (not
-     * TMDB-keyable); Multiverse 500s on every route - both left out. */
+     * player), in the site's own source order. Nxsha + screenscape +
+     * Vidout are TMDB-keyed (verified live 2026-09-08); Cineverse is
+     * slug-keyed (/embed/{slug}, slugs mirror multimovies slugs).
+     * Same iframe armor throughout (unsandboxed + popups revoked +
+     * noScroll). GDMIRROR is per-file tokens (not keyable); Multiverse
+     * 500s on every route - both left out. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -224,10 +239,19 @@ export const PROVIDERS: EmbedProvider[] = [
     noScroll: true,
     players: [
       {
+        /* REAL Cineverse: cineverse.modiplay.xyz/embed/{slug} - their
+         * backend (verified 2026-09-08: /embed/obsession and
+         * /embed/spider-man-brand-new-day serve the full player: 7
+         * in-player servers, multi-audio, EN/HI/... subs). The watch
+         * page passes a slugified TMDB title (slugTitle). Movies only
+         * - no TV addressing found on their side. NB: the old
+         * cineverse.pages.dev URL was a wrong, unrelated info-only
+         * demo - never use it. */
         id: "cineverse",
         name: "Cineverse",
         movieOnly: true,
-        movie: (id) => `https://cineverse.pages.dev/movie/${id}`,
+        slugTitle: true,
+        movie: (slug) => `https://cineverse.modiplay.xyz/embed/${slug}`,
         tv: () => "",
       },
       {
@@ -256,9 +280,10 @@ export const PROVIDERS: EmbedProvider[] = [
         tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
       },
     ],
-    /* defaults when no sub-player is picked: Cineverse for movies,
-     * Nxsha for TV (Cineverse has no TV) */
-    movie: (id) => `https://cineverse.pages.dev/movie/${id}`,
+    /* stubs (a sub-player always resolves, and Start over preserves
+     * the picked one - these are never embedded; Nxsha because it is
+     * TMDB-keyed like the signature expects) */
+    movie: (id) => `https://web.nxsha.app/embed/movie/${id}`,
     tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
   },
   {
