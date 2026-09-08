@@ -333,14 +333,21 @@ const makeContext = (origin: OriginRef) => {
 
 const norm = (x: string) => (x ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/* match the POST the site made for THIS title: these sites format
+ * posts as "<Name> (Year) quality..." so the post title should START
+ * with the movie name; fallback = every word present + exact year
+ * (kills near-misses like "Raat Jawan Hai" for the movie "Jawan") */
 function postMatches(title: string, wantTitle: string, year: number): boolean {
-  const t = norm(title);
-  const tokens = norm(wantTitle).split(" ").filter((w) => w.length > 3);
-  if (tokens.length && !tokens.some((tk) => t.includes(tk))) return false;
-  if (!year) return true;
-  const years = (title.match(/\b(19|20)\d{2}\b/g) ?? []).map(Number);
-  if (!years.length) return true;
-  return years.some((y) => Math.abs(y - year) <= 1);
+  const t = norm(String(title || "").replace(/^download\s+/i, ""));
+  const want = norm(wantTitle);
+  if (!t || !want) return false;
+  const years = (String(title).match(/\b(19|20)\d{2}\b/g) ?? []).map(Number);
+  const yearOk = (exact: boolean) =>
+    !year || !years.length || years.some((y) => (exact ? y === year : Math.abs(y - year) <= 1));
+  if (t.startsWith(want) && yearOk(false)) return true;
+  const tokens = want.split(" ").filter((w) => w.length > 3);
+  if (!tokens.length) return false;
+  return tokens.every((tk) => t.includes(tk)) && yearOk(true);
 }
 
 function episodeEntry(list: any[], episode: number): any | null {
@@ -348,9 +355,14 @@ function episodeEntry(list: any[], episode: number): any | null {
   return list.find((d) => num.test(d?.title ?? "")) ?? list[episode - 1] ?? null;
 }
 
+const absolutize = (link: string, origin: OriginRef): string => {
+  if (!link || /^https?:/i.test(link) || !origin.base) return link;
+  try { return new URL(link, origin.base).toString(); } catch { return link; }
+};
+
 async function resolveEpisodeLink(m: ProviderMod, link: string, season: number, episode: number, signal: AbortSignal, origin: OriginRef): Promise<string | null> {
   if (!m.meta) return null;
-  const info = await m.meta.getMeta({ link, providerContext: makeContext(origin), signal });
+  const info = await m.meta.getMeta({ link: absolutize(link, origin), providerContext: makeContext(origin), signal });
   const seasons = info?.linkList ?? [];
   if (!seasons.length) return null;
   const sNum = new RegExp("(^|[^0-9])0*" + season + "([^0-9]|$)", "i");
@@ -361,12 +373,12 @@ async function resolveEpisodeLink(m: ProviderMod, link: string, season: number, 
   if (!sEntry) return null;
   if (Array.isArray(sEntry.directLinks) && sEntry.directLinks.length) {
     const ep = episodeEntry(sEntry.directLinks, episode);
-    return ep?.link ?? null;
+    return ep?.link ? absolutize(ep.link, origin) : null;
   }
   if (sEntry.episodesLink && m.episodes?.getEpisodes) {
-    const eps = await m.episodes.getEpisodes({ url: sEntry.episodesLink, providerContext: makeContext(origin), signal });
+    const eps = await m.episodes.getEpisodes({ url: absolutize(sEntry.episodesLink, origin), providerContext: makeContext(origin), signal });
     const ep = episodeEntry(eps ?? [], episode);
-    return ep?.link ?? null;
+    return ep?.link ? absolutize(ep.link, origin) : null;
   }
   return null;
 }
@@ -400,11 +412,11 @@ export async function listAll(
       const hit = clean.find((p: any) => postMatches(p.title, meta.title, meta.year));
       d.matched = hit?.title ?? null;
       if (!hit) return [];
-      let link: string = hit.link;
+      let link: string = absolutize(hit.link, origin);
       if (type === "tv") {
         const epLink = await resolveEpisodeLink(m, hit.link, season ?? 1, episode ?? 1, signal, origin);
         if (!epLink) { d.err = "episode not resolved"; return []; }
-        link = epLink;
+        link = absolutize(epLink, origin);
       }
       const streams = await m.stream.getStream({
         link, type: type === "tv" ? "series" : "movie", signal,
