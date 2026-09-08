@@ -4,9 +4,15 @@
  * The addon (WebStreamrMBG) scrapes 20+ source sites live and returns
  * Stremio stream objects: { url, name, title, behaviorHints }. Direct
  * entries carry an /extract/ url (resolves to the file at play time);
- * page-only entries carry externalUrl (a download-button page the user
- * must click through). All calls go through our /api/webstreamr routes
- * (no CORS gamble, one shared fetch, resolve logic server-side).
+ * page-only entries carry externalUrl. All calls go through our
+ * /api/webstreamr routes (no CORS gamble, one shared fetch, resolve
+ * logic server-side).
+ *
+ * VLC handoff per platform: desktop app (preload IPC -> bundled vlc.exe),
+ * Android (vlc intent with browser fallback), iOS (vlc-x-callback), PC web
+ * (yetflix-vlc:// bridge + focus detection: a real launch blurs the page,
+ * still focused = app not installed). Browser-playable files (.mp4/.m3u8/
+ * .webm) can also play inline via hls.js - see VlcSources.
  */
 
 export type WsStream = {
@@ -134,13 +140,22 @@ export const isAndroid = () =>
 export const isIOS = () =>
   typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-/** Android Chrome -> VLC app (falls back to nothing when VLC is missing,
- *  so the UI always pairs it with a copy-link fallback) */
+/* files Chrome/Safari can play natively (.mp4/.webm/.mov) or via hls.js
+ * (.m3u8) - everything else (.mkv/Dolby) needs real VLC */
+const BROWSER_PLAYABLE = /\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i;
+export const playableInBrowser = (u?: string) => !!u && BROWSER_PLAYABLE.test(u);
+
+/** Android Chrome -> VLC app. #fragments are stripped and ; encoded (both
+ *  break intent parsing); S.browser_fallback_url keeps the tap from dying
+ *  silently when VLC isn't installed. */
 export function vlcIntentUrl(fileUrl: string): string | null {
-  if (fileUrl.startsWith("https://"))
-    return `intent://${fileUrl.slice("https://".length)}#Intent;scheme=https;package=org.videolan.vlc;end`;
-  if (fileUrl.startsWith("http://"))
-    return `intent://${fileUrl.slice("http://".length)}#Intent;scheme=http;package=org.videolan.vlc;end`;
+  const bare = fileUrl.split("#")[0];
+  const data = bare.replace(/;/g, "%3B");
+  const fallback = `;S.browser_fallback_url=${encodeURIComponent(bare)}`;
+  if (data.startsWith("https://"))
+    return `intent://${data.slice("https://".length)}#Intent;scheme=https;package=org.videolan.vlc${fallback};end`;
+  if (data.startsWith("http://"))
+    return `intent://${data.slice("http://".length)}#Intent;scheme=http;package=org.videolan.vlc${fallback};end`;
   return null;
 }
 
@@ -149,8 +164,7 @@ export function vlcIosUrl(fileUrl: string): string {
   return `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(fileUrl)}`;
 }
 
-/** hand a direct file url to the installed VLC; on plain PC browsers there
- *  is no VLC hook, so the link is copied for VLC's Open Network Stream. */
+/** hand a direct file url to the installed VLC (or report exactly why not) */
 export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: string }> {
   const copyLink = async () => {
     try {
@@ -163,27 +177,28 @@ export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: s
       try {
         referer = new URL(fileUrl).origin;
       } catch {}
-      await (
+      const opened = await (
         window as unknown as {
           yetflixVlc: { play: (u: string, h?: object) => Promise<unknown> };
         }
       ).yetflixVlc.play(fileUrl, referer ? { Referer: referer } : undefined);
-      return { ok: true, note: "Sent to VLC ✓" };
+      if (opened) return { ok: true, note: "Sent to VLC ✓" };
+      return { ok: false, note: "Desktop VLC not found — rebuild the desktop app" };
     }
     if (isAndroid()) {
       const intent = vlcIntentUrl(fileUrl);
       if (intent) {
         window.location.href = intent;
-        return { ok: true, note: "Opening VLC app… (no VLC? install it, then tap again)" };
+        return { ok: true, note: "Opening VLC app… (no VLC? tap Get VLC above)" };
       }
     }
     if (isIOS()) {
       window.location.href = vlcIosUrl(fileUrl);
-      return { ok: true, note: "Opening VLC app… (no VLC? install it, then tap again)" };
+      return { ok: true, note: "Opening VLC app… (no VLC? tap Get VLC above)" };
     }
-    /* PC web browser: no direct VLC hook - fire the Yetflix desktop bridge
-     * (auto-opens VLC when the app is installed; silent no-op otherwise)
-     * and always copy the link as well */
+    /* PC web: fire the desktop bridge and watch focus - a real launch blurs
+     * the page (OS prompt / app switch); still focused after 2.5s = the app
+     * isn't installed. The link is copied either way. */
     try {
       let ref = "";
       try {
@@ -196,7 +211,28 @@ export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: s
       setTimeout(() => f.remove(), 4000);
     } catch {}
     await copyLink();
-    return { ok: false, note: "Opening VLC via the Yetflix app… (link copied too)" };
+    const launched = await new Promise<boolean>((resolve) => {
+      let done = false;
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true;
+          window.removeEventListener("blur", onBlur);
+          resolve(false);
+        }
+      }, 2500);
+      const onBlur = () => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          window.removeEventListener("blur", onBlur);
+          resolve(true);
+        }
+      };
+      window.addEventListener("blur", onBlur);
+    });
+    return launched
+      ? { ok: true, note: "Opening VLC…" }
+      : { ok: false, note: "Desktop app not detected — install it for one-tap VLC (link copied)" };
   } catch {
     await copyLink();
     return { ok: false, note: "VLC didn't open — link copied instead" };
