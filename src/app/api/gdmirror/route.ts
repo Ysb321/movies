@@ -16,16 +16,21 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 /** tolerant option scan: which player-option number is the GDMirror one?
- *  Dooplay renders <li data-post=".." data-nume="N">…<span>GDMIRROR…</span> */
+ *  Dooplay renders one option element per source carrying data-nume="N"
+ *  (element type varies by version), with the source name inside it. For
+ *  every "gdmirror" mention, take the nearest PRECEDING data-nume (and
+ *  data-post when the body class didn't yield the post id). */
 function findGdmirrorOption(html: string): { post: string; nume: string } | null {
-  const pagePost =
-    html.match(/postid-(\d+)/)?.[1] ?? html.match(/data-post="(\d+)"/)?.[1];
-  const lis = html.matchAll(/<li\b[^>]*data-nume="(\d+)"[^>]*>([\s\S]*?)<\/li>/gi);
-  for (const m of lis) {
-    if (/gdmirror/i.test(m[2])) {
-      const post = pagePost ?? m[0].match(/data-post="(\d+)"/)?.[1];
-      if (post) return { post, nume: m[1] };
-    }
+  const pagePost = html.match(/postid-(\d+)/)?.[1];
+  const re = /gdmirror/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const window = html.slice(Math.max(0, m.index - 3000), m.index);
+    const numes = [...window.matchAll(/data-nume="(\d+)"/g)];
+    const posts = [...window.matchAll(/data-post="(\d+)"/g)];
+    const nume = numes.length ? numes[numes.length - 1][1] : undefined;
+    const post = pagePost ?? (posts.length ? posts[posts.length - 1][1] : undefined);
+    if (nume && post) return { post, nume };
   }
   return null;
 }

@@ -111,7 +111,7 @@ function WatchContent() {
   );
 
   /* ── resume: pick up exactly where the user left off (startAt) ── */
-  const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number; err?: "gdmirror" } | null>(null);
+  const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number; err?: "gdmirror"; gdmDetail?: string } | null>(null);
   /* async sub-players (GDMirror): resolve the per-title token embed.
    * Token-guarded so a stale resolution can never overwrite a newer
    * player choice. */
@@ -119,9 +119,9 @@ function WatchContent() {
   const loadResolved = () => {
     const my = ++resolveToken.current;
     setEmbed(null); /* resolving - skeleton shows */
-    findGDMirrorUrl(slug, t, season, episode).then((url) => {
+    findGDMirrorUrl(slug, t, season, episode).then(({ url, detail }) => {
       if (resolveToken.current !== my) return;
-      setEmbed({ src: url ?? "", err: url ? undefined : "gdmirror" });
+      setEmbed({ src: url ?? "", err: url ? undefined : "gdmirror", gdmDetail: url ? undefined : detail });
     });
   };
 
@@ -334,6 +334,9 @@ function WatchContent() {
                 <span className="text-4xl">📡</span>
                 <p className="text-sm font-bold">GDMirror doesn&rsquo;t have this title right now</p>
                 <p className="text-[12.5px] text-neutral-400">Try another player above.</p>
+                {embed.gdmDetail ? (
+                  <p className="font-mono text-[11px] text-neutral-600">({embed.gdmDetail})</p>
+                ) : null}
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
