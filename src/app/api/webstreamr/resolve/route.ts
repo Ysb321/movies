@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /* Server 9 (WebStreamr) link resolver - turns a stream url into something
- * VLC can play. Follows redirects manually (never reading bodies, so a hop
- * that lands ON the file itself is free); if the chain ends at an HTML
- * page (HubCloud-style "link generator" with a Download button), the file
- * link is scraped out of it (query-param handoff first, anchor hrefs
- * second, bare urls in markup third). A cookie jar is kept across hops
- * (generator sessions need it). Anything that still looks like a page
- * comes back as kind:page and the client embeds it for the
- * click-through flow.
- * Private/local targets are refused (no SSRF into the desktop's own
- * localhost server or cloud metadata endpoints). */
+ * VLC can play, with no click-through needed. Follows redirects manually
+ * (never reading bodies); if the chain ends at an HTML page (HubCloud-style
+ * "link generator"), the file link is scraped out of it (query-param
+ * handoff first, anchor hrefs second, bare urls in markup third). A cookie
+ * jar is kept across hops (generator sessions need it). /extract/ urls get
+ * automatic sibling-index fallback (fast <-> direct); every file candidate
+ * is verified with a 1-byte Range probe and confirmed-dead links
+ * (403/404/410) lose to live ones. Anything still unresolvable comes back
+ * as kind:page for the client's open-in-new-tab fallback.
+ * Private/local targets are refused (no SSRF). */
 
 export const runtime = "edge";
 
 const MAX_HOPS = 5;
-const HOP_TIMEOUT_MS = 15000;
+const HOP_TIMEOUT_MS = 12000;
+const PROBE_TIMEOUT_MS = 10000;
 const MAX_HTML_BYTES = 512 * 1024;
 
 const blockedHost = (h: string) =>
@@ -70,18 +71,30 @@ const cancel = async (res: Response) => {
   } catch {}
 };
 
-export async function GET(req: NextRequest) {
-  const raw = req.nextUrl.searchParams.get("url") || "";
-  let current: URL;
+/** 1-byte liveness probe: alive (206/200/416), dead (403/404/410), or
+ *  unknown (anything else - VLC tries anyway) */
+async function probeFile(fileUrl: string): Promise<"alive" | "dead" | "unknown"> {
   try {
-    current = new URL(raw);
+    const res = await fetch(fileUrl, {
+      headers: { Range: "bytes=0-0", accept: "*/*" },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    const st = res.status;
+    try {
+      await res.body?.cancel();
+    } catch {}
+    if (st === 206 || st === 200 || st === 416) return "alive";
+    if (st === 403 || st === 404 || st === 410) return "dead";
+    return "unknown";
   } catch {
-    return json({ ok: false, error: "bad url" }, 400);
+    return "unknown";
   }
-  if (!/^https?:$/.test(current.protocol) || blockedHost(current.hostname)) {
-    return json({ ok: false, error: "refused target" }, 403);
-  }
+}
 
+type Attempt = { file?: string; page?: string };
+
+async function attempt(start: URL): Promise<Attempt> {
+  let current = start;
   const seen = new Set<string>();
   const jar = makeJar();
   for (let hop = 0; hop < MAX_HOPS; hop++) {
@@ -95,7 +108,7 @@ export async function GET(req: NextRequest) {
         headers: { accept: "*/*", ...(jar.header() ? { cookie: jar.header() } : {}) },
       });
     } catch {
-      return json({ ok: false, error: hop === 0 ? "source unreachable" : "resolve failed" }, 502);
+      return {};
     }
     jar.collect(res);
     const loc = res.headers.get("location");
@@ -111,10 +124,9 @@ export async function GET(req: NextRequest) {
         await cancel(res);
         break;
       }
-      /* redirect straight onto a file: done without touching the body */
       if (looksFile(next.href)) {
         await cancel(res);
-        return json({ ok: true, kind: "file", url: next.href, links: [] });
+        return { file: next.href };
       }
       await cancel(res);
       current = next;
@@ -124,9 +136,8 @@ export async function GET(req: NextRequest) {
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       const len = Number(res.headers.get("content-length") || "0");
       if (!ct.includes("text/html") || len > MAX_HTML_BYTES) {
-        /* the file itself (video/octet-stream/...) - never read the body */
         await cancel(res);
-        return json({ ok: true, kind: "file", url: current.href, links: [] });
+        return { file: current.href };
       }
       const html = await res.text();
       /* 1) explicit query-param handoff (HubCloud gamerxyt ?link=...) */
@@ -136,54 +147,90 @@ export async function GET(req: NextRequest) {
           try {
             const u = new URL(v);
             if (!blockedHost(u.hostname) && (looksFile(u.href) || FILE_HOST.test(u.hostname))) {
-              return json({ ok: true, kind: "file", url: u.href, links: [] });
+              return { file: u.href };
             }
           } catch {}
         }
       }
-      /* 2) anchor hrefs that are files or file-CDN links (matchAll, not
-       * module-level exec: the edge runtime reuses isolates, so a shared
-       * /g lastIndex would skip matches on later requests) */
+      /* 2) anchor hrefs, then 3) bare urls anywhere in the markup */
       const links: string[] = [];
+      const take = (href: string) => {
+        try {
+          const u = new URL(href);
+          if (
+            /^https?:$/.test(u.protocol) &&
+            !blockedHost(u.hostname) &&
+            (looksFile(u.href) || FILE_HOST.test(u.hostname)) &&
+            !links.includes(u.href)
+          ) {
+            links.push(u.href);
+          }
+        } catch {}
+      };
       for (const m of html.matchAll(HREF)) {
         if (links.length >= 10) break;
-        try {
-          const u = new URL(m[1]);
-          if (
-            /^https?:$/.test(u.protocol) &&
-            !blockedHost(u.hostname) &&
-            (looksFile(u.href) || FILE_HOST.test(u.hostname)) &&
-            !links.includes(u.href)
-          ) {
-            links.push(u.href);
-          }
-        } catch {}
+        take(m[1]);
       }
-      /* 3) bare urls anywhere in the markup (onclick, js vars, meta
-       * refresh) - same strict file/file-host filter, first wins */
       for (const m of html.matchAll(ANY_URL)) {
         if (links.length >= 10) break;
-        try {
-          const clean = m[0].replace(/[).,;!?]+$/, "");
-          const u = new URL(clean);
-          if (
-            /^https?:$/.test(u.protocol) &&
-            !blockedHost(u.hostname) &&
-            (looksFile(u.href) || FILE_HOST.test(u.hostname)) &&
-            !links.includes(u.href)
-          ) {
-            links.push(u.href);
-          }
-        } catch {}
+        take(m[0].replace(/[).,;!?]+$/, ""));
       }
-      if (links.length) {
-        return json({ ok: true, kind: "file", url: links[0], links });
-      }
-      return json({ ok: true, kind: "page", url: current.href, links: [] });
+      if (links.length) return { file: links[0] };
+      return { page: current.href };
     }
     await cancel(res);
     break;
   }
-  /* fell through: hand back where we got to as a click-through page */
-  return json({ ok: true, kind: "page", url: current.href, links: [] });
+  return { page: current.href };
+}
+
+/** candidates to try: /extract/ urls also try the sibling index
+ *  (fast <-> direct), since either side can be quota-dead. */
+function candidates(input: URL): URL[] {
+  const out = [input];
+  try {
+    if (input.pathname.includes("/extract")) {
+      const idx = input.searchParams.get("index");
+      if (idx === "0" || idx === "1") {
+        const sib = new URL(input.href);
+        sib.searchParams.set("index", idx === "0" ? "1" : "0");
+        out.push(sib);
+      }
+    }
+  } catch {}
+  return out;
+}
+
+export async function GET(req: NextRequest) {
+  const raw = req.nextUrl.searchParams.get("url") || "";
+  let input: URL;
+  try {
+    input = new URL(raw);
+  } catch {
+    return json({ ok: false, error: "bad url" }, 400);
+  }
+  if (!/^https?:$/.test(input.protocol) || blockedHost(input.hostname)) {
+    return json({ ok: false, error: "refused target" }, 403);
+  }
+  let firstPage: string | null = null;
+  const dead: string[] = [];
+  for (const cand of candidates(input)) {
+    if (!/^https?:$/.test(cand.protocol) || blockedHost(cand.hostname)) continue;
+    const r = await attempt(cand);
+    if (r.file) {
+      const health = await probeFile(r.file);
+      if (health !== "dead")
+        return json({ ok: true, kind: "file", url: r.file, links: [] });
+      dead.push(r.file);
+      continue; /* sibling may be alive */
+    }
+    if (r.page && !firstPage) firstPage = r.page;
+  }
+  if (dead.length) {
+    /* every file found is confirmed dead - hand the first back anyway with
+     * a stale flag (quotas lift; VLC was going to try regardless) */
+    return json({ ok: true, kind: "file", url: dead[0], links: [], stale: true });
+  }
+  if (firstPage) return json({ ok: true, kind: "page", url: firstPage, links: [] });
+  return json({ ok: false, error: "couldn't generate a playable link" }, 502);
 }

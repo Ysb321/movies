@@ -58,9 +58,11 @@
  *    /api/webstreamr routes and handed to the installed VLC (desktop:
  *    bundled vlc.exe; Android: vlc intent; iOS: vlc-x-callback; PC web:
  *    copy-link). No iframe - the watch page renders the source list
- *    (VlcSources) instead. HubCloud-style download-button pages embed
- *    on demand; desktop captures the clicked file (__dubCapture) into
- *    VLC. New/cam releases may have zero sources (empty state).
+ *    (VlcSources) instead, and the resolver generates every playable
+ *    link itself (redirect-following, cookie sessions, generator-page
+ *    scraping, sibling-index fallback, quota checks) - nothing ever
+ *    embeds. Truly uncrackable pages open in a new tab. New/cam
+ *    releases may have zero sources (empty state).
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 

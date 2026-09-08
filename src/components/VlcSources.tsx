@@ -13,8 +13,7 @@ import {
   isIOS,
   type WsRow,
 } from "@/lib/vlc";
-import { PLAYER_SANDBOX } from "@/lib/player";
-import { PlayIcon, RotateCcwIcon, CheckIcon, ChevronIcon } from "@/components/Icons";
+import { PlayIcon, RotateCcwIcon, CheckIcon } from "@/components/Icons";
 
 type Props = {
   type: "movie" | "tv";
@@ -48,7 +47,7 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
-  const [embed, setEmbed] = useState<{ url: string; label: string } | null>(null);
+  const [pageFor, setPageFor] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [reload, setReload] = useState(0);
   const alive = useRef(true);
@@ -61,7 +60,6 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     setStatus("loading");
     setRows([]);
     setError("");
-    setEmbed(null);
     setTick(0);
     const ctrl = new AbortController();
     const killer = setTimeout(() => ctrl.abort(new Error("timeout")), 105000);
@@ -117,32 +115,6 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     };
   }, [type, tmdbId, imdbId, season, episode, reload]);
 
-  /* desktop: while a download page is embedded, arm link-capture - the file
-   * the user clicks through to comes back as yetflixDubUrl -> straight to
-   * VLC, no manual copy-paste. */
-  useEffect(() => {
-    if (!embed) return;
-    try {
-      (window as unknown as { __dubCapture?: boolean }).__dubCapture = true;
-    } catch {}
-    const onMsg = (e: MessageEvent) => {
-      const u = (e.data as { yetflixDubUrl?: unknown } | null)?.yetflixDubUrl;
-      if (typeof u === "string" && u) {
-        setNote((n) => ({ ...n, __embed: "Opening in VLC…" }));
-        openInVlc(u).then(
-          (r) => alive.current && setNote((n) => ({ ...n, __embed: r.note }))
-        );
-      }
-    };
-    window.addEventListener("message", onMsg);
-    return () => {
-      window.removeEventListener("message", onMsg);
-      try {
-        (window as unknown as { __dubCapture?: boolean }).__dubCapture = false;
-      } catch {}
-    };
-  }, [embed]);
-
   const copy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -160,11 +132,19 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
     setTimeout(() => alive.current && setCopied(false), 1600);
   }, []);
 
+  /* tap -> the resolver generates the playable link itself -> VLC. Nothing
+   * ever embeds; truly uncrackable pages fall back to open-in-new-tab. */
   const play = useCallback(async (row: WsRow) => {
     const target = row.fileUrl || row.pageUrl;
     if (!target || busy) return;
     setBusy(row.key);
-    setNote((n) => ({ ...n, [row.key]: "Finding playable link…" }));
+    setPageFor((p) => {
+      if (!(row.key in p)) return p;
+      const n = { ...p };
+      delete n[row.key];
+      return n;
+    });
+    setNote((n) => ({ ...n, [row.key]: "Generating playable link…" }));
     try {
       const r = await resolveWsUrl(target);
       if (!alive.current) return;
@@ -172,75 +152,23 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
         const out = await openInVlc(r.url);
         if (!alive.current) return;
         setSent((s) => ({ ...s, [row.key]: out.ok }));
-        setNote((n) => ({ ...n, [row.key]: out.note }));
+        setNote((n) => ({
+          ...n,
+          [row.key]: r.stale ? `${out.note} (link may be expired)` : out.note,
+        }));
       } else if (r.ok) {
-        /* download-button page (HubCloud-style): embed it - on desktop the
-         * clicked file link is captured and sent to VLC automatically */
-        setEmbed({
-          url: r.url,
-          label: row.quality ? `${row.quality} · ${row.source || row.file}` : row.source || row.file,
-        });
-        setNote((n) => ({ ...n, [row.key]: "Download page opened — tap its Download button" }));
+        setPageFor((p) => ({ ...p, [row.key]: r.url }));
+        setNote((n) => ({ ...n, [row.key]: "Couldn't auto-generate this one — open it in your browser:" }));
       } else {
-        setNote((n) => ({ ...n, [row.key]: `${r.error || "Couldn't resolve this source"} — try another` }));
+        setNote((n) => ({ ...n, [row.key]: `${r.error || "Couldn't generate a link"} — try another` }));
       }
     } catch {
       if (alive.current)
-        setNote((n) => ({ ...n, [row.key]: "Couldn't resolve this source — try another" }));
+        setNote((n) => ({ ...n, [row.key]: "Couldn't generate a link — try another" }));
     } finally {
       if (alive.current) setBusy(null);
     }
   }, [busy]);
-
-  /* ── download-button page mode ── */
-  if (embed) {
-    return (
-      <div className="flex h-full flex-col bg-black">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 text-[12px]">
-          <button
-            onClick={() => setEmbed(null)}
-            className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
-          >
-            <ChevronIcon dir="left" className="h-3.5 w-3.5" /> Sources
-          </button>
-          <span className="min-w-0 flex-1 truncate text-neutral-400">{embed.label}</span>
-          <a
-            href={embed.url}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
-          >
-            Open in new tab
-          </a>
-          <button
-            onClick={() => copy(embed.url)}
-            className="rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
-          >
-            Copy link
-          </button>
-        </div>
-        <div className="min-h-0 flex-1">
-          <iframe
-            src={embed.url}
-            title={embed.label}
-            className="h-full w-full bg-white"
-            sandbox={PLAYER_SANDBOX}
-          />
-        </div>
-        <div className="border-t border-white/10 px-3 py-1.5 text-[11.5px] text-neutral-400">
-          {note.__embed ||
-            (isDesktopVlc()
-              ? "Tap the page's Download button — the file opens in VLC automatically."
-              : "Tap the page's Download button, then open the file with your VLC app.")}
-        </div>
-        {copied && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
-            Link copied
-          </div>
-        )}
-      </div>
-    );
-  }
 
   /* ── source list ── */
   return (
@@ -349,6 +277,24 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
               {note[row.key] && (
                 <span className="mt-0.5 block text-[11.5px] font-medium text-brand">
                   {note[row.key]}
+                </span>
+              )}
+              {pageFor[row.key] && (
+                <span className="mt-1 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <a
+                    href={pageFor[row.key]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-brand px-2.5 py-1 text-[11px] font-bold text-white"
+                  >
+                    Open page
+                  </a>
+                  <button
+                    onClick={() => copy(pageFor[row.key])}
+                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/20"
+                  >
+                    Copy link
+                  </button>
                 </span>
               )}
             </span>

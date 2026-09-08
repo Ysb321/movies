@@ -107,7 +107,7 @@ export async function fetchWsStreams(
 }
 
 export type WsResolved =
-  | { ok: true; kind: "file" | "page"; url: string; links: string[] }
+  | { ok: true; kind: "file" | "page"; url: string; links: string[]; stale?: boolean }
   | { ok: false; error: string };
 
 /** resolve a stream url to a playable file (or a download-button page) */
