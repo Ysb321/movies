@@ -118,14 +118,13 @@ function WatchContent() {
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    /* Server 8: embed the SELECTED sub-player (their player, TMDB-keyed);
-     * download chips never resume (fresh page each time) */
+    /* Server 8: embed the SELECTED sub-player (their player, TMDB-keyed) */
     const src = subPlayer
       ? t === "movie"
         ? subPlayer.movie(embedId)
         : subPlayer.tv(embedId, season, episode)
       : embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume });
-    setEmbed({ src, resumedFrom: subPlayer?.download ? undefined : resume });
+    setEmbed({ src, resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, id, season, episode, provider.id, embedId, d, activeId, subPlayer?.id]);
@@ -281,19 +280,6 @@ function WatchContent() {
             </div>
           ) : embed ? (
             embed.src ? (
-              subPlayer?.download ? (
-                /* the Download chip (DEFE) keeps the old Multi Dub frame
-                 * armor: sandboxed, forms + popups + downloads allowed */
-                <iframe
-                  key={`${t}-${id}-${embed.src}-${reloadKey}`}
-                  src={embed.src}
-                  title={title}
-                  className="h-full w-full bg-white"
-                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer; popups"
-                  sandbox={`${PLAYER_SANDBOX} allow-popups allow-downloads`}
-                  referrerPolicy="origin"
-                />
-              ) : (
               <iframe
                 key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
                 src={embed.src}
@@ -305,7 +291,6 @@ function WatchContent() {
                 allowFullScreen={!provider.denyFullscreen}
                 referrerPolicy="origin"
               />
-              )
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                 <span className="text-4xl">🌸</span>
@@ -331,9 +316,7 @@ function WatchContent() {
                 className={clsx(
                   "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
                   subPlayer?.id === sp.id
-                    ? sp.download
-                      ? "bg-amber-600 text-white"
-                      : "bg-brand text-white"
+                    ? "bg-brand text-white"
                     : "bg-white/10 text-neutral-300 hover:bg-white/20"
                 )}
               >

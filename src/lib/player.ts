@@ -26,13 +26,19 @@
  *    Runs VidCore inside with in-player server options; one-time profile
  *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
  *    revoked; noScroll crops their chrome.
- *  - MultiMovies (Server 8): the multi-audio players used by
- *    multimovies.beer, embedded AS-IS (their player, not ours) and
- *    keyed purely by TMDB ids: Cineverse (cineverse.pages.dev - movies
- *    only), Vidout (vidout.pages.dev - movies + TV) and Multiverse
- *    (multiverse.pages.dev - same family). screenscape.me + Nxsha are
- *    deliberately excluded. A Download chip (downloadeverythingfrom-
- *    everywhere.com, also TMDB-keyed) rounds it out as the fallback.
+ *  - MultiMovies (Server 8): the sources on multimovies.beer, embedded
+ *    AS-IS (their player, not ours) and keyed purely by TMDB ids, in the
+ *    site's own source order: Cineverse (cineverse.pages.dev - movies
+ *    only, its TV routes serve an error page), Nxsha
+ *    (web.nxsha.app/embed - documented embed API, movies + TV),
+ *    screenscape (screenscape.me/embed - documented embed API, movies
+ *    + TV, Hindi audio by default) and Vidout (vidout.pages.dev -
+ *    movies + TV). GDMIRROR (their "Recommended" tag) is NOT
+ *    TMDB-addressable: per-file tokens from multimovies' private AJAX
+ *    (gdmirrorbot.nl now redirects to a token-walled aggregator) so
+ *    it cannot be embedded via TMDB id - left out by design.
+ *    Multiverse (multiverse.pages.dev) is DOWN (HTTP 500 on every
+ *    route) - left out until it recovers.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -53,9 +59,6 @@ export type EmbedSubPlayer = {
   name: string; /* chip label (e.g. "Cineverse") */
   /** movies-only player - hidden on TV titles */
   movieOnly?: boolean;
-  /** download-site fallback (DEFE): needs forms/popups/downloads, not
-   *  the unsandboxed treatment the video players get */
-  download?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -205,14 +208,15 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
   },
   {
-    /* Server 8 - the multimovies.beer multi-audio players, embedded
-     * as-is (their player, TMDB ids only). Same app family as VidOut
-     * (unsandboxed + popups revoked + noScroll crops their chrome).
-     * Cineverse: verified live for movies; its TV routes serve an
-     * error page -> movieOnly. Multiverse: same family deployment.
-     * The Download chip is the downloadeverythingfromeverywhere.com
-     * fallback (TMDB-keyed too), sandboxed like the old Multi Dub
-     * frame was. screenscape.me + Nxsha: excluded by design. */
+    /* Server 8 - the multimovies.beer sources, embedded as-is (their
+     * player, TMDB ids only), in the site's own source order. All four
+     * verified live 2026-09-08 (Spider-Man: Brand New Day, TMDB 969681,
+     * resolves by title on each). Cineverse + Vidout are the VidOut
+     * app family (unsandboxed + popups revoked + noScroll crops their
+     * chrome); Nxsha + screenscape are documented embed APIs kept on
+     * the same armor for consistency. Cineverse TV routes serve an
+     * error page -> movieOnly. GDMIRROR is per-file tokens (not
+     * TMDB-keyable); Multiverse 500s on every route - both left out. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -227,29 +231,35 @@ export const PROVIDERS: EmbedProvider[] = [
         tv: () => "",
       },
       {
+        /* https://web.nxsha.app/embed docs: /embed/movie/{tmdb} +
+         * /embed/tv/{tmdb}/{s}/{e} (TMDb or IMDb ids); multi-server
+         * fallback + multi-lang in-player. Verified: Fight Club (550)
+         * + Game of Thrones S1:E1 (1399/1/1) resolve by title. */
+        id: "nxsha",
+        name: "Nxsha",
+        movie: (id) => `https://web.nxsha.app/embed/movie/${id}`,
+        tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
+      },
+      {
+        /* https://screenscape.me/embed docs: /embed?tmdb={id}&type=movie
+         * + &type=tv&s={s}&e={e}; Hindi audio by default. Verified:
+         * Spider-Man: Brand New Day (969681) resolves by title. */
+        id: "screenscape",
+        name: "screenscape",
+        movie: (id) => `https://screenscape.me/embed?tmdb=${id}&type=movie`,
+        tv: (id, s, e) => `https://screenscape.me/embed?tmdb=${id}&type=tv&s=${s}&e=${e}`,
+      },
+      {
         id: "vidout",
         name: "Vidout",
         movie: (id) => `https://vidout.pages.dev/watch/movie/${id}`,
         tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
       },
-      {
-        id: "multiverse",
-        name: "Multiverse",
-        movie: (id) => `https://multiverse.pages.dev/movie/${id}`,
-        tv: (id, s, e) => `https://multiverse.pages.dev/tv/${id}/S${s}/E${e}`,
-      },
-      {
-        id: "dl",
-        name: "Download",
-        download: true,
-        movie: (id) => `https://downloadeverythingfromeverywhere.com/m/${id}`,
-        tv: (id) => `https://downloadeverythingfromeverywhere.com/s/${id}`,
-      },
     ],
     /* defaults when no sub-player is picked: Cineverse for movies,
-     * Vidout for TV (Cineverse has no TV) */
+     * Nxsha for TV (Cineverse has no TV) */
     movie: (id) => `https://cineverse.pages.dev/movie/${id}`,
-    tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
+    tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
   },
   {
     id: "megaplay",
@@ -303,7 +313,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "multiverse", "multimovies"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "nxsha", "screenscape"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
