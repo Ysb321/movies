@@ -311,6 +311,7 @@ type OriginRef = { base: string | null };
 const makeContext = (origin: OriginRef) => {
   const resolve = (url: string): string => {
     if (/^https?:/i.test(url)) return url;
+    if (url.startsWith("//")) return "https:" + url;
     if (origin.base) {
       try { return new URL(url, origin.base).toString(); } catch { return url; }
     }
@@ -356,6 +357,7 @@ function episodeEntry(list: any[], episode: number): any | null {
 }
 
 const absolutize = (link: string, origin: OriginRef): string => {
+  if (link?.startsWith("//")) return "https:" + link;
   if (!link || /^https?:/i.test(link) || !origin.base) return link;
   try { return new URL(link, origin.base).toString(); } catch { return link; }
 };
@@ -412,6 +414,7 @@ export async function listAll(
       const hit = clean.find((p: any) => postMatches(p.title, meta.title, meta.year));
       d.matched = hit?.title ?? null;
       if (!hit) return [];
+      let streamErr: string | null = null;
       const runStream = async (rawLink: string): Promise<any[]> => {
         const link = absolutize(rawLink, origin);
         try {
@@ -420,12 +423,16 @@ export async function listAll(
             providerContext: makeContext(origin), isDownload: false,
           });
           return (streams ?? []).filter((x: any) => x?.link);
-        } catch { return []; }
+        } catch (e: any) {
+          streamErr = streamErr ?? String(e?.message ?? e).slice(0, 120);
+          return [];
+        }
       };
       const toChips = (raw: any[]): VegaChip[] =>
         raw
           .map((s: any) => {
             let url: string = s?.link ?? "";
+            if (url.startsWith("//")) url = "https:" + url;
             if (url && !/^https?:/i.test(url) && origin.base) {
               try { url = new URL(url, origin.base).toString(); } catch {}
             }
@@ -472,6 +479,7 @@ export async function listAll(
         if (chips.length > 12) chips = chips.slice(0, 12);
       }
       d.chips = chips.length;
+      d.err = chips.length ? null : (streamErr ?? d.err);
       return chips;
     } catch (e: any) {
       d.err = String(e?.message ?? e).slice(0, 140);

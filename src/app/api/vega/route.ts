@@ -15,8 +15,10 @@ export const runtime = "edge"; // Cloudflare Pages
 const TMDB_KEY = process.env.TMDB_API_KEY ?? "f8243ad5d5cd1ef0ebe5d6c5bfcc59f2";
 const BATCH = 6;
 const CACHE_TTL = 1800; // 30 min merged-state TTL
+const CACHE_V = "3"; // bump to flush merged states after engine changes
+const MAX_TRIES = 3; // providers that keep returning nothing stop retrying
 
-type CacheState = { chips: VegaChip[]; done: string[] };
+type CacheState = { chips: VegaChip[]; done: string[]; tries?: Record<string, number> };
 
 async function readCache(key: string): Promise<CacheState | null> {
   try {
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
   /* exe / local dev / ?full=1 -> everything in one shot, no batching */
   const local =
     sp.get("full") === "1" || /localhost|127\.0\.0\.1/i.test(req.nextUrl.hostname ?? "");
-  const cacheKey = `https://vega-cache.local/${type}/${tmdb}/${season}/${episode}`;
+  const cacheKey = `https://vega-cache.local/v${CACHE_V}/${type}/${tmdb}/${season}/${episode}`;
 
   try {
     if (local) {
@@ -93,21 +95,35 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    /* batched site mode: merge with whatever earlier batches found */
-    const state = (await readCache(cacheKey)) ?? { chips: [], done: [] };
+    /* batched site mode: merge with whatever earlier batches found.
+     * a provider counts as DONE only once it produced chips or at
+     * least matched a post - dead-looking runs (subrequest kills,
+     * timeouts) are retried up to MAX_TRIES on later requests */
+    const state = (await readCache(cacheKey)) ?? { chips: [], done: [], tries: {} };
+    state.tries = state.tries ?? {};
     const doneSet = new Set(state.done);
-    const pending = VEGA_PROVIDER_VALUES.filter((v) => !doneSet.has(v));
+    const pending = VEGA_PROVIDER_VALUES.filter((v) => {
+      if (doneSet.has(v)) return false;
+      return (state.tries![v] ?? 0) < MAX_TRIES;
+    });
     const batch = pending.slice(0, BATCH);
     const dbg = sp.get("debug") === "1" ? [] : undefined;
 
     let fresh: VegaChip[] = [];
     if (batch.length) {
       fresh = await listAll(meta, type, season, episode, batch, dbg);
+      const dbgByP = new Map((dbg ?? []).map((x: VegaDebug) => [x.provider, x]));
+      for (const v of batch) {
+        const info = dbgByP.get(v);
+        const solid = !!info && info.chips > 0; /* matched-but-empty gets retried */
+        if (solid) state.done.push(v);
+        else state.tries![v] = (state.tries![v] ?? 0) + 1;
+      }
       const merged = dedupe([...state.chips, ...fresh]).slice(0, 80);
-      const done = Array.from(new Set([...state.done, ...batch]));
+      const done = Array.from(new Set(state.done));
       const keep = done.filter((v) => VEGA_PROVIDER_VALUES.includes(v));
-      await writeCache(cacheKey, { chips: merged, done: keep });
-      const remaining = VEGA_PROVIDER_VALUES.filter((v) => !keep.includes(v)).length;
+      await writeCache(cacheKey, { chips: merged, done: keep, tries: state.tries });
+      const remaining = VEGA_PROVIDER_VALUES.filter((v) => !keep.includes(v) && (state.tries![v] ?? 0) < MAX_TRIES).length;
       return NextResponse.json(
         dbg ? { streams: merged, debug: dbg, more: remaining } : { streams: merged, more: remaining },
         { headers: { "cache-control": "no-store" } }
