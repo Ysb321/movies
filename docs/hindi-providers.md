@@ -2,7 +2,7 @@
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
-12)** + **MoviesMod (Server 13)** + **UltraStream (Server 14)**. This doc is the full map for future
+12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)**. This doc is the full map for future
 development.
 
 ## Already in the app (Hindi coverage before this round)
@@ -178,22 +178,24 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   urls.json refreshes ours every 4h; Hindmovie domians.json is the
   cross-check).
 
-## Shipped this round: UltraStream (Server 14)
+## Removed: UltraStream (ex-Server 14, 2026-09-09)
 
-- Upstream: newhdmovie2 DooPlay blog (user domain newhdmovie2.best,
-  newhdmovie2.im fallback - same network as the provider below).
-- Mode: EMBED-FIRST (user call - their player, not our links):
-  `/?s={title}` -> post -> `[data-source-embed]` player urls
-  ("Ultra Stream V3", "Ultra Stream 2") iframed as-is in
-  UltraPlayer (chips + sandboxed frame). Series hop to the
-  per-episode page (own embeds) via Episode/SxxExx anchors.
-- Fallback kept: resolveUltraStream() resolves the same embeds to
-  direct hdm2.*-HLS (live host hdm2.biz) / prvs.top-JW finals (unused by the UI).
-- Triage 2026-09-09 (The Runner): post HTML carries no
-  data-source-embed/action-view-dl (embeds:0 dl:0) though the tabs
-  render - players likely AJAX (doo_player_ajax). Marker sweep +
-  snippet + ajax probe added to read the live wiring.
-- Ported from `Prashant825567/provider-hdmovie2` (Stremio provider,
-  Jul 2026: stream.js CASE 1/2/3 + posts/meta/episodes selectors).
-- Budget: ~10 subrequests cold (search 1 + post 1 + episode 0-1 +
-  embeds 3 + HEADs 3). Diag tag `us:` with `emb:`/`val:` notes.
+- newhdmovie2 player-embed lane, removed per user request before it
+  ever played (post HTML carries no data-source-embed - players are
+  JS/AJAX-loaded; the triage markers never got a deployed read).
+  Port notes (provider-hdmovie2, hdm2.biz host) deleted with the code.
+
+## Shipped this round: AutoPlay (Server 14)
+
+- Zero-tap WebStreamr lane (user call - no lists, no taps): search
+  the addon (IMDb then TMDB id) -> rank rows (direct-file first,
+  Hindi/dual bonus, 1080>720>480>2160, HEVC/mkv penalty) ->
+  resolve + play best in SmartPlayer, auto-advancing on dead links
+  and playback errors. In-player source panel = manual override.
+- SmartPlayer (ArtPlayer + hls.js + dash.js): HLS/DASH/progressive,
+  in-player Quality/Audio/Server/Subtitle/Source selectors
+  (row-hop; HLS alternate-audio auto-prefers Hindi), VLC +
+  Download + Report, resume (:site-auto), unmuted-autoplay with
+  muted fallback + notice. Cross-family hops remount via key.
+- Genuine JW Player needs a paid library ID (user has none) - the
+  same feature set built license-free; engine swappable later.

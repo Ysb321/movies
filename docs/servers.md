@@ -49,7 +49,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 11 | desiddl | DdlSources -> /api/desiddl -> VegaMovies (new2.vegamovies.futbol) + MoviesDrive (new3.moviesdrive.christmas) + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix); hub links (G-Direct/fastdl, V-Cloud, HubCloud, GDFlix) embedded, user generates -> auto-plays; :site-dd resume |
 | 12 | castle | HindiSources -> /api/castle/stream -> CastleTV app backend (api.hlowb.com, IndiaA): AES search/details/getVideo2, Hindi track + 1 fallback, 1080p/720p/480p + subs; :site-cs resume; playback step un-triaged live (site down), diag-driven; in-player lang switch (position-preserving) |
 | 13 | moviesmod | HindiSources -> /api/moviesmod/stream -> moviesmod.zone Dual/Multi Audio Hindi posts (480p-2160p, movies + series): search -> post -> modpro/modrefer -> cloud SID bypass (CSX ?go= flow) -> driveseed file page -> Instant/Worker/Direct/Resume finals; :site-mm resume; CF 50-subrequest budget build (mm5) |
-| 14 | ultrastream | UltraPlayer -> /api/ultrastream/stream -> the newhdmovie2 Ultra Stream player pages iframed as-is (chips: Ultra Stream V3/2/...; sandboxed); newhdmovie2.best (.im fallback); movies + per-episode series |
+| 14 | autoplay | AutoSources -> /api/webstreamr (addon search) -> zero-tap: ranked rows auto-resolve + play best in SmartPlayer (ArtPlayer + hls.js + dash.js: HLS/DASH/progressive, quality/audio/server/subtitle selectors, VLC + Download), auto-advance on dead links; :site-auto resume |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

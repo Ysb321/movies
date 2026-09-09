@@ -14,7 +14,7 @@ import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
 import VlcSources from "@/components/VlcSources";
 import HindiSources from "@/components/HindiSources";
-import UltraPlayer from "@/components/UltraPlayer";
+import AutoSources from "@/components/AutoSources";
 import DdlSources from "@/components/DdlSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
@@ -364,22 +364,14 @@ function WatchContent() {
                 ]}
                 emptyHint="MoviesMod covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
               />
-            ) : provider.id === "ultrastream" ? (
-              <UltraPlayer
-                key={`us-${t}-${id}-${season}-${episode}`}
+            ) : provider.id === "autoplay" ? (
+              <AutoSources
+                key={`ap-${t}-${id}-${season}-${episode}`}
                 type={t}
                 tmdbId={String(id)}
-                title={title}
-                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
                 season={season}
                 episode={episode}
-                loadLines={[
-                  "Contacting UltraStream sources...",
-                  "Searching Hindi-dubbed posts...",
-                  "Still searching - finding the player...",
-                  "Almost there - loading the player...",
-                ]}
-                emptyHint="UltraStream covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
               />
             ) : provider.id === "desiddl" ? (
               <DdlSources

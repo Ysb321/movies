@@ -81,7 +81,7 @@
  *  restore. Full map: docs/servers.md.)
  *  (Server 12 Castle added after the prune, by request - Hindi-first
  *  API lane. Full map: docs/hindi-providers.md.)
- *  (Servers 13/14: MoviesMod DDL lane + UltraStream player lane.)
+ *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -463,17 +463,15 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
-    /* Server 14 - UltraStream (their player, embedded as-is - the watch
-     * page renders UltraPlayer: /api/ultrastream/stream returns the
-     * post's [data-source-embed] player urls ("Ultra Stream V3",
-     * "Ultra Stream 2", ...), picked from chips and iframed sandboxed
-     * (scripts+same-origin: no popups/top-nav). Source: newhdmovie2.best
-     * (.im fallback), movies + per-episode series pages; player hosts
-     * hdm2.biz / prvs.top. (resolveUltraStream in the lib also resolves
-     * direct HLS/mp4 finals - kept as a fallback path, unused by the
-     * UI. Embed-first was the user's explicit call.) */
-    id: "ultrastream",
-    name: "UltraStream",
+    /* Server 14 - AutoPlay (vlcOnly zero-tap lane - the watch page renders
+     * AutoSources; stubs never called). WebStreamr with no taps: searches
+     * the addon, ranks direct-file/Hindi/browser-friendly rows, resolves
+     * and plays the best in SmartPlayer (ArtPlayer + hls.js + dash.js:
+     * HLS/DASH/progressive, in-player quality/audio/server/subtitle
+     * selectors, VLC + Download), auto-advancing on dead links. The
+     * in-player source panel stays as the manual override. */
+    id: "autoplay",
+    name: "AutoPlay",
     vlcOnly: true,
     movie: () => "",
     tv: () => "",
@@ -530,7 +528,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "hdm2", "prvs"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
