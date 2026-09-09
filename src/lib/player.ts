@@ -550,7 +550,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark", "netmirror"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
@@ -591,6 +591,30 @@ export function parsePlayerEvent(event: MessageEvent): PlayerTime | null {
     }
   }
   if (!data || typeof data !== "object") return null;
+  const parsed = scan(data);
+  return parsed.time !== undefined ? (parsed as PlayerTime) : null;
+}
+
+export const fmtTime = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
+  } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== "object") return null;
+  const parsed = scan(data);
+  return parsed.time !== undefined ? (parsed as PlayerTime) : null;
+}
+
+export const fmtTime = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
+ull;
   const parsed = scan(data);
   return parsed.time !== undefined ? (parsed as PlayerTime) : null;
 }
