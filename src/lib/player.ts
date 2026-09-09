@@ -505,6 +505,14 @@ export const PROVIDERS: EmbedProvider[] = [
     id: "movierulz",
     name: "MovieRulz",
     prefersImdb: true,
+    /* Ad armor: stock sandbox already kills popups + top-nav hijack;
+     * drop allow-downloads (no drive-by "player update" zips), revoke
+     * popups via Permissions-Policy too, send no referrer (starves
+     * referer-gated ad tags). allow-same-origin KEPT: the slast API
+     * + CDN need a real origin for their fetches. */
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
+    denyPopups: true,
+    noReferrer: true,
     movie: (id) => `https://slast430did.com/play/${id}`,
     tv: (id) => `https://slast430did.com/play/${id}`,
   },
