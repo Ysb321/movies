@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* Server 19 (NetMirror) stream API - Indian-OTT direct links (Netflix /
+/* Server 10 (NetMirror) stream API - Indian-OTT direct links (Netflix /
  * Hotstar / Prime Video / Disney rips) keyed by TMDB id. Two lanes:
  *  1. Netflix-direct: GET {BASE}/api/embed-tmdb/{tmdb} (+?type=tv&se=&ep=)
  *     returns signed mp4s (360/480/720/1080) + caption tracks incl. Hindi

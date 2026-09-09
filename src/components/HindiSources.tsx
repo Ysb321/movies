@@ -63,7 +63,7 @@ const platformHint = () =>
       ? "Tap a quality — it plays here, or opens in your VLC app"
       : "Tap a quality — it plays here, or opens in VLC via the desktop app";
 
-/* Server 19 (NetMirror) - the Hindi-OTT lane: direct signed mp4s, no
+/* Server 10 (NetMirror) - the Hindi-OTT lane: direct signed mp4s, no
  * link generation needed, so taps play instantly. Subtitle tracks ride
  * along (Hindi auto-loads). Resume key is namespaced (:site-nm) so it
  * never collides with Server 9's (:site) - different encodes. */

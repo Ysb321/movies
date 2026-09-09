@@ -328,7 +328,7 @@ function WatchContent() {
                 resumeSuffix={provider.id === "netnative" ? "site-nmn" : undefined}
                 emptyHint={
                   provider.id === "netnative"
-                    ? "The playlist flow came up empty — the title may be missing there, or the verify trick got patched. Servers 19/22 still work."
+                    ? "The playlist flow came up empty — the title may be missing there, or the verify trick got patched. Servers 10/21 still work."
                     : undefined
                 }
               />

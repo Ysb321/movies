@@ -101,7 +101,7 @@ proxy, the check fails again -> infinite reload loop. (Their player is
 ArtPlayer 5.4.0, not an iframe — nested-frame recursion is ruled out.)
 Per the user's vote (working playback wins), Server 22 `netembed` no
 longer frames anything: it is now `vlcOnly` rendering the same
-`HindiSources` lane as Server 19 (API mp4s -> inline SitePlayer). The
+`HindiSources` lane as Server 10 (API mp4s -> inline SitePlayer). The
 `?embed=1` full site player stays one tap away via the "NetMirror ↗"
 deep-link button in `HindiSources` (top-level tab, where XFO can't
 bite). The `?allow=nm` proxy profile + `noReferrer` iframe flag are
@@ -116,7 +116,7 @@ should pass their CDN guard.
 
 Per the user's ask ("i want with their art player"), the `netembed`
 lane renders NetMirror's own player config: `SitePlayer`
-`variant="netmirror"` (Server 19 keeps the default Multiverse-style
+`variant="netmirror"` (Server 10 keeps the default Multiverse-style
 skin). Matched from the user's captured DOM of their player
 (ArtPlayer 5.4.0): `--art-theme: #b7daff`, volume 0.7, mini progress
 bar, in-player `quality_new` selector (480P/1080P-style items from the
@@ -173,7 +173,7 @@ Three-tier playback cascade (extension order):
 1. **NewTV API** (primary): discover base via `mobiledetect{s,}.*` /
    `checknewtv.php` -> `token_hash`, then `newtv/player.php?id=` with
    `Ott` + `X-Requested-With: NetmirrorNewTV v1.0` -> `video_link`
-   (**M3U8**!) + `referer`. Our Server 19 lane. NOTE the extension
+   (**M3U8**!) + `referer`. Our Server 10 lane. NOTE the extension
    throttles this fan-out (1200ms gaps — bursts trip Too Many
    Requests): mirrored in our route.
 2. **Native playlist flow**: `POST net77.cc/play.php` (form `id`, XHR +
@@ -202,7 +202,7 @@ WebView; we don't) and its video interceptor pins Referer per link
 cookies on net52/net77/net22/net27 hosts. Our blind spots: we can't set
 playback Referer from browsers, and if they start validating the
 recaptcha or gating playlist.php on clearance, Server 23 empties
-honestly (laneError) while 19/22 stand. Discovery list is now 24
+honestly (laneError) while 10/21 stand. Discovery list is now 24
 domains (added the 9 `mobidetcts.*` variants from the extension).
 net52 does NOT serve `/api/embed-tmdb` (Apache 404) — app/playlist host
 only. Poster CDN observed: `imgcdn.kim/poster/v/$id.jpg` (Referer-gated).
@@ -262,7 +262,7 @@ app surfaces gate Cloudflare-Pages edge IPs wholesale (flat 403, zero
 cookies, both redirect modes) - IP/ASN or CF-clearance gating, not a
 header/cookie gap. Server 23 (native) and the NewTV fan-out cannot run
 from this hosting; they stay in-tree, honest-empty, behind diag. The
-net27 embed API (Server 19/22 core) is unaffected: Fight Club (550)
+net27 embed API (Server 10/21 core) is unaffected: Fight Club (550)
 returns full 360/480/720p + captions live. Spider-Man BND (969681) is
 genuinely absent (`mode:none noSource:true`, their own "couldn't find
 this title" message) - theaters-only until ~Nov 2026.

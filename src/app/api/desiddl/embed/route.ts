@@ -37,7 +37,7 @@ import { NextRequest, NextResponse } from "next/server";
  * localhost/private, and on a hub-ish host.
  */
 /* Site profile (?allow=nm): the same proxy reused for NetMirror's own
- *  ?embed=1 site player (Server 22). netmirror.center sends
+ *  ?embed=1 site player (Server 21). netmirror.center sends
  *  X-Frame-Options: SAMEORIGIN on the embed pages (verified 2026-09-09
  *  via a headers probe), so direct iframes show "refused to connect" on
  *  the open web; served same-origin through this proxy the page frames

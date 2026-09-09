@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* HLS proxy for the native playlist lane (Server 23). net52-style signed
+/* HLS proxy for the native playlist lane (Server 22). net52-style signed
  * playlists (*.m3u8?in=<token::expiry::hash>) can't be trusted direct
  * from browsers: hotlink Referer checks, missing CORS for hls.js XHR,
  * and session cookies. This pins the Referer + a verify-trick session

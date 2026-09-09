@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* Server 19 subtitle proxy - NetMirror captions (.srt via their
+/* Server 10 subtitle proxy - NetMirror captions (.srt via their
  * /api/proxy/video or the MovieBox CDN) are fetched server-side and
  * re-served with CORS *, so the site player's subtitle loader never
  * trips on missing allow-origin headers. Tiny text files only: 15s

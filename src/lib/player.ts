@@ -52,14 +52,14 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
- *  - NetMirror Direct (Server 22, vlcOnly): SAME HindiSources lane as
- *    Server 19 (API-resolved signed mp4s -> inline SitePlayer, quality
+ *  - NetMirror Direct (Server 21, vlcOnly): SAME HindiSources lane as
+ *    Server 10 (API-resolved signed mp4s -> inline SitePlayer, quality
  *    hop, subs, resume). Previously framed their ?embed=1 site player
  *    via the embed proxy, but that hard-crashed tabs (their load-time
  *    location canonicalizer vs the proxy pathname = infinite reload
  *    loop), so it now shares the proven API lane. Full site player one
  *    tap away via the "NetMirror" deep-link button (new tab, no XFO).
- *  - NetMirror Playlists (Server 23, vlcOnly): the native playlist lane
+ *  - NetMirror Playlists (Server 22, vlcOnly): the native playlist lane
  *    (/api/netmirror/native -> HindiSources, nm skin, :site-nmn resume):
  *    HLS sources + caption tracks via the verify trick + play.php /
  *    playlist.php. Alternate encodes when the mp4 lane is thin.
@@ -76,14 +76,14 @@
  *    generator-page scraping, sibling-index fallback, quota checks).
  *    Truly uncrackable pages open in a new tab. New/cam releases may
  *    have zero sources (empty state).
- *  - Servers 10-18 (free embed APIs, all TMDB-keyed, verified live
+ *  - Servers 12-20 (free embed APIs, all TMDB-keyed, verified live
  *    2026-09-09): VidSrc (vidsrc.to), VidLink (vidlink.pro), VidCore
  *    (vidcore.org, 14 in-player servers), VidFast (vidfast.vc, 4K +
  *    multi-audio rows), 2Embed (2embed.cc, TMDB numerics on both
  *    routes), SuperEmbed (multiembed.mov, CF check passes in real
  *    browsers), MoviesAPI (moviesapi.to), VidSpark (vidspark.to) and
  *    VidSrc IN (vidsrc.in mirror). Default popup-killing sandbox.
- *  - NetMirror (Server 19, vlcOnly Hindi-OTT lane): Indian OTT rips via
+ *  - NetMirror (Server 10, vlcOnly Hindi-OTT lane): Indian OTT rips via
  *    our /api/netmirror routes - direct signed mp4s (360-1080p) + caption
  *    tracks with Hindi subs auto-loaded, played in the inbuilt site player
  *    (HindiSources list, own :site-nm resume namespace). Netflix-direct is
@@ -408,7 +408,7 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
-    /* Server 19 - NetMirror (vlcOnly Hindi-OTT lane, no iframe - the watch
+    /* Server 10 - NetMirror (vlcOnly Hindi-OTT lane, no iframe - the watch
      * page renders HindiSources instead; stubs never called). Indian OTT
      * rips (Netflix/Hotstar/Prime/Disney) via our /api/netmirror routes:
      * direct signed mp4s + caption tracks, Hindi subs auto-loaded.
@@ -459,7 +459,7 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
-    /* Servers 10-18 - free TMDB-keyed embed APIs (verified live
+    /* Servers 12-20 - free TMDB-keyed embed APIs (verified live
      * 2026-09-09: Fight Club 550 resolves with title on every movie
      * route below; TV routes verified on Breaking Bad 1396 S01E01).
      * All run under the default popup-killing sandbox until a player
@@ -540,9 +540,9 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     id: "netembed",
     name: "NetMirror Direct",
-    /* Server 22 - NetMirror Direct (vlcOnly, no iframe - the watch page
+    /* Server 21 - NetMirror Direct (vlcOnly, no iframe - the watch page
      * renders HindiSources instead; stubs never called). SAME lane as
-     * Server 19: API-resolved signed mp4s -> inline SitePlayer. This pill
+     * Server 10: API-resolved signed mp4s -> inline SitePlayer. This pill
      * previously framed their ?embed=1 site player via the embed proxy
      * (?allow=nm), but that hard-crashed tabs (infinite reload loop), so
      * it now shares the proven API lane. The ?embed=1 deep link lives in
@@ -555,12 +555,12 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     id: "netnative",
     name: "NetMirror Playlists",
-    /* Server 23 - NetMirror Playlists (vlcOnly, no iframe - the watch page
+    /* Server 22 - NetMirror Playlists (vlcOnly, no iframe - the watch page
      * renders HindiSources against /api/netmirror/native; stubs never
      * called). The NATIVE playlist lane: verify-trick cookie -> mobile
      * search/post -> play.php h-token -> playlist.php HLS sources +
      * subtitle tracks (the extension authors' secondary flow; their
-     * primary NewTV + net27 fallback are our Server 19 lane). HLS plays
+     * primary NewTV + net27 fallback are our Server 10 lane). HLS plays
      * via hls.js; own :site-nmn resume namespace (different encodes). */
     vlcOnly: true,
     movie: () => "",

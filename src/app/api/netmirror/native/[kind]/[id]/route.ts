@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* Server 23 (NetMirror Playlists) - the NATIVE playlist lane. Where the
- * Server 19 lane uses the net27 embed-tmdb API + NewTV player.php, this
+/* Server 22 (NetMirror Playlists) - the NATIVE playlist lane. Where the
+ * Server 10 lane uses the net27 embed-tmdb API + NewTV player.php, this
  * one walks the extension authors' SECONDARY flow (Sushan64/
  * NetMirror-Extension, NetflixMirrorProvider.kt): a trivial verify trick
  * mints the t_hash_t cookie, then mobile search/post resolves the
@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
  * HLS plays via the site player's hls.js path; captions ride the shared
  * /api/netmirror/sub proxy. Playback Referer can't be spoofed from a
  * browser (their client sets it per-link) - if their HLS CDN 403s us,
- * this lane honestly empties and Servers 19/22 still stand. Signed urls
+ * this lane honestly empties and Servers 10/21 still stand. Signed urls
  * live ~hours: no cache, no-store. Full backend map: docs/netmirror.md.
  */
 
