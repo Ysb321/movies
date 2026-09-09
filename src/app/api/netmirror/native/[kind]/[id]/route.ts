@@ -244,8 +244,11 @@ export async function GET(
       NREF
     );
     const pl = Array.isArray(plRaw) ? plRaw[0] : plRaw;
+    /* the backend sometimes answers placeholder rows (/hls/tt<imdb>.m3u8
+     * with in=unknown) when a rung has no file - they 404, so drop them
+     * instead of showing a row that can never play */
     const streams = (Array.isArray(pl?.sources) ? pl.sources : [])
-      .filter((x: any) => x && x.file)
+      .filter((x: any) => x && x.file && !/in=unknown/i.test(String(x.file)))
       .map((x: any) => {
         const abs = String(x.file).startsWith("http")
           ? String(x.file)

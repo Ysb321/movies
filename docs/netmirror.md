@@ -220,3 +220,14 @@ NO language code; files are protocol-relative `//pv.subscdn.top/subs/
 display text (`English  [CC]`, `हिन्दी`) - derive `lang` from the
 filename code, label map as fallback, or the Hindi-first default sub
 breaks. Dead `in=` tokens answer a plain Apache 404 (no CF wall).
+
+## Placeholder rows + VLC absolutizing (2026-09-09)
+
+`playlist.php` sometimes returns placeholder rows (`/hls/tt<imdb>.m3u8?
+in=unknown::ni`) when a rung has no file - probed: plain Apache 404.
+The native lane drops them (`in=unknown` filter) instead of showing
+unplayable rows. Separately, `openInVlc` used to hand site-relative
+proxy paths (`/api/...`) verbatim to VLC/intents/clipboard - VLC can't
+resolve those (a pasted one even autolinks as `http://api/...`). It now
+resolves to absolute `origin + path` first, so Server 23's proxied HLS
+opens in desktop/Android/iOS VLC with segments riding the proxy.

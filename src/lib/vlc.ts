@@ -179,36 +179,42 @@ export function downloadFile(url: string, filename: string) {
   } catch {}
 }
 
-/** hand a direct file url to the installed VLC (or report exactly why not) */
+/** hand a direct file url to the installed VLC (or report exactly why not).
+ *  Site-relative proxy paths (/api/...) are resolved to absolute first -
+ *  VLC, intents and clipboards cannot use relative urls. */
 export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: string }> {
+  let abs = fileUrl;
+  try {
+    abs = new URL(fileUrl, window.location.origin).toString();
+  } catch {}
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(fileUrl);
+      await navigator.clipboard.writeText(abs);
     } catch {}
   };
   try {
     if (isDesktopVlc()) {
       let referer: string | undefined;
       try {
-        referer = new URL(fileUrl).origin;
+        referer = new URL(abs).origin;
       } catch {}
       const opened = await (
         window as unknown as {
           yetflixVlc: { play: (u: string, h?: object) => Promise<unknown> };
         }
-      ).yetflixVlc.play(fileUrl, referer ? { Referer: referer } : undefined);
+      ).yetflixVlc.play(abs, referer ? { Referer: referer } : undefined);
       if (opened) return { ok: true, note: "Sent to VLC ✓" };
       return { ok: false, note: "Desktop VLC not found — rebuild the desktop app" };
     }
     if (isAndroid()) {
-      const intent = vlcIntentUrl(fileUrl);
+      const intent = vlcIntentUrl(abs);
       if (intent) {
         window.location.href = intent;
         return { ok: true, note: "Opening VLC app… (no VLC? tap Get VLC above)" };
       }
     }
     if (isIOS()) {
-      window.location.href = vlcIosUrl(fileUrl);
+      window.location.href = vlcIosUrl(abs);
       return { ok: true, note: "Opening VLC app… (no VLC? tap Get VLC above)" };
     }
     /* PC web: fire the desktop bridge and watch focus - a real launch blurs
@@ -217,11 +223,11 @@ export async function openInVlc(fileUrl: string): Promise<{ ok: boolean; note: s
     try {
       let ref = "";
       try {
-        ref = `&ref=${encodeURIComponent(new URL(fileUrl).origin)}`;
+        ref = `&ref=${encodeURIComponent(new URL(abs).origin)}`;
       } catch {}
       const f = document.createElement("iframe");
       f.style.display = "none";
-      f.src = `yetflix-vlc://play?url=${encodeURIComponent(fileUrl)}${ref}`;
+      f.src = `yetflix-vlc://play?url=${encodeURIComponent(abs)}${ref}`;
       document.body.appendChild(f);
       setTimeout(() => f.remove(), 4000);
     } catch {}
