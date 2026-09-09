@@ -36,7 +36,10 @@ This doc is the full map for future development.
   decrypt/parse code tested against real ciphertext. getVideo2 is a
   verbatim port - NOT yet triaged live (our site is down, and the
   sandbox can't POST to the API): the route returns stage `diag` so
-  the first live run debugs itself. TV series use the same lane with
+  the first live run debugs itself. Fix 2026-09-09 (Hindi played English):
+videoUrl-only (videos[] served OST for Hindi requests), permissionDenied
+skip, resolutions [3,2,1], shared encodes labeled with all languages
+(Hindmovie + meowtv consensus). TV series use the same lane with
   a per-season details redirect + episode picker (ported defensively).
 
 ## Live sources for future ports (ranked)

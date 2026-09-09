@@ -430,7 +430,7 @@ export const PROVIDERS: EmbedProvider[] = [
      * renders HindiSources with endpoint=/api/castle/stream; stubs never
      * called). CastleTV app backend (api.hlowb.com, channel IndiaA):
      * search -> details -> getVideo2 (AES-128-CBC via WebCrypto), Hindi
-     * track preferred + one fallback, 4K/1080p/720p/480p + subtitle
+     * track preferred + one fallback, 1080p/720p/480p + subtitle
      * tracks; own :site-cs resume namespace. Search + details decrypt
      * verified live 2026-09-09; the playback step is a verbatim port of
      * the TMDB-Embed-API provider with stage diagnostics for live debug

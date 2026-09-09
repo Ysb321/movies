@@ -7,6 +7,9 @@
  *  MIT) and verified against the live API 2026-09-09 (security key +
  *  search + details decrypt; the getVideo2 playback step is a verbatim
  *  port and returns stage diagnostics so it can be debugged live).
+ *  Playback follows the Hindmovie + meowtv consensus: videoUrl ONLY
+ *  (videos[] is OST-ordered), permissionDenied fallbacks skipped,
+ *  resolutions [3,2,1].
  *
  *  Why Castle: per-language video tracks with Hindi dubs for Hollywood
  *  titles and Hindi originals for Bollywood (search rows carry
@@ -249,22 +252,31 @@ export async function resolveCastle(opts: {
   if (!episodeId) return empty("episode has no id");
 
   const allTracks = Array.isArray(epEntry.tracks) ? epEntry.tracks : [];
-  const withVideo = allTracks.filter((t: any) => t?.existIndividualVideo === true);
-  const pool = withVideo.length ? withVideo : allTracks;
-  const hindi = pool.filter(isHindiTrack);
-  const rest = pool.filter((t: any) => !isHindiTrack(t));
-  /* Hindi-first: the Hindi track plus one fallback (OST/English) */
-  const chosen = hindi.length ? [hindi[0], ...rest.slice(0, 1)] : pool.slice(0, 2);
-  diag.push(`eps=${episodes.length} tracks=${pool.map((t: any) => t?.languageName || t?.abbreviate).join(",") || "none"}`);
+  const hasIndividual = allTracks.some((t: any) => t?.existIndividualVideo === true);
+  const langNames = allTracks.map((t: any) => t?.languageName || t?.abbreviate).filter(Boolean).join(", ");
+  const hindi = allTracks.filter(isHindiTrack);
+  const rest = allTracks.filter((t: any) => !isHindiTrack(t));
+  /* Hindi-first: the Hindi track plus one fallback (OST/English); shared
+   * mode when no track has its own encode (Hindmovie semantics). */
+  const chosen = hasIndividual
+    ? hindi.length ? [hindi[0], ...rest.slice(0, 1)] : rest.slice(0, 2)
+    : [];
+  diag.push(`eps=${episodes.length} indiv=${hasIndividual} tracks=${langNames || "none"}`);
 
   const streams: CastleStream[] = [];
   const captions: CastleCaption[] = [];
   const seen = new Set<string>();
   const seenCap = new Set<string>();
-  const resolutions = [4, 3, 2, 1];
+  let denied = 0;
+  const resolutions = [3, 2, 1];
 
   const absorb = (data: any, langLabel: string, res: number) => {
     if (!data) return;
+    /* permissionDenied = silent fallback to another language's file */
+    if (data.permissionDenied === true) {
+      denied++;
+      return;
+    }
     for (const s of (data.subtitles || []) as any[]) {
       if (typeof s?.url !== "string" || !s.url) continue;
       const url = s.url.replace(/ /g, "%20");
@@ -272,24 +284,19 @@ export async function resolveCastle(opts: {
       seenCap.add(url);
       captions.push({ lang: captionLang(s), name: s.title || s.abbreviate || "Subtitle", url });
     }
-    const vids = Array.isArray(data.videos) && data.videos.length
-      ? data.videos
-      : data.videoUrl
-        ? [{ url: data.videoUrl, resolution: 0, resolutionDescription: data.resolutionDescription, size: data.size }]
-        : [];
-    for (const v of vids as any[]) {
-      const url = v?.url || data.videoUrl;
-      if (typeof url !== "string" || !url || seen.has(url)) continue;
-      seen.add(url);
-      const resNum = Number(v?.resolution) || 0;
-      streams.push({
-        url,
-        quality: streamQuality(url, v?.resolutionDescription, resNum, RES_LABEL[res] || `${res}p`),
-        size: typeof v?.size === "number" ? v.size : undefined,
-        platform: langLabel ? `Castle [${langLabel}]` : "Castle",
-        lang: langLabel || "",
-      });
-    }
+    /* videoUrl ONLY: the videos[] catalog is OST-ordered and serves the
+     * wrong language for dubbed requests (Hindmovie + meowtv consensus -
+     * neither touches videos[]). */
+    const url = data.videoUrl;
+    if (typeof url !== "string" || !url || seen.has(url)) return;
+    seen.add(url);
+    streams.push({
+      url,
+      quality: streamQuality(url, data.resolutionDescription, 0, RES_LABEL[res] || `${res}p`),
+      size: typeof data.size === "number" ? data.size : undefined,
+      platform: langLabel ? `Castle [${langLabel}]` : "Castle",
+      lang: langLabel || "",
+    });
   };
 
   if (chosen.length) {
@@ -317,10 +324,12 @@ export async function resolveCastle(opts: {
       [3, 2, 1].map((res) => getVideo(secKey, activeId, episodeId, null, res).then((data) => ({ data, res })))
     );
     for (const r of rs) {
-      if (r.status === "fulfilled") absorb(r.value.data, "", r.value.res);
+      if (r.status === "fulfilled")
+        absorb(r.value.data, hasIndividual ? "" : langNames, r.value.res);
     }
     diag.push(`shared: ${streams.length} streams`);
   }
+  if (denied) diag.push(`${denied} permissionDenied skipped`);
 
   streams.sort((a, b) => (QUALITY_RANK[a.quality] ?? 99) - (QUALITY_RANK[b.quality] ?? 99));
   const label = kind === "series"
