@@ -83,6 +83,7 @@
  *  API lane. Full map: docs/hindi-providers.md.)
  *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
  *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
+ *  (Server 16: MovieRulz slast embed.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -491,6 +492,22 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
+    /* Server 16 - MovieRulz embed (their slast player, verified live
+     * 2026-09-09): slast430did.com/play/{imdb} - IMDb-keyed, movies +
+     * TV on the SAME url (full in-player season/episode/audio
+     * navigation incl. Hindi; Breaking Bad renders S1-S5 + 7 eps).
+     * Framing open (no X-Frame-Options/CSP on their responses),
+     * no Referer gate (renders with none). Default sandbox armor;
+     * fullscreen allowed (player startup may need it). NB: slast*
+     * is a rotating mirror family - if it dies, re-point at the
+     * current iframe host movierrulz.com embeds. */
+    id: "movierulz",
+    name: "MovieRulz",
+    prefersImdb: true,
+    movie: (id) => `https://slast430did.com/play/${id}`,
+    tv: (id) => `https://slast430did.com/play/${id}`,
+  },
+  {
     id: "megaplay",
     name: "MegaPlay",
     /* anime-only server (pill label: "Anime 1", shown only on anime
@@ -542,7 +559,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
