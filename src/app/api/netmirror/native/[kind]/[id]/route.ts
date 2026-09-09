@@ -59,32 +59,59 @@ const guessLang = (file: string, label: string, code: string): string => {
 /* the verify trick: /verify2 accepts ANY random string as the recaptcha
  * response and sets t_hash_t (~15h). No redirects: the cookie arrives
  * on the 302 itself. */
-async function fetchHashT(): Promise<string> {
-  const res = await fetch(`${MAIN}/verify.php`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: NORIG,
-      Referer: "https://net77.cc/verify2",
-      "User-Agent": UA,
-      Accept: "text/html,*/*",
-    },
-    body: `g-recaptcha-response=${encodeURIComponent(crypto.randomUUID())}`,
-    redirect: "manual",
-    signal: AbortSignal.timeout(12000),
-  });
-  const getter = (
-    res.headers as unknown as { getSetCookie?: () => string[] }
-  ).getSetCookie;
-  const raw: string[] =
-    typeof getter === "function"
-      ? getter.call(res.headers)
-      : [res.headers.get("set-cookie") || ""];
-  for (const c of raw) {
-    const m = /t_hash_t=([^;]+)/.exec(c || "");
-    if (m && m[1]) return m[1];
-  }
-  return "";
+async function fetchHashT(): Promise<{ v: string; diag: string }> {
+  const attempt = async (
+    redirect: RequestRedirect
+  ): Promise<{ v: string; d: string }> => {
+    try {
+      const res = await fetch(`${MAIN}/verify.php`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: NORIG,
+          Referer: "https://net77.cc/verify2",
+          "User-Agent": UA,
+          Accept: "text/html,*/*",
+        },
+        body: `g-recaptcha-response=${encodeURIComponent(crypto.randomUUID())}`,
+        redirect,
+        signal: AbortSignal.timeout(12000),
+      });
+      const getter = (
+        res.headers as unknown as { getSetCookie?: () => string[] }
+      ).getSetCookie;
+      const raw: string[] =
+        typeof getter === "function"
+          ? getter.call(res.headers)
+          : [res.headers.get("set-cookie") || ""];
+      let v = "";
+      for (const c of raw) {
+        const m = /t_hash_t=([^;]+)/i.exec(c || "");
+        if (m && m[1]) {
+          v = m[1];
+          break;
+        }
+      }
+      await res.arrayBuffer().catch(() => null);
+      const d =
+        `redir=${redirect} st=${res.status} ` +
+        `ct=${(res.headers.get("content-type") || "").slice(0, 30)} ` +
+        `loc=${(res.headers.get("location") || "").slice(0, 80)} ` +
+        `sc=${raw.filter(Boolean).length}`;
+      return { v, d };
+    } catch (err) {
+      return {
+        v: "",
+        d: `redir=${redirect} EXC ${(err instanceof Error ? err.message : "err").slice(0, 60)}`,
+      };
+    }
+  };
+  /* manual first (cookie arrives on the 302 itself); follow as fallback
+   * in case the edge runtime mangles manual-redirect headers */
+  const a = await attempt("manual");
+  if (a.v) return { v: a.v, diag: a.d };
+  const b = await attempt("follow");
+  return { v: b.v, diag: `${a.d} | ${b.d}` };
 }
 
 async function jget(url: string, jar: string, referer: string): Promise<any> {
@@ -132,8 +159,8 @@ export async function GET(
   const s = series ? Number(parts[1]) : 1;
   const e = series ? Number(parts[2]) : 1;
   try {
-    const hashT = await fetchHashT();
-    if (!hashT) throw new Error("verify trick failed (no t_hash_t)");
+    const { v: hashT, diag: hashDiag } = await fetchHashT();
+    if (!hashT) throw new Error(`verify trick failed (${hashDiag})`);
     const jar = `t_hash_t=${hashT}; hd=on; ott=nf`;
     await sleep(1200);
     const search = await jget(

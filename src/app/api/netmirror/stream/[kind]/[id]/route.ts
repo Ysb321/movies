@@ -144,11 +144,17 @@ const newTvHeaders = (ott: string, extra: Record<string, string> = {}) => ({
   ...extra,
 });
 
-async function resolveNewTv(): Promise<string> {
-  if (newTvApi) return newTvApi;
+async function resolveNewTv(notes?: string[]): Promise<string> {
+  if (newTvApi) {
+    notes?.push("base:cached");
+    return newTvApi;
+  }
+  let tried = 0;
+  let lastErr = "";
   for (const b64 of NEW_TV_DOMAINS_B64) {
     let domain = "";
     try {
+      tried++;
       domain = atob(b64);
       const res = await fetch(`${domain}/checknewtv.php`, {
         headers: newTvHeaders("nf"),
@@ -157,13 +163,15 @@ async function resolveNewTv(): Promise<string> {
       const data = await res.json();
       if (data && data.token_hash) {
         newTvApi = atob(data.token_hash).replace(/\/$/, "");
+        notes?.push(`base:ok@${domain.replace("https://", "")}`);
         return newTvApi;
       }
-    } catch {
-      /* next domain */
+      lastErr = `http ${res.status} no-token`;
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message.slice(0, 40) : "err";
     }
   }
-  throw new Error("newtv discovery failed");
+  throw new Error(`newtv discovery failed (${tried} domains, last: ${lastErr})`);
 }
 
 const num = (v: unknown): number | null => {
@@ -177,22 +185,34 @@ async function fetchPlatform(
   title: string,
   type: "movie" | "series",
   season: number,
-  episode: number
+  episode: number,
+  notes: string[]
 ): Promise<NmStream[]> {
   try {
     const ott = OTT[platform];
-    const api = await resolveNewTv();
+    const api = await resolveNewTv(notes);
     const searchRes = await fetch(`${api}/newtv/search.php?s=${encodeURIComponent(title)}`, {
       headers: newTvHeaders(ott),
       signal: AbortSignal.timeout(12000),
     });
+    if (!searchRes.ok) {
+      notes.push(`${platform}: search http ${searchRes.status}`);
+      return [];
+    }
     const search = await searchRes.json();
     const first = search && Array.isArray(search.searchResult) ? search.searchResult[0] : null;
-    if (!first || !first.id) return [];
+    if (!first || !first.id) {
+      notes.push(`${platform}: no search results`);
+      return [];
+    }
     const postRes = await fetch(`${api}/newtv/post.php?id=${encodeURIComponent(first.id)}`, {
       headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }),
       signal: AbortSignal.timeout(12000),
     });
+    if (!postRes.ok) {
+      notes.push(`${platform}: post http ${postRes.status}`);
+      return [];
+    }
     const post = await postRes.json();
     let targetId: string = first.id;
     if (type === "series") {
@@ -221,20 +241,37 @@ async function fetchPlatform(
         }
       }
       const target = eps.find((x) => x.s === season && x.ep === episode);
-      if (!target) return [];
+      if (!target) {
+        notes.push(`${platform}: ep not found`);
+        return [];
+      }
       targetId = target.id;
     } else {
-      if (post.type === "t" || (post.episodes || []).filter(Boolean).length > 0) return [];
+      if (post.type === "t" || (post.episodes || []).filter(Boolean).length > 0) {
+        notes.push(`${platform}: not a movie entry`);
+        return [];
+      }
       targetId = post.main_id || first.id;
     }
     const playRes = await fetch(`${api}/newtv/player.php?id=${encodeURIComponent(targetId)}`, {
       headers: newTvHeaders(ott, { Usertoken: "" }),
       signal: AbortSignal.timeout(12000),
     });
+    if (!playRes.ok) {
+      notes.push(`${platform}: player http ${playRes.status}`);
+      return [];
+    }
     const play = await playRes.json();
-    if (!play || !play.video_link) return [];
+    if (!play || !play.video_link) {
+      notes.push(`${platform}: no video_link`);
+      return [];
+    }
+    notes.push(`${platform}: ok`);
     return [{ quality: "Auto", url: play.video_link, platform: LABEL[platform] || platform }];
-  } catch {
+  } catch (err) {
+    notes.push(
+      `${platform}: EXC ${err instanceof Error ? err.message.slice(0, 60) : "err"}`
+    );
     return [];
   }
 }
@@ -253,13 +290,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
   try {
     const direct = await fetchDirect(tmdb, series ? { s, e } : null);
     let extra: NmStream[] = [];
+    const diag: string[] = [];
     if (title) {
       const wanted = PLATFORMS.filter((p) => p !== "netflix" || direct.streams.length === 0);
       /* serialized with 1.2s gaps: the proven NetMirror clients throttle
        * this fan-out (bursts trip the backend's Too Many Requests block) */
       for (const [i, p] of wanted.entries()) {
         if (i > 0) await new Promise((r) => setTimeout(r, 1200));
-        extra.push(...(await fetchPlatform(p, title, series ? "series" : "movie", s, e)));
+        extra.push(...(await fetchPlatform(p, title, series ? "series" : "movie", s, e, diag)));
       }
     }
     /* Netflix-direct first (verified lane), then Hotstar/Prime/Disney */
@@ -270,6 +308,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
         streams,
         captions: direct.captions,
         noSource: direct.noSource,
+        ...(streams.length === 0 ? { diag: diag.join("; ").slice(0, 600) } : {}),
       },
       { headers: { "cache-control": "no-store" } }
     );

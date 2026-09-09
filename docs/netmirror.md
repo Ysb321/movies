@@ -231,3 +231,14 @@ proxy paths (`/api/...`) verbatim to VLC/intents/clipboard - VLC can't
 resolve those (a pasted one even autolinks as `http://api/...`). It now
 resolves to absolute `origin + path` first, so Server 23's proxied HLS
 opens in desktop/Android/iOS VLC with segments riding the proxy.
+
+## Live debugging (2026-09-09, Spider-Man BND 969681)
+
+When `streams` is empty the stream route returns a `diag` string:
+NewTV discovery outcome + per-platform stage (`search http N`, `no
+search results`, `no video_link`, `EXC ...`). The native lane's verify
+trick tries `manual` then `follow` redirects and reports
+status/content-type/location/set-cookie-count for each - Cloudflare
+edge header behavior for manual redirects is the prime suspect when
+`t_hash_t` comes back empty. net27's own verdict for absent titles:
+`mode:"none", noSource:true, error:"We couldn't find this title..."`.
