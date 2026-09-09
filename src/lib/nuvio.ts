@@ -607,6 +607,7 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
   }
   d.push(`hmz:post:"${top.h.title.slice(0, 40)}"`);
   const finals: string[] = [];
+  let firstLinkHtml = "";
   if (kind === "movie") {
     const btns: string[] = [];
     for (const a of anchorsWithClass(post, /class="[^"]*maxbutton/i)) {
@@ -616,7 +617,6 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
     }
     d.push(`hmz:btns:${btns.length}`);
     const linkPages: string[] = [];
-    let firstLinkHtml = "";
     await Promise.all(
       btns.map(async (b) => {
         try {
