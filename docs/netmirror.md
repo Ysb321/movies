@@ -86,3 +86,28 @@ Probed and REJECTED as embed sources: netmirror.global (302 alias to
 .center — same XFO), netmirror.gg (Apache 404), net77/net27.cc `/`
 (verify-walled app at `/verify2`, no TMDB deep link — not wireable).
 r/TeenIndia mentions Cineby + Sonion as alternates (untried).
+
+## Tab crash -> Server 22 repurposed to API-direct (2026-09-09)
+
+Live test: the proxied `?embed=1` page **hard-crashed the whole tab**
+(freeze/Aw-Snap), while netmirror.center itself works fine directly
+(user-captured DOM shows their ArtPlayer 5.4.0 playing a
+`bcdnxw.hakunaymatata.com/resource/<md5>.mp4?sign=<md5>&t=<unix>`
+stream at 00:19, 480p/1080p selector, subs/settings intact).
+Probable mechanism: their load-time location canonicalizer sees the
+proxy pathname (`/api/desiddl/embed?...`) instead of `/tv/...`, rewrites
+`location.href` to "fix" it, our script wrap pulls the hop back into the
+proxy, the check fails again -> infinite reload loop. (Their player is
+ArtPlayer 5.4.0, not an iframe — nested-frame recursion is ruled out.)
+Per the user's vote (working playback wins), Server 22 `netembed` no
+longer frames anything: it is now `vlcOnly` rendering the same
+`HindiSources` lane as Server 19 (API mp4s -> inline SitePlayer). The
+`?embed=1` full site player stays one tap away via the "NetMirror ↗"
+deep-link button in `HindiSources` (top-level tab, where XFO can't
+bite). The `?allow=nm` proxy profile + `noReferrer` iframe flag are
+retained in the route/types for future use, currently unused by any
+provider. Bonus intel from the captured DOM: a sibling frontend
+`bet.watch22.shop/play/watchbox.php` (signed `id/dp/sig/ts` params, NOT
+TMDB-keyed -> not wireable) plays the same CDN streams fine from a
+third-party origin — further evidence our-origin direct mp4 playback
+should pass their CDN guard.

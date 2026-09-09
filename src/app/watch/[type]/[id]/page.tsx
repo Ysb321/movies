@@ -312,7 +312,7 @@ function WatchContent() {
               </p>
             </div>
           ) : provider.vlcOnly ? (
-            provider.id === "netmirror" ? (
+            (provider.id === "netmirror" || provider.id === "netembed") ? (
               <HindiSources
                 key={`nm-${t}-${id}-${season}-${episode}`}
                 type={t}

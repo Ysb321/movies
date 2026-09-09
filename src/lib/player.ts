@@ -52,11 +52,13 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
- *  - NetMirror Embed (Server 22): netmirror.center/movie|tv/{tmdb}/?embed=1
- *    - their own site player (season/episode picker + Watch & Download
- *    inside); TMDB-keyed so content always matches. Full page in frame
- *    (PVRPlay-style); S/E deep-link params best-effort (path form 404s).
- *    The API lane (Server 10) stays separate - direct mp4s via net27.cc.
+ *  - NetMirror Direct (Server 22, vlcOnly): SAME HindiSources lane as
+ *    Server 19 (API-resolved signed mp4s -> inline SitePlayer, quality
+ *    hop, subs, resume). Previously framed their ?embed=1 site player
+ *    via the embed proxy, but that hard-crashed tabs (their load-time
+ *    location canonicalizer vs the proxy pathname = infinite reload
+ *    loop), so it now shares the proven API lane. Full site player one
+ *    tap away via the "NetMirror" deep-link button (new tab, no XFO).
  *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
  *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
  *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
@@ -533,24 +535,18 @@ export const PROVIDERS: EmbedProvider[] = [
   },
   {
     id: "netembed",
-    name: "NetMirror Embed",
-    /* netmirror.center's own ?embed=1 site player (the page the user
-     * linked): TMDB-keyed movie/tv embeds with their season/episode
-     * picker + Watch & Download inside. /tv/{id}/{s}/{e} 404s, so S/E
-     * travel as best-effort s/e params (their picker covers the rest).
-     * Their embed pages send X-Frame-Options: SAMEORIGIN (a direct
-     * iframe = "refused to connect" on the open web), so the URLs below
-     * run through the same-origin embed proxy (?allow=nm); the Electron
-     * app instead frames them directly (FRAME_HOSTS strip). no-referrer:
-     * the CDN hotlink guard is likelier to accept empty referers than an
-     * unknown origin. allow-popups: their trackers claim no popup ads,
-     * and Watch & Download links need new tabs. */
-    sandbox: "allow-scripts allow-same-origin allow-forms allow-downloads allow-popups",
-    noReferrer: true,
-    movie: (id) =>
-      `/api/desiddl/embed?allow=nm&url=${encodeURIComponent(`https://netmirror.center/movie/${id}/?embed=1`)}`,
-    tv: (id, s, e) =>
-      `/api/desiddl/embed?allow=nm&url=${encodeURIComponent(`https://netmirror.center/tv/${id}/?embed=1&s=${s}&e=${e}`)}`,
+    name: "NetMirror Direct",
+    /* Server 22 - NetMirror Direct (vlcOnly, no iframe - the watch page
+     * renders HindiSources instead; stubs never called). SAME lane as
+     * Server 19: API-resolved signed mp4s -> inline SitePlayer. This pill
+     * previously framed their ?embed=1 site player via the embed proxy
+     * (?allow=nm), but that hard-crashed tabs (infinite reload loop), so
+     * it now shares the proven API lane. The ?embed=1 deep link lives in
+     * HindiSources ("NetMirror" button -> full site player in a new tab,
+     * where X-Frame-Options can't bite). */
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
   },
 ];
 

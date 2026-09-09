@@ -347,6 +347,19 @@ export default function HindiSources({ type, tmdbId, title, season, episode }: P
     <div className="relative flex h-full flex-col bg-black">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
         <span className="text-[13px] font-bold">🇮🇳 Hindi sources</span>
+        <a
+          href={
+            type === "movie"
+              ? `https://netmirror.center/movie/${tmdbId}/?embed=1`
+              : `https://netmirror.center/tv/${tmdbId}/?embed=1&s=${season}&e=${episode}`
+          }
+          target="_blank"
+          rel="noreferrer"
+          title="Open this title in NetMirror's own site player (new tab)"
+          className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+        >
+          NetMirror ↗
+        </a>
         {status === "ready" && (
           <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[11px] font-semibold text-brand">
             {rows.length} found
