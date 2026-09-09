@@ -173,43 +173,47 @@ async function discoverNewTv(notes?: string[]): Promise<string[]> {
     notes?.push(`base:cached(${newTvBases.length})`);
     return newTvBases;
   }
+  /* parallel: one request per host (~5s total). Same-host bursts stay
+   * throttled downstream; discovery fans out across hosts, not into one */
+  const settled = await Promise.all(
+    NEW_TV_DOMAINS_B64.map(async (b64) => {
+      try {
+        const domain = atob(b64);
+        const res = await fetch(`${domain}/checknewtv.php`, {
+          headers: newTvHeaders("nf"),
+          signal: AbortSignal.timeout(5000),
+        });
+        const cookies = jarCookies(res.headers);
+        const data = await res.json().catch(() => null);
+        const token =
+          data && data.token_hash ? atob(data.token_hash).replace(/\/$/, "") : "";
+        return { domain, base: token, cookies };
+      } catch {
+        return { domain: "", base: "", cookies: [] as string[] };
+      }
+    })
+  );
   const bases: string[] = [];
   const jar: string[] = [];
-  let tried = 0;
-  let lastErr = "";
-  for (const b64 of NEW_TV_DOMAINS_B64) {
-    if (bases.length >= 2 || tried >= 12) break;
-    let domain = "";
-    try {
-      tried++;
-      domain = atob(b64);
-      const res = await fetch(`${domain}/checknewtv.php`, {
-        headers: newTvHeaders("nf"),
-        signal: AbortSignal.timeout(4000),
-      });
-      for (const c of jarCookies(res.headers)) {
-        const k = c.split("=")[0];
-        const i = jar.findIndex((x) => x.split("=")[0] === k);
-        if (i >= 0) jar[i] = c;
-        else jar.push(c);
-      }
-      const data = await res.json();
-      if (data && data.token_hash) {
-        const base = atob(data.token_hash).replace(/\/$/, "");
-        if (base && !bases.includes(base)) bases.push(base);
-      } else {
-        lastErr = `http ${res.status} no-token`;
-      }
-    } catch (err) {
-      lastErr = err instanceof Error ? err.message.slice(0, 40) : "err";
+  let hits = 0;
+  for (const r of settled) {
+    if (r.base) {
+      hits++;
+      if (!bases.includes(r.base) && bases.length < 6) bases.push(r.base);
+    }
+    for (const c of r.cookies) {
+      const k = c.split("=")[0];
+      const i = jar.findIndex((x) => x.split("=")[0] === k);
+      if (i >= 0) jar[i] = c;
+      else jar.push(c);
     }
   }
   if (bases.length === 0)
-    throw new Error(`newtv discovery failed (${tried} domains, last: ${lastErr})`);
+    throw new Error(`newtv discovery failed (${settled.length} domains, none ok)`);
   newTvBases = bases;
   newTvJar = jar.join("; ");
   notes?.push(
-    `bases:${bases.map(shortHost).join("+")} jar:${jar.map((c) => c.split("=")[0]).join(",") || "none"}`
+    `bases:${bases.map(shortHost).join("+")} (${hits}/${settled.length} hosts) jar:${jar.map((c) => c.split("=")[0]).join(",") || "none"}`
   );
   return bases;
 }
