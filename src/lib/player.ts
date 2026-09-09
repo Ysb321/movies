@@ -442,6 +442,26 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
+    /* Server 13 - MoviesMod (vlcOnly Hindi-dubbed DDL lane - the watch
+     * page renders HindiSources with endpoint=/api/moviesmod/stream;
+     * stubs never called). MoviesMod WP blog (moviesmod.zone): Dual /
+     * Multi Audio Hindi WEB-DL + BluRay, 480p-2160p, movies + series.
+     * Chain: blog search -> similarity+year match -> post page (h4 per
+     * quality / h3 Season episode buttons) -> modrefer.in / modpro.blog
+     * -> driveseed direct (fast path) or tech.* SID dance -> file page
+     * -> Instant Download / Worker Bot / Direct / Resume Cloud final
+     * CDN (workers.dev / r2 / video-leech -> GDrive unwrap). Hindi-ish
+     * posts preferred; files are dual/multi-audio so no captions.
+     * Ported from the NuvioStreamsAddon moviesmod provider + its
+     * linkResolver (Feb 2026), blog verified alive 2026-09-09; playback
+     * is a verbatim port with stage diagnostics for live debug. */
+    id: "moviesmod",
+    name: "MoviesMod",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
     id: "megaplay",
     name: "MegaPlay",
     /* anime-only server (pill label: "Anime 1", shown only on anime

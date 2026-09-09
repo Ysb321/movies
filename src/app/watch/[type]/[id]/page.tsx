@@ -342,6 +342,27 @@ function WatchContent() {
                 ]}
                 emptyHint="Castle covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
               />
+            ) : provider.id === "moviesmod" ? (
+              <HindiSources
+                key={`mm-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/moviesmod/stream"
+                laneTitle="🎭 MoviesMod · Hindi Dubbed"
+                resumeSuffix="site-mm"
+                hideSiteLink
+                loadLines={[
+                  "Contacting MoviesMod sources…",
+                  "Searching Hindi-dubbed WEB-DL posts…",
+                  "Still searching — resolving the file links…",
+                  "Almost there — validating the streams…",
+                ]}
+                emptyHint="MoviesMod covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
+              />
             ) : provider.id === "desiddl" ? (
               <DdlSources
                 key={`dd-${t}-${id}-${season}-${episode}`}

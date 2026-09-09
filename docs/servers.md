@@ -1,8 +1,8 @@
 # Server map: pill -> source
 
 Pills render in `PROVIDERS` order (`Server N` = Nth visible pill).
-12 pills on movies/TV. Anime titles add megaplay ("Anime 1") after pill
-12. Default server: VidOut (pill 7, `useState("netout")`). Brand names
+13 pills on movies/TV. Anime titles add megaplay ("Anime 1") after pill
+13. Default server: VidOut (pill 7, `useState("netout")`). Brand names
 never display - pills only.
 
 2026-09-09 prune: pills past 11 removed (free embeds 12-20 +

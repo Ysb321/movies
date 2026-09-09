@@ -1,8 +1,9 @@
 # Hindi-audio providers: recon map (2026-09-09)
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
-(git repos, libraries, plugins, reddit). Shipped: **Castle (Server 12)**.
-This doc is the full map for future development.
+(git repos, libraries, plugins, reddit). Shipped: **Castle (Server
+12)** + **MoviesMod (Server 13)**. This doc is the full map for future
+development.
 
 ## Already in the app (Hindi coverage before this round)
 
@@ -96,6 +97,22 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   (Italian-first catalog, StreamingUnity family) - no Hindi value.
 - Reddit dual-audio thread (r/PiracyArchive): streamxtv.tech
   suggested, reporter says "not giving hindi dubbed" - no action.
+- Simatwa/moviebox-api: repo 404 + PyPI old versions deleted, 0.6.0
+  is a 1.7kB stub - scrubbed, do not pursue.
+- walterwhite-69/Moviebox-API: archived by author (MovieBox went
+  paid, 480p max on API) - dead.
+- MovieBox app API (api.inmoviebox.com/wefeed-mobile-bff): needs a
+  secret HMAC PRIMARY_KEY (APK extraction) - blocked unless the key
+  surfaces publicly.
+- MP4Hydra (mp4hydra.org): "Back soon... rebuilding" since Jul 2026
+  - down, re-check later.
+- yahyaMomin/vegamovies-API: abandoned, author couldn't beat
+  Cloudflare from Vercel/Render (works locally only).
+- VidLink (vidlink.pro, TMDB-Embed `vidlink.js`): English-only
+  (`multiLang=0`) + enc-dec.app dependency - no Hindi value.
+- TMDB-Embed non-castle/4khdhub providers (onetouchtv, streamflix,
+  vaplayer, zxcstreams, dahmermovies): English-only, no Hindi
+  support found.
 
 ## Reference lists (re-check monthly, fast churn)
 
