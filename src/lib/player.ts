@@ -26,13 +26,22 @@
  *    Runs VidCore inside with in-player server options; one-time profile
  *    tap on first load; unsandboxed (flags cascade to VidCore) + popups
  *    revoked; noScroll crops their chrome.
- *  - MultiMovies (Server 8): the multi-audio players used by
- *    multimovies.beer, embedded AS-IS (their player, not ours) and
- *    keyed purely by TMDB ids: Cineverse (cineverse.pages.dev - movies
- *    only), Vidout (vidout.pages.dev - movies + TV) and Multiverse
- *    (multiverse.pages.dev - same family). screenscape.me + Nxsha are
- *    deliberately excluded. A Download chip (downloadeverythingfrom-
- *    everywhere.com, also TMDB-keyed) rounds it out as the fallback.
+ *  - MultiMovies (Server 8): the sources on multimovies.beer, embedded
+ *    AS-IS (their player, not ours), in the site's own source order:
+ *    Cineverse (cineverse.modiplay.xyz/embed/{slug} - slug-keyed,
+ *    movies only; slugs mirror multimovies slugs and are derived
+ *    from the TMDB title at runtime), GDMirror (their "Recommended"
+ *    tag: streams.iqsmartgames.com/embed - the exact keyed player their
+ *    page loads (key on movies + TV; keyed mode shows their library
+ *    file view, e.g. the V4/V3 releases on Spider-Man), Nxsha
+ *    (web.nxsha.app/embed - documented embed API, movies + TV),
+ *    screenscape (screenscape.me/embed - documented embed API, movies
+ *    + TV, Hindi audio by default), Multiverse
+ *    (multiverse.modiplay.xyz/embed/{tmdb} + /embed/tv/{tmdb}/{s}/{e}
+ *    - TMDB-keyed, movies + TV)
+ *    and Vidout (vidout.pages.dev - movies + TV). NB: cineverse.
+ *    pages.dev is an unrelated info-only demo and multiverse.pages.dev
+ *    is dead (HTTP 500) - neither is the site's player, never use them.
  *  - MegaPlay: megaplay.buzz/stream/ani/{anilistId}/{ep}/{sub|dub} - the
  *    anime-only server ("Anime 1" pill); AniList id resolved from the TMDB
  *    title at watch time (src/lib/anilist.ts). Embed-only on their side;
@@ -43,6 +52,39 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
+ *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
+ *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
+ *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
+ *    /api/webstreamr routes. Tap a source and it plays in the inbuilt
+ *    site player (SitePlayer: ArtPlayer-based, Multiverse-style UI with
+ *    Download + Open-in-VLC controls); VLC handoff per platform
+ *    (desktop: bundled vlc.exe; Android: vlc intent; iOS: vlc-x-callback;
+ *    PC web: desktop-app bridge + copy-link) covers whatever the browser
+ *    can't decode (HEVC/Dolby). No iframe - the resolver generates every
+ *    playable link itself (redirect-following, cookie sessions,
+ *    generator-page scraping, sibling-index fallback, quota checks).
+ *    Truly uncrackable pages open in a new tab. New/cam releases may
+ *    have zero sources (empty state).
+ *  - NetMirror (Server 10, vlcOnly Hindi-OTT lane): Indian OTT rips via
+ *    our /api/netmirror routes - direct signed mp4s (360-1080p) + caption
+ *    tracks with Hindi subs auto-loaded, played in the inbuilt site player
+ *    (HindiSources list, own :site-nm resume namespace). Netflix-direct is
+ *    verified live; NewTV Hotstar/Prime/Disney fan-out best-effort.
+ *  - DesiDDL (Server 11, no-iframe Hindi-DDL lane): VegaMovies +
+ *    MoviesDrive + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix) DDL
+ *    posts via /api/desiddl - search, IMDb-hit verify, hub links opened
+ *    embedded on tap (user generates the link, it auto-plays in the site
+ *    player; DdlSources list, own :site-dd
+ *    resume namespace). Ported from the Megix CSX CloudStream providers.
+ *  (2026-09-09 prune: pills past 11 removed - free embeds + NetMirror
+ *  Direct/Playlists. Their code stays in-tree; re-append entries to
+ *  restore. Full map: docs/servers.md.)
+ *  (Server 12 Castle added after the prune, by request - Hindi-first
+ *  API lane. Full map: docs/hindi-providers.md.)
+ *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
+ *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
+ *  (Server 16: MovieRulz slast embed.)
+ *  (Server 17: Movieland direct-m3u8 lane.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -53,9 +95,20 @@ export type EmbedSubPlayer = {
   name: string; /* chip label (e.g. "Cineverse") */
   /** movies-only player - hidden on TV titles */
   movieOnly?: boolean;
-  /** download-site fallback (DEFE): needs forms/popups/downloads, not
-   *  the unsandboxed treatment the video players get */
-  download?: boolean;
+  /** slug-keyed player (Cineverse): the watch page passes a slugified
+   *  TMDB title as the id instead of the TMDB id */
+  slugTitle?: boolean;
+  /** iframe armor overrides (undefined = inherit the provider's).
+   *  sandbox: false forces unsandboxed, a string forces that sandbox
+   *  token list (PLAYER_SANDBOX for the default no-popups sandbox). */
+  sandbox?: false | string;
+  denyPopups?: boolean;
+  noScroll?: boolean;
+  denyFullscreen?: boolean;
+  /** send no Referer from the frame (referrerPolicy="no-referrer") -
+   *  for hotlink-guarded file hosts that allow empty referers but block
+   *  unknown origins. */
+  noReferrer?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -84,12 +137,20 @@ export type EmbedProvider = {
   denyPopups?: boolean;
   /** only show this provider on anime titles (watch page filters the pills) */
   animeOnly?: boolean;
+  /** VLC server (WebStreamr): no iframe - the watch page renders the
+   *  addon's source list and hands picked links to the installed VLC.
+   *  movie()/tv() stubs below are never called. */
+  vlcOnly?: boolean;
   /** pill label override (default "Server N") */
   label?: string;
   /** drop "fullscreen" from the iframe allow list - for players that
    *  auto-fullscreen the moment you press play; the Fullscreen API is
    *  denied to that frame entirely so playback stays inline. */
   denyFullscreen?: boolean;
+  /** send no Referer from the frame (referrerPolicy="no-referrer") -
+   *  for hotlink-guarded file hosts that allow empty referers but block
+   *  unknown origins. */
+  noReferrer?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -101,9 +162,32 @@ const qs = (params: Record<string, string | number | undefined>) => {
   return s ? `?${s}` : "";
 };
 
-/** default iframe armor: no popups, no modals, no top-navigation hijack */
+/** WordPress-style slug ("Spider-Man: Brand New Day" ->
+ *  "spider-man-brand-new-day"). Cineverse embeds are slug-keyed and
+ *  their slugs mirror multimovies slugs, so the watch page derives
+ *  this from the TMDB title at runtime. */
+export const slugify = (s: string) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+/** default iframe armor: no popups, no modals, no top-navigation hijack.
+ *  NB: omitting allow-popups is what REALLY kills popups (window.open
+ *  returns null even on a user tap); the "popups 'none'" allow token is
+ *  only a hint some engines honor. Unsandboxed providers rely on the
+ *  browser's own popup blocker instead. */
 export const PLAYER_SANDBOX =
   "allow-scripts allow-same-origin allow-downloads allow-forms allow-pointer-lock";
+
+/** GDMirror site key: fixed site-wide (same key serves every title).
+ *  BOTH movies + TV carry it: keyless/key-mismatched loads fall back to
+ *  a generic third-party server lineup, while the keyed player shows
+ *  their real library file view (verified 2026-09-08: Spider-Man 969681
+ *  + Fight Club 550 serve their release files with the key). */
+const GDMIRROR_KEY = "e11a7debaaa4f5d25b671706ffe4d2acb56efbd4";
 
 export const PROVIDERS: EmbedProvider[] = [
   {
@@ -205,14 +289,14 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
   },
   {
-    /* Server 8 - the multimovies.beer multi-audio players, embedded
-     * as-is (their player, TMDB ids only). Same app family as VidOut
-     * (unsandboxed + popups revoked + noScroll crops their chrome).
-     * Cineverse: verified live for movies; its TV routes serve an
-     * error page -> movieOnly. Multiverse: same family deployment.
-     * The Download chip is the downloadeverythingfromeverywhere.com
-     * fallback (TMDB-keyed too), sandboxed like the old Multi Dub
-     * frame was. screenscape.me + Nxsha: excluded by design. */
+    /* Server 8 - the multimovies.beer sources, embedded as-is (their
+     * player), in the site's own source order. Nxsha + screenscape +
+     * Vidout + GDMirror + Multiverse are TMDB-keyed (verified live
+     * 2026-09-08); only Cineverse is slug-keyed (/embed/{slug}, slugs
+     * mirror multimovies slugs). Same iframe armor throughout
+     * (unsandboxed + popups revoked + noScroll): sandboxing was tried
+     * on GDMirror and reverted - their player refuses to play
+     * sandboxed. Sub-player armor overrides still supported. */
     id: "multimovies",
     name: "MultiMovies",
     denyPopups: true,
@@ -220,11 +304,77 @@ export const PROVIDERS: EmbedProvider[] = [
     noScroll: true,
     players: [
       {
+        /* REAL Cineverse: cineverse.modiplay.xyz/embed/{slug} - their
+         * backend (verified 2026-09-08: /embed/obsession and
+         * /embed/spider-man-brand-new-day serve the full player: 7
+         * in-player servers, multi-audio, EN/HI/... subs). The watch
+         * page passes a slugified TMDB title (slugTitle). Movies only
+         * - no TV addressing found on their side. NB: the old
+         * cineverse.pages.dev URL was a wrong, unrelated info-only
+         * demo - never use it. */
         id: "cineverse",
         name: "Cineverse",
         movieOnly: true,
-        movie: (id) => `https://cineverse.pages.dev/movie/${id}`,
+        slugTitle: true,
+        movie: (slug) => `https://cineverse.modiplay.xyz/embed/${slug}`,
         tv: () => "",
+      },
+      {
+        /* GDMIRROR (their "Recommended" tag): the EXACT player their
+         * page loads - streams.iqsmartgames.com/embed/movie/{tmdb}
+         * + /embed/tv/{tmdb}/{s}/{e}, both with the fixed site key
+         * (verified 2026-09-08: this is the Request URL their own
+         * GDMirror option makes). Keyed mode shows their real library
+         * file view (Spider-Man 969681: V4 HEVC + V3 x264 releases;
+         * Fight Club 550; Breaking Bad S1:E1 incl. Hindi-dubbed). Keyless
+         * loads only get a generic third-party lineup - never drop the
+         * key. Their /evid/{per-title-token} iframe wraps this same
+         * backend (rpmshare mirror servers). No frame block. */
+        id: "gdmirror",
+        name: "GDMirror",
+        /* NB: runs UNSANDBOXED like its Server 8 siblings - their player
+         * breaks under any sandbox, so the sandbox experiment was
+         * reverted (their ad popups are the price on the open web: the
+         * browser's popup blocker + COOP same-origin blunt them; the
+         * desktop app denies them outright at the network level). */
+        movie: (id) => `https://streams.iqsmartgames.com/embed/movie/${id}?key=${GDMIRROR_KEY}`,
+        tv: (id, s, e) =>
+          `https://streams.iqsmartgames.com/embed/tv/${id}/${s}/${e}?key=${GDMIRROR_KEY}`,
+      },
+      {
+        /* https://web.nxsha.app/embed docs: /embed/movie/{tmdb} +
+         * /embed/tv/{tmdb}/{s}/{e} (TMDb or IMDb ids); multi-server
+         * fallback + multi-lang in-player. Verified: Fight Club (550)
+         * + Game of Thrones S1:E1 (1399/1/1) resolve by title. */
+        id: "nxsha",
+        name: "Nxsha",
+        movie: (id) => `https://web.nxsha.app/embed/movie/${id}`,
+        tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
+      },
+      {
+        /* https://screenscape.me/embed docs: /embed?tmdb={id}&type=movie
+         * + &type=tv&s={s}&e={e}; Hindi audio by default. Verified:
+         * Spider-Man: Brand New Day (969681) resolves by title. */
+        id: "screenscape",
+        name: "screenscape",
+        movie: (id) => `https://screenscape.me/embed?tmdb=${id}&type=movie`,
+        tv: (id, s, e) => `https://screenscape.me/embed?tmdb=${id}&type=tv&s=${s}&e=${e}`,
+      },
+      {
+        /* REAL Multiverse: multiverse.modiplay.xyz/embed/{tmdb} +
+         * /embed/tv/{tmdb}/{s}/{e} - TMDB-keyed, movies + TV (verified
+         * 2026-09-08: /embed/969681 renders "Spider-Man: Brand New Day
+         * (2026)", /embed/550 "Fight Club (1999)", /embed/tv/1396/1/1
+         * "Breaking Bad - S01E01": ArtPlayer 5.1.7, Hindi default
+         * audio, HubCloud/GDFlix/Backup servers). NB: /embed/{slug}
+         * only serves a static demo shell (renders even for bogus
+         * slugs - never use it), /embed/{id}/{s}/{e} without the /tv/
+         * segment redirects to their cover page, and the old
+         * multiverse.pages.dev URL was wrong/dead - never use it. */
+        id: "multiverse",
+        name: "Multiverse",
+        movie: (id) => `https://multiverse.modiplay.xyz/embed/${id}`,
+        tv: (id, s, e) => `https://multiverse.modiplay.xyz/embed/tv/${id}/${s}/${e}`,
       },
       {
         id: "vidout",
@@ -232,24 +382,145 @@ export const PROVIDERS: EmbedProvider[] = [
         movie: (id) => `https://vidout.pages.dev/watch/movie/${id}`,
         tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
       },
-      {
-        id: "multiverse",
-        name: "Multiverse",
-        movie: (id) => `https://multiverse.pages.dev/movie/${id}`,
-        tv: (id, s, e) => `https://multiverse.pages.dev/tv/${id}/S${s}/E${e}`,
-      },
-      {
-        id: "dl",
-        name: "Download",
-        download: true,
-        movie: (id) => `https://downloadeverythingfromeverywhere.com/m/${id}`,
-        tv: (id) => `https://downloadeverythingfromeverywhere.com/s/${id}`,
-      },
     ],
-    /* defaults when no sub-player is picked: Cineverse for movies,
-     * Vidout for TV (Cineverse has no TV) */
-    movie: (id) => `https://cineverse.pages.dev/movie/${id}`,
-    tv: (id, s, e) => `https://vidout.pages.dev/tv/${id}/S${s}/E${e}`,
+    /* stubs (a sub-player always resolves, and Start over preserves
+     * the picked one - these are never embedded; Nxsha because it is
+     * TMDB-keyed like the signature expects) */
+    movie: (id) => `https://web.nxsha.app/embed/movie/${id}`,
+    tv: (id, s, e) => `https://web.nxsha.app/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    /* Server 9 - WebStreamr (vlcOnly, see the header doc): movie()/tv()
+     * are never called - the watch page renders VlcSources instead. */
+    id: "webstreamr",
+    name: "WebStreamr",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 10 - NetMirror (vlcOnly Hindi-OTT lane, no iframe - the watch
+     * page renders HindiSources instead; stubs never called). Indian OTT
+     * rips (Netflix/Hotstar/Prime/Disney) via our /api/netmirror routes:
+     * direct signed mp4s + caption tracks, Hindi subs auto-loaded.
+     * Verified live 2026-09-09: Fight Club 550 + RRR 579974 + Breaking
+     * Bad 1396 S01E01 all exact-match with 360-1080p files. NewTV
+     * Hotstar/Prime/Disney fan-out is code-complete but unverified. */
+    id: "netmirror",
+    name: "NetMirror",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 11 - DesiDDL (no-iframe Hindi-DDL lane - the watch page
+     * renders DdlSources instead; stubs never called). VegaMovies +
+     * MoviesDrive dual-audio posts (the Hindi blogs Server 9 doesn't
+     * scrape) via our /api/desiddl routes: Typesense search, IMDb-hit
+     * verify, nexdrive intermediates -> G-Direct / V-Cloud / HubCloud
+     * links opened embedded on tap (user generates, file auto-plays).
+     * Full chain re-verified live 2026-09-09 (Fight Club 1999 posts,
+     * Lanterns S01 post, nexdrive + vcloud + hubcloud + GDFlix). HDMovie2
+     * (newhdmovie2.best -> hdm.im -> GDFlix) rides the same lane (blog
+     * tag "HDMovie2"). */
+    id: "desiddl",
+    name: "DesiDDL",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 12 - Castle (vlcOnly Hindi-first API lane - the watch page
+     * renders HindiSources with endpoint=/api/castle/stream; stubs never
+     * called). CastleTV app backend (api.hlowb.com, channel IndiaA):
+     * search -> details -> getVideo2 (AES-128-CBC via WebCrypto), Hindi
+     * track preferred + one fallback, 1080p/720p/480p + subtitle
+     * tracks; own :site-cs resume namespace. Search + details decrypt
+     * verified live 2026-09-09; the playback step is a verbatim port of
+     * the TMDB-Embed-API provider with stage diagnostics for live debug
+     * (full map: docs/hindi-providers.md). */
+    id: "castle",
+    name: "Castle",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 13 - MoviesMod (vlcOnly Hindi-dubbed DDL lane - the watch
+     * page renders HindiSources with endpoint=/api/moviesmod/stream;
+     * stubs never called). MoviesMod WP blog (moviesmod.zone): Dual /
+     * Multi Audio Hindi WEB-DL + BluRay, 480p-2160p, movies + series.
+     * Chain: blog search -> similarity+year match -> post page (h4 per
+     * quality / h3 Season episode buttons) -> modrefer.in / modpro.blog
+     * -> driveseed direct (fast path) or tech.* SID dance -> file page
+     * -> Instant Download / Worker Bot / Direct / Resume Cloud final
+     * CDN (workers.dev / r2 / video-leech -> GDrive unwrap). Hindi-ish
+     * posts preferred; files are dual/multi-audio so no captions.
+     * Ported from the NuvioStreamsAddon moviesmod provider + its
+     * linkResolver (Feb 2026), blog verified alive 2026-09-09; playback
+     * is a verbatim port with stage diagnostics for live debug. */
+    id: "moviesmod",
+    name: "MoviesMod",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 14 - AutoPlay (vlcOnly zero-tap lane - the watch page renders
+     * AutoSources; stubs never called). WebStreamr with no taps: searches
+     * the addon, ranks direct-file/Hindi/browser-friendly rows, resolves
+     * and plays the best in SmartPlayer (ArtPlayer + hls.js + dash.js:
+     * HLS/DASH/progressive, in-player quality/audio/server/subtitle
+     * selectors, VLC + Download), auto-advancing on dead links. The
+     * in-player source panel stays as the manual override. */
+    id: "autoplay",
+    name: "AutoPlay",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 15 - Nuvio (vlcOnly Hindi lane - the watch page renders
+     * HindiSources with endpoint=/api/nuvio/stream; stubs never
+     * called). XDMovies (search API + exact tmdb_id match -> HubCloud
+     * FSL / HubCDN / Pixeldrain / StreamTape finals) + HindMoviez
+     * (title search -> maxbutton/get-links/a.btn -> full extractor),
+     * movies + series. Ported from phisher98/phisher-nuvio-providers. */
+    id: "nuvio",
+    name: "Nuvio",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 16 - MovieRulz embed (their slast player, verified live
+     * 2026-09-09): slast430did.com/play/{imdb} - IMDb-keyed, movies +
+     * TV on the SAME url (full in-player season/episode/audio
+     * navigation incl. Hindi; Breaking Bad renders S1-S5 + 7 eps).
+     * Framing open (no X-Frame-Options/CSP on their responses),
+     * no Referer gate (renders with none). Default sandbox armor;
+     * fullscreen allowed (player startup may need it). NB: slast*
+     * is a rotating mirror family - if it dies, re-point at the
+     * current iframe host movierrulz.com embeds. */
+    id: "movierulz",
+    name: "MovieRulz",
+    prefersImdb: true,
+    movie: (id) => `https://slast430did.com/play/${id}`,
+    tv: (id) => `https://slast430did.com/play/${id}`,
+  },
+  {
+    /* Server 17 - Movieland (vlcOnly Hindi lane - the watch page renders
+     * HindiSources with endpoint=/api/movieland/stream; stubs never
+     * called). AllMovieLand direct m3u8: DLE search -> detail player
+     * config (AwsIndStreamDomain + src - the same slast backend Server
+     * 16 embeds) -> HDVBPlayer embed -> playlist API (X-CSRF-TOKEN)
+     * -> per-language m3u8 (Hindi first). Movies + series (folder
+     * walk). Ported from EpicGGCoder/allmovieland-api. */
+    id: "movieland",
+    name: "Movieland",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
   },
   {
     id: "megaplay",
@@ -303,7 +574,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "cineverse", "multiverse", "multimovies"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

@@ -9,9 +9,13 @@ import Row from "@/components/Row";
 import SetupNotice from "@/components/SetupNotice";
 import { useTmdbSnapshot } from "@/components/SWRProvider";
 import { img, titleOf, yearOf, bestLogo, kidsSafeItem } from "@/lib/tmdb";
-import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX } from "@/lib/player";
+import { embedUrl, getProvider, PROVIDERS, parsePlayerEvent, fmtTime, PLAYER_SANDBOX, slugify } from "@/lib/player";
 import { scrollToEl } from "@/lib/scroll";
 import { findAniListId } from "@/lib/anilist";
+import VlcSources from "@/components/VlcSources";
+import HindiSources from "@/components/HindiSources";
+import AutoSources from "@/components/AutoSources";
+import DdlSources from "@/components/DdlSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -72,8 +76,9 @@ function WatchContent() {
   const provider = getProvider(activeId);
 
   /* Server 8 (MultiMovies): named sub-players - which of their
-   * TMDB-keyed players is embedded. Reset whenever the server or the
-   * title type changes; defaults to the first player for the type. */
+   * players is embedded (TMDB ids, except slug-keyed Cineverse).
+   * Reset whenever the server or the title type changes; defaults
+   * to the first player for the type. */
   const [subPlayerId, setSubPlayerId] = useState<string | null>(null);
   useEffect(() => { setSubPlayerId(null); }, [serverId, t]);
   const subPlayers = useMemo(
@@ -84,10 +89,33 @@ function WatchContent() {
     [provider, t]
   );
   const subPlayer = subPlayers.find((sp) => sp.id === subPlayerId) ?? subPlayers[0] ?? null;
+  /* effective iframe armor: a sub-player override wins, otherwise the
+   * provider's (GDMirror runs sandboxed = no popups; its Server 8
+   * siblings stay unsandboxed). */
+  const effSandbox = subPlayer?.sandbox !== undefined ? subPlayer.sandbox : provider.sandbox;
+  const effDenyPopups = subPlayer?.denyPopups ?? provider.denyPopups;
+  const effNoScroll = subPlayer?.noScroll ?? provider.noScroll;
+  const effDenyFullscreen = subPlayer?.denyFullscreen ?? provider.denyFullscreen;
+  const effNoReferrer = subPlayer?.noReferrer ?? provider.noReferrer;
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
   const title = d ? titleOf(d) : "Loading…";
+  /* Cineverse is slug-keyed (/embed/{slug}, slugs mirror multimovies
+   * slugs): derive from the TMDB title, original titles as fallback
+   * for non-English names. */
+  const slug =
+    slugify(titleOf(d)) || slugify(d?.original_title || d?.original_name || "") || String(id);
+  /* URL for the CURRENT player choice (Server 8 keeps its sub-player;
+   * slug-keyed players get the title slug instead of the TMDB id) */
+  const currentSrc = (startAt?: number) => {
+    const pid = subPlayer?.slugTitle ? slug : embedId;
+    return subPlayer
+      ? t === "movie"
+        ? subPlayer.movie(pid)
+        : subPlayer.tv(pid, season, episode)
+      : embedUrl(provider, t, embedId, { s: season, e: episode, startAt });
+  };
   const seasons = useMemo(
     () => (d?.seasons ?? []).filter((s: any) => s.season_number > 0 && s.episode_count > 0),
     [d]
@@ -97,6 +125,12 @@ function WatchContent() {
   const [embed, setEmbed] = useState<{ src: string; resumedFrom?: number } | null>(null);
 
   useEffect(() => {
+    /* WebStreamr (Server 9) renders its own source list (VlcSources/HindiSources/DdlSources) - no
+     * iframe embed to build; clear any stale one from another server. */
+    if (provider.vlcOnly) {
+      setEmbed(null);
+      return;
+    }
     let cancelled = false;
     /* MegaPlay (anime server) has no TMDB ids: resolve the title on
      * AniList, then embed /stream/ani/{id}/{ep}/sub per their docs
@@ -112,20 +146,18 @@ function WatchContent() {
       });
       return () => { cancelled = true; };
     }
+    /* slug-keyed sub-players (Cineverse) need the TMDB title first -
+     * skeleton until it arrives (same as the MegaPlay resolving state) */
+    if (subPlayer?.slugTitle && !d) { setEmbed(null); return; }
     const rkey = resumeKeyFor(t, id, season, episode);
     const saved = getResume(rkey);
     const resume =
       saved && saved.positionSec > 10 && (!saved.durationSec || saved.positionSec < saved.durationSec * 0.97)
         ? Math.floor(saved.positionSec)
         : undefined;
-    /* Server 8: embed the SELECTED sub-player (their player, TMDB-keyed);
-     * download chips never resume (fresh page each time) */
-    const src = subPlayer
-      ? t === "movie"
-        ? subPlayer.movie(embedId)
-        : subPlayer.tv(embedId, season, episode)
-      : embedUrl(provider, t, embedId, { s: season, e: episode, startAt: resume });
-    setEmbed({ src, resumedFrom: subPlayer?.download ? undefined : resume });
+    /* Server 8: embed the SELECTED sub-player (their player as-is) */
+    const src = currentSrc(resume);
+    setEmbed({ src, resumedFrom: resume });
     lastSaved.current = resume ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, id, season, episode, provider.id, embedId, d, activeId, subPlayer?.id]);
@@ -134,7 +166,8 @@ function WatchContent() {
     clearResume(resumeKeyFor(t, id, season, episode));
     lastTime.current = null;
     lastSaved.current = 0;
-    setEmbed({ src: embedUrl(provider, t, embedId, { s: season, e: episode }) });
+    /* rebuild the CURRENT player (Server 8 keeps the picked sub-player) */
+    setEmbed({ src: currentSrc() });
   };
 
   /* ── listen to player postMessage events → persist exact position ── */
@@ -279,33 +312,143 @@ function WatchContent() {
                 This title isn&rsquo;t suitable for kids. Ask a parent to enter the PIN to switch profiles.
               </p>
             </div>
+          ) : provider.vlcOnly ? (
+            provider.id === "netmirror" ? (
+              <HindiSources
+                key={`nm-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                season={season}
+                episode={episode}
+              />
+            ) : provider.id === "castle" ? (
+              <HindiSources
+                key={`cs-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/castle/stream"
+                laneTitle="🏰 Castle · Hindi"
+                resumeSuffix="site-cs"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Castle sources…",
+                  "Searching Hindi + OST tracks…",
+                  "Still searching — the source is slow right now…",
+                  "Almost there — signing the stream urls…",
+                ]}
+                emptyHint="Castle covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
+              />
+            ) : provider.id === "moviesmod" ? (
+              <HindiSources
+                key={`mm-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/moviesmod/stream"
+                laneTitle="🎭 MoviesMod · Hindi Dubbed"
+                resumeSuffix="site-mm"
+                hideSiteLink
+                loadLines={[
+                  "Contacting MoviesMod sources…",
+                  "Searching Hindi-dubbed WEB-DL posts…",
+                  "Still searching — resolving the file links…",
+                  "Almost there — validating the streams…",
+                ]}
+                emptyHint="MoviesMod covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
+              />
+            ) : provider.id === "autoplay" ? (
+              <AutoSources
+                key={`ap-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
+                season={season}
+                episode={episode}
+              />
+            ) : provider.id === "nuvio" ? (
+              <HindiSources
+                key={`nv-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/nuvio/stream"
+                laneTitle="Nuvio - Hindi"
+                resumeSuffix="site-nv"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Nuvio sources...",
+                  "Searching XDMovies + HindMoviez...",
+                  "Still searching - resolving the file links...",
+                  "Almost there - validating the streams...",
+                ]}
+                emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
+            ) : provider.id === "movieland" ? (
+              <HindiSources
+                key={`ml-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/movieland/stream"
+                laneTitle="Movieland - Hindi"
+                resumeSuffix="site-ml"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Movieland sources...",
+                  "Searching Hindi-dubbed posts...",
+                  "Still searching - unlocking the streams...",
+                  "Almost there - validating the streams...",
+                ]}
+                emptyHint="Movieland covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
+            ) : provider.id === "desiddl" ? (
+              <DdlSources
+                key={`dd-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
+                season={season}
+                episode={episode}
+              />
+            ) : (
+              <VlcSources
+                key={`${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
+                season={season}
+                episode={episode}
+              />
+            )
           ) : embed ? (
             embed.src ? (
-              subPlayer?.download ? (
-                /* the Download chip (DEFE) keeps the old Multi Dub frame
-                 * armor: sandboxed, forms + popups + downloads allowed */
-                <iframe
-                  key={`${t}-${id}-${embed.src}-${reloadKey}`}
-                  src={embed.src}
-                  title={title}
-                  className="h-full w-full bg-white"
-                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer; popups"
-                  sandbox={`${PLAYER_SANDBOX} allow-popups allow-downloads`}
-                  referrerPolicy="origin"
-                />
-              ) : (
               <iframe
                 key={`${t}-${id}-${season}-${episode}-${embed.src}-${reloadKey}`}
                 src={embed.src}
                 title={title}
                 className="h-full w-full"
-                allow={`autoplay; encrypted-media; ${provider.denyFullscreen ? "" : "fullscreen; "}picture-in-picture; accelerometer${provider.denyPopups ? "; popups 'none'" : ""}`}
-                sandbox={provider.sandbox === false ? undefined : provider.sandbox || PLAYER_SANDBOX}
-                scrolling={provider.noScroll ? "no" : undefined}
-                allowFullScreen={!provider.denyFullscreen}
-                referrerPolicy="origin"
+                allow={`autoplay; encrypted-media; ${effDenyFullscreen ? "" : "fullscreen; "}picture-in-picture; accelerometer${effDenyPopups ? "; popups 'none'" : ""}`}
+                sandbox={effSandbox === false ? undefined : effSandbox || PLAYER_SANDBOX}
+                scrolling={effNoScroll ? "no" : undefined}
+                allowFullScreen={!effDenyFullscreen}
+                referrerPolicy={effNoReferrer ? "no-referrer" : "origin"}
               />
-              )
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                 <span className="text-4xl">🌸</span>
@@ -331,9 +474,7 @@ function WatchContent() {
                 className={clsx(
                   "rounded-full px-3 py-1.5 text-[11px] font-semibold transition md:px-2.5 md:py-1",
                   subPlayer?.id === sp.id
-                    ? sp.download
-                      ? "bg-amber-600 text-white"
-                      : "bg-brand text-white"
+                    ? "bg-brand text-white"
                     : "bg-white/10 text-neutral-300 hover:bg-white/20"
                 )}
               >
