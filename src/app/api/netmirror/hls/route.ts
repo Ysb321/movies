@@ -13,7 +13,7 @@ export const runtime = "edge";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 const ALLOWED = /^net\d+\.cc$/i;
-const EXTRA = new Set(["subscdn.top"]);
+const extraHost = (h: string) => h === "subscdn.top" || h.endsWith(".subscdn.top");
 const HOME = "https://net77.cc/home";
 
 /* verify-trick session, cached per isolate (~15h ticket life) */
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
   }
   if (
     target.protocol !== "https:" ||
-    (!ALLOWED.test(target.hostname) && !EXTRA.has(target.hostname.toLowerCase()))
+    (!ALLOWED.test(target.hostname) && !extraHost(target.hostname.toLowerCase()))
   ) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

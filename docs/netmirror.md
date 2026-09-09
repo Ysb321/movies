@@ -206,3 +206,17 @@ honestly (laneError) while 19/22 stand. Discovery list is now 24
 domains (added the 9 `mobidetcts.*` variants from the extension).
 net52 does NOT serve `/api/embed-tmdb` (Apache 404) — app/playlist host
 only. Poster CDN observed: `imgcdn.kim/poster/v/$id.jpg` (Referer-gated).
+
+## Ground truth: real playlist.php (2026-09-09, "Obsession")
+
+Shape: top-level ARRAY `[{title, sources[], tracks[]}]`. Sources are
+RELATIVE `/pv/hls/<id>.m3u8?...` (prefix net52), one entry per rung:
+`Auto` (no `q` = multivariant, hls.js adapts), `Full HD` (`?q=1080p`),
+`Mid HD` (`?q=720p`, carries `"default":"true"`), `Low HD` (`?q=480p`),
+all `type: application/vnd.apple.mpegurl`. Keep backend order: Auto
+first is the best default. Tracks: `{kind:"captions", file, label}` -
+NO language code; files are protocol-relative `//pv.subscdn.top/subs/
+<id>/<code>.srt` (note the `pv.` subdomain + `[CC]` naming); labels are
+display text (`English  [CC]`, `हिन्दी`) - derive `lang` from the
+filename code, label map as fallback, or the Hindi-first default sub
+breaks. Dead `in=` tokens answer a plain Apache 404 (no CF wall).

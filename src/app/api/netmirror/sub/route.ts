@@ -5,11 +5,16 @@ import { NextRequest, NextResponse } from "next/server";
  * re-served with CORS *, so the site player's subtitle loader never
  * trips on missing allow-origin headers. Tiny text files only: 15s
  * cap, 1h edge cache (keyed by the full signed url, so expiry is safe).
- * SSRF guard: only the NetMirror API host + MovieBox CDN suffix. */
+ * SSRF guard: NetMirror API host + subscdn.top subtitle CDN (+subs) +
+ * MovieBox CDN suffix. */
 
 export const runtime = "edge";
 
-const okHost = (h: string) => h === "net27.cc" || h.endsWith(".hakunaymatata.com");
+const okHost = (h: string) =>
+  h === "net27.cc" ||
+  h === "subscdn.top" ||
+  h.endsWith(".subscdn.top") ||
+  h.endsWith(".hakunaymatata.com");
 
 export async function GET(req: NextRequest) {
   const u = req.nextUrl.searchParams.get("u") || "";

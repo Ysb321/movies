@@ -41,6 +41,20 @@ const norm = (t: string) =>
     .toLowerCase()
     .replace(/\(\d{4}\)/g, "")
     .replace(/[^a-z0-9]+/g, "");
+/* playlist tracks carry no language code - just a file + display label
+ * ("en-us.[CC].srt" / "English [CC]", "hi-in.srt" / "हिन्दी"). Code
+ * first from the filename, then the label map, so the player's
+ * Hindi-first default subtitle keeps working. */
+const guessLang = (file: string, label: string, code: string): string => {
+  if (code) return code.slice(0, 12);
+  const m = /\/([a-z]{2})-[a-z]+\.[a-z0-9]+$/i.exec(file || "");
+  if (m) return m[1].toLowerCase();
+  const l = (label || "").toLowerCase();
+  if (/hindi|हिन्दी/.test(l) || /hi[-_]in/.test(l)) return "hi";
+  if (/english/.test(l) || /^eng/.test(l.trim()) || /en[-_]us/.test(l))
+    return "en";
+  return (label || "en").slice(0, 12);
+};
 
 /* the verify trick: /verify2 accepts ANY random string as the recaptcha
  * response and sets t_hash_t (~15h). No redirects: the cookie arrives
@@ -238,10 +252,17 @@ export async function GET(
           : `${MAIN}${String(x.file)}`;
         /* HLS rides our proxy: it pins the Referer + session the CDN
          * expects, rewrites segments, and answers CORS for hls.js. The
-         * trailing &f=.m3u8 keeps ArtPlayer's type sniff on m3u8. */
+         * trailing &f=.m3u8 keeps ArtPlayer's type sniff on m3u8.
+         * Non-HLS files (should they ever appear) pass through direct -
+         * <video> needs no CORS. Backend order kept: Auto (adaptive)
+         * first beats the default:true fixed rung. */
+        const isHls =
+          /\.m3u8/i.test(abs) || /mpegurl/i.test(String(x.type || ""));
         return {
           quality: String(x.label || "Auto").slice(0, 24),
-          url: `/api/netmirror/hls?u=${encodeURIComponent(abs)}&f=.m3u8`,
+          url: isHls
+            ? `/api/netmirror/hls?u=${encodeURIComponent(abs)}&f=.m3u8`
+            : abs,
           platform: "HLS",
         };
       });
@@ -262,7 +283,7 @@ export async function GET(
             : `${SUBCDN}${f.startsWith("/") ? "" : "/"}${f}`;
         const label = String(x.label || x.language || "Subtitle");
         return {
-          lang: String(x.language || x.label || "en").slice(0, 12),
+          lang: guessLang(f, label, String(x.language || "")),
           name: label,
           url: `/api/netmirror/sub?u=${encodeURIComponent(abs)}`,
         };
