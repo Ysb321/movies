@@ -95,6 +95,7 @@ function WatchContent() {
   const effDenyPopups = subPlayer?.denyPopups ?? provider.denyPopups;
   const effNoScroll = subPlayer?.noScroll ?? provider.noScroll;
   const effDenyFullscreen = subPlayer?.denyFullscreen ?? provider.denyFullscreen;
+  const effNoReferrer = subPlayer?.noReferrer ?? provider.noReferrer;
     /* VidCore indexes best by IMDb id; Videasy is TMDB-native */
   const embedId: string = provider.prefersImdb ? (d?.external_ids?.imdb_id || (id as string)) : (id as string);
 
@@ -352,7 +353,7 @@ function WatchContent() {
                 sandbox={effSandbox === false ? undefined : effSandbox || PLAYER_SANDBOX}
                 scrolling={effNoScroll ? "no" : undefined}
                 allowFullScreen={!effDenyFullscreen}
-                referrerPolicy="origin"
+                referrerPolicy={effNoReferrer ? "no-referrer" : "origin"}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">

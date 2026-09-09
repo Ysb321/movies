@@ -36,6 +36,16 @@ import { NextRequest, NextResponse } from "next/server";
  * SSRF guard: entry host must be a hub host; every hop stays https, off
  * localhost/private, and on a hub-ish host.
  */
+/* Site profile (?allow=nm): the same proxy reused for NetMirror's own
+ *  ?embed=1 site player (Server 22). netmirror.center sends
+ *  X-Frame-Options: SAMEORIGIN on the embed pages (verified 2026-09-09
+ *  via a headers probe), so direct iframes show "refused to connect" on
+ *  the open web; served same-origin through this proxy the page frames
+ *  fine (the Electron app instead strips those headers via FRAME_HOSTS).
+ *  Entry/hop guards = netmirror.center + netXX.cc (their API backends,
+ *  fetched edge-side with proper Referer). Files still stay direct; the
+ *  frame runs referrerPolicy no-referrer + a popup-allowing sandbox so
+ *  Watch & Download links open decoupled (_blank noopener). */
 
 export const runtime = "edge";
 
@@ -44,7 +54,25 @@ const UA = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "text/html,*/*",
 };
-const HUB_HOST = /(hubcloud|vcloud|gdflix|gdlink|fastdl)/i;
+type Profile = { entry: RegExp; hop: RegExp; boot: string; blank: boolean; qs: string };
+const PROFILES: Record<string, Profile> = {
+  hub: {
+    entry: /(hubcloud|vcloud|gdflix|gdlink|fastdl)/i,
+    hop: /(hubcloud|vcloud|gdflix|gdlink|fastdl)/i,
+    boot: "hubcloud|vcloud|gdflix|gdlink|fastdl",
+    blank: false,
+    qs: "",
+  },
+  nm: {
+    entry: /(netmirror\.center|net\d+\.cc)/i,
+    hop: /(netmirror\.center|net\d+\.cc)/i,
+    boot: "netmirror\\.center|net\\d+\\.cc",
+    blank: true,
+    qs: "allow=nm&",
+  },
+};
+const profileOf = (req: NextRequest): Profile =>
+  PROFILES[req.nextUrl.searchParams.get("allow")?.toLowerCase() || ""] || PROFILES.hub;
 const PRIV = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)/i;
 const CHALLENGE = /(challenge-platform|cf_chl_opt|Just a moment\.\.\.|Attention Required)/i;
 const FILE_EXT = /\.(mp4|mkv|avi|mov|webm|flv|wmv|m3u8|mpd|ts|m4v)(\?|#|$)/i;
@@ -65,11 +93,11 @@ const hostOf = (u: string) => {
     return "";
   }
 };
-const okNext = (u: string, entryHost: string) => {
+const okNext = (u: string, entryHost: string, prof: Profile) => {
   try {
     const x = new URL(u);
     if (x.protocol !== "https:" || PRIV.test(x.hostname)) return false;
-    return HUB_HOST.test(x.hostname) || x.hostname === entryHost;
+    return prof.hop.test(x.hostname) || x.hostname === entryHost;
   } catch {
     return false;
   }
@@ -94,10 +122,10 @@ function fileFromUrl(u: string): string {
 /* runs FIRST inside the proxied hub page: keeps hub navigation in-proxy,
  * reports user-generated file URLs, sniffs hub API responses. */
 const BOOTSTRAP = `(function(){if(window.__YF_BOOT)return;window.__YF_BOOT=1;
-var PROXY="/api/desiddl/embed?url=";var armedUntil=0;
+var PROXY="/api/desiddl/embed?__YF_QS__url=";var armedUntil=0;
 function abs(u){try{return new URL(u,document.baseURI).href}catch(e){return ""}}
 function isHttp(u){return /^https?:\\/\\//i.test(u)}
-function hubish(a){try{var x=new URL(a);if(x.host===location.host)return false;return /(hubcloud|vcloud|gdflix|gdlink|fastdl)/i.test(x.hostname)}catch(e){return false}}
+function hubish(a){try{var x=new URL(a);if(x.host===location.host)return false;return /__YF_HUBRE__/i.test(x.hostname)}catch(e){return false}}
 function fileFromUrl(u){if(!u)return "";try{var x=new URL(u,document.baseURI);if(x.protocol!=="http:"&&x.protocol!=="https:")return "";var link=x.searchParams.get("link");if(link&&/^https?:\\/\\//i.test(link))return link;if(/\\.(mp4|mkv|avi|mov|webm|flv|wmv|m3u8|mpd|ts|m4v)(\\?|#|$)/i.test(x.pathname+x.search))return x.href;if(/googleusercontent\\.com|busycdn\\.xyz/i.test(x.hostname))return x.href;if(/pixeldrain/i.test(x.hostname)&&/\\/api\\/file\\//i.test(x.pathname))return x.href;return ""}catch(e){return ""}}
 function send(f){try{parent.postMessage({type:"yetflix-file",url:f},"*")}catch(e){}}
 function arm(){armedUntil=Date.now()+6000}
@@ -108,13 +136,18 @@ function scanText(t){if(!t||t.length>400000)return;try{var re=/https?:\\/\\/[^\\
 function scanSend(){try{var els=document.querySelectorAll("a[href],video[src],video source[src]");for(var i=0;i<els.length;i++){var u=els[i].getAttribute("href")||els[i].getAttribute("src")||"";var f=fileFromUrl(abs(u));if(f){send(f);return true}}}catch(e){}return false}
 document.addEventListener("click",function(ev){arm();try{var t=ev.target&&ev.target.closest?ev.target.closest("a[href]"):null;if(t){var f=fileFromUrl(abs(t.getAttribute("href")));if(f)send(f)}}catch(e){}},true);
 document.addEventListener("submit",function(ev){arm();try{var f=fileFromUrl(ev.target&&ev.target.action?ev.target.action:"");if(f)send(f)}catch(e){}},true);
-try{window.open=function(u){arm();var a=/^https?:\\/\\//i.test(u||"")?u||"":abs(u||"");var f=fileFromUrl(a);if(f){send(f);return null}if(a&&hubish(a)){window.location.href=PROXY+encodeURIComponent(a)}return null}}catch(e){}
+try{var _wopen=window.open.bind(window);window.open=function(u){arm();var a=/^https?:\\/\\//i.test(u||"")?u||"":abs(u||"");var f=fileFromUrl(a);if(f){send(f);if(__YF_BLANK__){try{return _wopen(a,"_blank","noopener")}catch(e){}}return null}if(a&&hubish(a)){window.location.href=PROXY+encodeURIComponent(a);return null}if(__YF_BLANK__&&a&&isHttp(a)){try{return _wopen(a,"_blank","noopener")}catch(e){}}return null}}catch(e){}
 try{if(window.fetch){var _fetch=window.fetch.bind(window);window.fetch=function(input,init){var reqInput=input;try{var raw=typeof input==="string"?input:(input&&input.url)||"";var a=abs(raw);if(isHttp(a)&&hubish(a)&&!fileFromUrl(a)){reqInput=typeof input==="string"?PROXY+encodeURIComponent(a):new Request(PROXY+encodeURIComponent(a),input)}}catch(e){reqInput=input}return _fetch(reqInput,init).then(function(res){if(armed()){try{var cl=res.clone();cl.text().then(function(t){scanText(t)}).catch(function(){})}catch(e){}}return res})}}}catch(e){}
 try{var _xopen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){try{var a=abs(String(u||""));if(isHttp(a)&&hubish(a)&&!fileFromUrl(a)){arguments[1]=PROXY+encodeURIComponent(a)}}catch(e){}return _xopen.apply(this,arguments)};var _xsend=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){try{this.addEventListener("load",function(){if(!armed())return;try{scanText(this.responseText||"")}catch(e){}})}catch(e){}return _xsend.apply(this,arguments)}}catch(e){}
 try{var _atob=window.atob.bind(window);window.atob=function(s){var d=_atob(s);try{if(/^https?:\\/\\//i.test(d)||/^\\/(video|drive|download|file)\\//i.test(d)){var a=abs(d);if(hubish(a)&&!fileFromUrl(a)){try{parent.postMessage({type:"yetflix-navigate",url:PROXY+encodeURIComponent(a)},"*")}catch(e){}}else{var f=fileFromUrl(a);if(f)send(f)}}catch(e){}return d}}catch(e){}
 try{var mo=new MutationObserver(function(){if(armed())scanSend()});mo.observe(document.documentElement,{childList:true,subtree:true})}catch(e){}
 try{window.addEventListener("beforeunload",function(){try{parent.postMessage({type:"yetflix-embed-left"},"*")}catch(e){}})}catch(e){}
 try{parent.postMessage({type:"yetflix-embed-ready"},"*")}catch(e){}})();`;
+
+const bootstrapFor = (prof: Profile): string =>
+  BOOTSTRAP.replaceAll("__YF_HUBRE__", prof.boot)
+    .replaceAll("__YF_BLANK__", prof.blank ? "true" : "false")
+    .replaceAll("__YF_QS__", prof.qs);
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const htmlRes = (html: string) =>
@@ -126,10 +159,11 @@ const shell = (msg: { type: string; url?: string; message?: string }) =>
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Yetflix hub</title></head><body style="margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0a0a0a;color:#e5e5e5;font:14px system-ui,sans-serif"><p style="padding:0 24px;text-align:center">${msg.type === "yetflix-file" ? "Opening in the player…" : esc(msg.message || "Couldn't load the hub page.")}</p><script>try{parent.postMessage(${JSON.stringify(msg)},"*")}catch(e){}</script></body></html>`
   );
 
-const proxied = (u: string) => `/api/desiddl/embed?url=${encodeURIComponent(u)}`;
+const proxied = (u: string, prof: Profile) =>
+  `/api/desiddl/embed?${prof.qs}url=${encodeURIComponent(u)}`;
 
 /* hub-page links stay in the proxy; file + external links stay direct */
-function rewriteAttrUrl(raw: string, pageUrl: string, entryHost: string): string | null {
+function rewriteAttrUrl(raw: string, pageUrl: string, entryHost: string, prof: Profile): string | null {
   const v = raw.trim();
   if (!v || v.startsWith("#")) return null;
   if (/^(javascript|data|mailto|tel|blob):/i.test(v)) return null;
@@ -144,8 +178,8 @@ function rewriteAttrUrl(raw: string, pageUrl: string, entryHost: string): string
   }
   if (!/^https?:\/\//i.test(u)) return null;
   if (fileFromUrl(u)) return null;
-  if (!okNext(u, entryHost)) return null;
-  return proxied(u);
+  if (!okNext(u, entryHost, prof)) return null;
+  return proxied(u, prof);
 }
 
 /* wrap JS navigation sinks in __yf_prox(...) (location.href=, replace(),
@@ -193,7 +227,7 @@ function rewriteScripts(html: string): string {
   );
 }
 
-function rewritePage(html: string, pageUrl: string, entryHost: string): string {
+function rewritePage(html: string, pageUrl: string, entryHost: string, prof: Profile): string {
   let out = html.replace(/<base\b[^>]*>/gi, "");
   /* hub CSP would kill the bootstrap - strip it (our shell sends none) */
   out = out.replace(
@@ -203,11 +237,11 @@ function rewritePage(html: string, pageUrl: string, entryHost: string): string {
   out = out.replace(/<(a|form|iframe)\b([^>]*?)>/gi, (_m, tag, attrs) => {
     const fixed = (attrs as string)
       .replace(/(href|src|action)\s*=\s*"([^"]*)"/gi, (_a, k, v) => {
-        const n = rewriteAttrUrl(v, pageUrl, entryHost);
+        const n = rewriteAttrUrl(v, pageUrl, entryHost, prof);
         return n ? `${k}="${n}"` : _a;
       })
       .replace(/(href|src|action)\s*=\s*'([^']*)'/gi, (_a, k, v) => {
-        const n = rewriteAttrUrl(v, pageUrl, entryHost);
+        const n = rewriteAttrUrl(v, pageUrl, entryHost, prof);
         return n ? `${k}='${n}'` : _a;
       });
     /* external anchors: new tab, never hijack the frame */
@@ -227,11 +261,11 @@ function rewritePage(html: string, pageUrl: string, entryHost: string): string {
   out = out.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, (m) => {
     const cm = /content\s*=\s*["']?\s*\d+\s*;\s*url\s*=\s*([^"'>\s]+)/i.exec(m);
     if (!cm) return m;
-    const n = rewriteAttrUrl(cm[1], pageUrl, entryHost);
+    const n = rewriteAttrUrl(cm[1], pageUrl, entryHost, prof);
     return n ? m.replace(cm[1], n) : m;
   });
   out = rewriteScripts(out);
-  const head = `<base href="${baseOf(pageUrl)}/">\n<meta name="yetflix-embed" content="1">\n<script>${BOOTSTRAP}</script>`;
+  const head = `<base href="${baseOf(pageUrl)}/">\n<meta name="yetflix-embed" content="1">\n<script>${bootstrapFor(prof)}</script>`;
   if (/<head\b[^>]*>/i.test(out)) out = out.replace(/<head\b[^>]*>/i, (m) => `${m}\n${head}`);
   else out = head + out;
   return out;
@@ -303,7 +337,7 @@ function pageFile(html: string, pageUrl: string): boolean {
   return false;
 }
 
-async function run(entry: string, init?: RequestInit): Promise<Response> {
+async function run(entry: string, prof: Profile, init?: RequestInit): Promise<Response> {
   const entryHost = hostOf(entry);
   const seen = new Set<string>();
   let cur = entry;
@@ -332,7 +366,7 @@ async function run(entry: string, init?: RequestInit): Promise<Response> {
         const nx = new URL(hx, cur).href;
         const f = fileFromUrl(nx);
         if (f) return shell({ type: "yetflix-file", url: f });
-        if (okNext(nx, entryHost)) {
+        if (okNext(nx, entryHost, prof)) {
           cur = nx;
           continue;
         }
@@ -347,7 +381,7 @@ async function run(entry: string, init?: RequestInit): Promise<Response> {
     /* dead hub links bounce off-site (blog homepages, landing pages) -
      * never render those: their JS escapes the frame and nothing can
      * generate there. Fail honest instead. */
-    if (!okNext(final, entryHost)) {
+    if (!okNext(final, entryHost, prof)) {
       return shell({
         type: "yetflix-embed-error",
         message: "This hub link looks dead (the hub bounced it off-site). Try another row.",
@@ -383,13 +417,13 @@ async function run(entry: string, init?: RequestInit): Promise<Response> {
     if (CHALLENGE.test(html)) {
       return shell({ type: "yetflix-embed-error", message: "The hub showed our server a bot-check." });
     }
-    if (pageFile(html, final)) return htmlRes(rewritePage(html, final, entryHost));
+    if (pageFile(html, final)) return htmlRes(rewritePage(html, final, entryHost, prof));
     const nx = continuation(html, final);
-    if (nx && okNext(nx, entryHost) && !seen.has(nx)) {
+    if (nx && okNext(nx, entryHost, prof) && !seen.has(nx)) {
       cur = nx;
       continue;
     }
-    return htmlRes(rewritePage(html, final, entryHost));
+    return htmlRes(rewritePage(html, final, entryHost, prof));
   }
   return shell({ type: "yetflix-embed-error", message: "Too many hub hops." });
 }
@@ -398,7 +432,7 @@ function entryOf(req: NextRequest): string | null {
   const u = req.nextUrl.searchParams.get("url") || "";
   try {
     const x = new URL(u);
-    if (x.protocol !== "https:" || !HUB_HOST.test(x.hostname) || PRIV.test(x.hostname)) return null;
+    if (x.protocol !== "https:" || !profileOf(req).entry.test(x.hostname) || PRIV.test(x.hostname)) return null;
     return u;
   } catch {
     return null;
@@ -408,7 +442,7 @@ function entryOf(req: NextRequest): string | null {
 export async function GET(req: NextRequest) {
   const e = entryOf(req);
   if (!e) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  return run(e);
+  return run(e, profileOf(req));
 }
 
 export async function POST(req: NextRequest) {
@@ -418,5 +452,5 @@ export async function POST(req: NextRequest) {
   if (len > 1000000) return NextResponse.json({ ok: false, error: "body too big" }, { status: 413 });
   const body = await req.arrayBuffer();
   const ct = req.headers.get("content-type") || "application/x-www-form-urlencoded";
-  return run(e, { method: "POST", body, headers: { "Content-Type": ct } });
+  return run(e, profileOf(req), { method: "POST", body, headers: { "Content-Type": ct } });
 }

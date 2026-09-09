@@ -108,6 +108,10 @@ export type EmbedSubPlayer = {
   denyPopups?: boolean;
   noScroll?: boolean;
   denyFullscreen?: boolean;
+  /** send no Referer from the frame (referrerPolicy="no-referrer") -
+   *  for hotlink-guarded file hosts that allow empty referers but block
+   *  unknown origins. */
+  noReferrer?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -146,6 +150,10 @@ export type EmbedProvider = {
    *  auto-fullscreen the moment you press play; the Fullscreen API is
    *  denied to that frame entirely so playback stays inline. */
   denyFullscreen?: boolean;
+  /** send no Referer from the frame (referrerPolicy="no-referrer") -
+   *  for hotlink-guarded file hosts that allow empty referers but block
+   *  unknown origins. */
+  noReferrer?: boolean;
   movie: (id: string) => string;
   tv: (id: string, season: number, episode: number) => string;
 };
@@ -530,10 +538,19 @@ export const PROVIDERS: EmbedProvider[] = [
      * linked): TMDB-keyed movie/tv embeds with their season/episode
      * picker + Watch & Download inside. /tv/{id}/{s}/{e} 404s, so S/E
      * travel as best-effort s/e params (their picker covers the rest).
-     * Full site page in the frame (PVRPlay-style); framing depends on
-     * their headers on the open web, Electron strips via FRAME_HOSTS. */
-    movie: (id) => `https://netmirror.center/movie/${id}/?embed=1`,
-    tv: (id, s, e) => `https://netmirror.center/tv/${id}/?embed=1&s=${s}&e=${e}`,
+     * Their embed pages send X-Frame-Options: SAMEORIGIN (a direct
+     * iframe = "refused to connect" on the open web), so the URLs below
+     * run through the same-origin embed proxy (?allow=nm); the Electron
+     * app instead frames them directly (FRAME_HOSTS strip). no-referrer:
+     * the CDN hotlink guard is likelier to accept empty referers than an
+     * unknown origin. allow-popups: their trackers claim no popup ads,
+     * and Watch & Download links need new tabs. */
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-downloads allow-popups",
+    noReferrer: true,
+    movie: (id) =>
+      `/api/desiddl/embed?allow=nm&url=${encodeURIComponent(`https://netmirror.center/movie/${id}/?embed=1`)}`,
+    tv: (id, s, e) =>
+      `/api/desiddl/embed?allow=nm&url=${encodeURIComponent(`https://netmirror.center/tv/${id}/?embed=1&s=${s}&e=${e}`)}`,
   },
 ];
 

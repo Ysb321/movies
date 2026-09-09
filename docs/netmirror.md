@@ -52,3 +52,37 @@ rendered by `HindiSources` into the site player / VLC.
 - Backends rotate across `netXX.cc` (net11/net27 observed working,
   net77 posted Jul 2026, older ones blocked) — trackers:
   netmirrorpc.com, netmiror.com. If `BASE` dies, check those.
+
+## Framing block + same-origin proxy (2026-09-09)
+
+Direct iframes to the `?embed=1` pages fail on the open web with
+"refused to connect": the embed URL answers
+`x-frame-options: SAMEORIGIN` (verified via a headers probe; Cloudflare
++ LiteSpeed, no CSP `frame-ancestors`). Chrome renders an XFO denial as
+that exact error — the site is UP, framing is forbidden. Fix: Server 22
+URLs run through the embed proxy as
+`/api/desiddl/embed?allow=nm&url=<netmirror-embed-url>`:
+
+- `allow=nm` profile: entry/hop guards = netmirror.center + netXX.cc
+  (their API backends); the bootstrap rewrites hub hops into the proxy,
+  files stay direct.
+- `window.open`: hub mode reports files to the parent (auto-play) and
+  swallows; site mode (`blank=true`) opens files/externals in a decoupled
+  `_blank noopener` tab (nobody listens for capture events on the plain
+  iframe path) so Watch & Download works.
+- Frame runs `referrerPolicy="no-referrer"` (empty referers pass most
+  hotlink guards; an unknown origin would not) + a popup-allowing
+  sandbox (their trackers claim no popup ads).
+- Electron keeps framing DIRECT (FRAME_HOSTS strips X-Frame-Options) —
+  but that needs an app rebuild to take effect.
+
+## Mirror status (2026-09-09)
+
+Live web mirrors: net77.cc (Mirror 1), net27.cc (Mirror 2 — also our
+Server 10 API base). Retired: net11/net22/net2025/pcmirror/iosmirror/
+netmirror.cc. ISP blocks drive a 4–6-week rotation — trackers:
+netmirrorpc.com, netmiror.com.
+Probed and REJECTED as embed sources: netmirror.global (302 alias to
+.center — same XFO), netmirror.gg (Apache 404), net77/net27.cc `/`
+(verify-walled app at `/verify2`, no TMDB deep link — not wireable).
+r/TeenIndia mentions Cineby + Sonion as alternates (untried).
