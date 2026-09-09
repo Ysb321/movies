@@ -94,6 +94,33 @@ async function httpHead(url: string): Promise<number> {
   }
 }
 
+async function httpPostForm(
+  url: string,
+  params: Record<string, string>,
+  headers?: Record<string, string>,
+  timeoutMs = T_GET
+): Promise<GetOut> {
+  const ctrl = new AbortController();
+  const killer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "User-Agent": UA,
+        Accept: "*/*",
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...headers,
+      },
+      body: new URLSearchParams(params).toString(),
+      signal: ctrl.signal,
+    });
+    const text = await res.text().catch(() => "");
+    return { status: res.status, text, url: res.url || url };
+  } finally {
+    clearTimeout(killer);
+  }
+}
+
 async function pickBase(d: string[]): Promise<string> {
   if (baseCache.base && Date.now() - baseCache.at < BASE_TTL) return baseCache.base;
   for (const b of BASES) {
@@ -326,6 +353,34 @@ async function locateEmbeds(
     }
   }
 
+  /* marker sweep + snippet: see the live player wiring through the diag */
+  {
+    const H = postHtml;
+    const has = (s: string) => H.includes(s);
+    const marks = [
+      has("Ultra Stream") ? "US" : "",
+      has("data-source-embed") ? "DSE" : "",
+      has("action-view-dl") ? "AVD" : "",
+      has("admin-ajax") ? "AJAX" : "",
+      has("doo_player") ? "DOO" : "",
+      has("hdm2.biz") ? "HDM2" : "",
+      has("prvs.top") ? "PRVS" : "",
+      has("<iframe") ? "IFR" : "",
+      has("hdm.im") ? "HDMIM" : "",
+      /Just a moment|__cf_chl|cf-clearance/i.test(H) ? "CF" : "",
+    ]
+      .filter((x) => x)
+      .join(",");
+    note(`m:${marks || "none"}/${H.length}`);
+    const key = H.indexOf("data-source-embed") >= 0 ? "data-source-embed" : "Ultra Stream";
+    const ki = H.indexOf(key);
+    if (ki >= 0) {
+      const snip = H.slice(Math.max(0, ki - 60), ki + 160)
+        .replace(/\s+/g, " ")
+        .slice(0, 220);
+      note(`snip:${snip}`);
+    }
+  }
   let embeds = parseEmbeds(postHtml, base);
   if (!embeds.length) {
     const dl = parseDlLinks(postHtml);
@@ -335,6 +390,24 @@ async function locateEmbeds(
         const r = await httpGet(dl[0].url, { Referer: postUrl });
         if (r.status >= 200 && r.status < 400) embeds = parseEmbeds(r.text, base);
       } catch {}
+    }
+  }
+  if (!embeds.length) {
+    const pid = /-(\d+)\/?(?:[?#]|$)/.exec(postUrl)?.[1] || "";
+    if (pid) {
+      try {
+        const r = await httpPostForm(
+          `${base}/wp-admin/admin-ajax.php`,
+          { action: "doo_player_ajax", post: pid, nume: "1", type: kind === "series" ? "tv" : "movie" },
+          { Referer: postUrl }
+        );
+        const preview = r.text.replace(/\s+/g, " ").slice(0, 140);
+        note(`ajax:${r.status}/${preview || "empty"}`);
+      } catch (e) {
+        note(`ajax:err:${(e instanceof Error ? e.message : "?").slice(0, 30)}`);
+      }
+    } else {
+      note("ajax:nopid");
     }
   }
   d.push(`embeds: ${embeds.length}${embeds.length ? ` (${embeds.map((e) => e.title).join(", ").slice(0, 80)})` : ""}`);
