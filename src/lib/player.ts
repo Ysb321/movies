@@ -84,6 +84,7 @@
  *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
  *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
  *  (Server 16: MovieRulz slast embed.)
+ *  (Server 17: Movieland direct-m3u8 lane.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -506,6 +507,20 @@ export const PROVIDERS: EmbedProvider[] = [
     prefersImdb: true,
     movie: (id) => `https://slast430did.com/play/${id}`,
     tv: (id) => `https://slast430did.com/play/${id}`,
+  },
+  {
+    /* Server 17 - Movieland (vlcOnly Hindi lane - the watch page renders
+     * HindiSources with endpoint=/api/movieland/stream; stubs never
+     * called). AllMovieLand direct m3u8: DLE search -> detail player
+     * config (AwsIndStreamDomain + src - the same slast backend Server
+     * 16 embeds) -> HDVBPlayer embed -> playlist API (X-CSRF-TOKEN)
+     * -> per-language m3u8 (Hindi first). Movies + series (folder
+     * walk). Ported from EpicGGCoder/allmovieland-api. */
+    id: "movieland",
+    name: "Movieland",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
   },
   {
     id: "megaplay",

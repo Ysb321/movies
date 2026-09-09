@@ -394,6 +394,27 @@ function WatchContent() {
                 ]}
                 emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
               />
+            ) : provider.id === "movieland" ? (
+              <HindiSources
+                key={`ml-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/movieland/stream"
+                laneTitle="Movieland - Hindi"
+                resumeSuffix="site-ml"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Movieland sources...",
+                  "Searching Hindi-dubbed posts...",
+                  "Still searching - unlocking the streams...",
+                  "Almost there - validating the streams...",
+                ]}
+                emptyHint="Movieland covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
             ) : provider.id === "desiddl" ? (
               <DdlSources
                 key={`dd-${t}-${id}-${season}-${episode}`}

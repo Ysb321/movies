@@ -2,7 +2,7 @@
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
-12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)** + **Nuvio (Server 15)**. This doc is the full map for future
+12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)** + **Nuvio (Server 15)** + **Movieland (Server 17)**. This doc is the full map for future
 development.
 
 ## Already in the app (Hindi coverage before this round)
@@ -218,3 +218,18 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   undefined fns and crashes), BuzzServer skipped (needs manual
   Location reads), unknown hosts HEAD-gated (upstream passes blind).
 - Budget: ~35 cold (XD ~20 + HMZ ~12 + heads); diag tag `nv:`.
+
+## Shipped this round: Movieland (Server 17)
+
+- Upstream: `EpicGGCoder/allmovieland-api` (Apr 2026), found via the
+  user's player.js (allmovieland.link uses the SAME slast backend as
+  Server 16 - AwsIndStreamDomain + /play/{src} + init/error msgs).
+- Chain: DLE session (PHPSESSID) -> POST index.php?do=search ->
+  article.short-mid match -> detail h1.fs__title + player config ->
+  HDVBPlayer embed config {key, file} -> POST playlist (X-CSRF-TOKEN,
+  adaptive single-then-bulkx3 vs upstream's always-x10) ->
+  per-language file -> POST playlist/{id}.txt -> m3u8 -> master
+  parse for top-resolution labels. Series: folder walk to S/E.
+- Base allmovieland.art (.one redirects there). Rows tagged per
+  language (Hindi first) so the in-player Audio menu appears.
+- Budget: ~18 cold; diag tag `ml:`.
