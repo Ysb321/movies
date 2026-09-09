@@ -178,14 +178,14 @@ async function discoverNewTv(notes?: string[]): Promise<string[]> {
   let tried = 0;
   let lastErr = "";
   for (const b64 of NEW_TV_DOMAINS_B64) {
-    if (bases.length >= 3) break;
+    if (bases.length >= 2 || tried >= 12) break;
     let domain = "";
     try {
       tried++;
       domain = atob(b64);
       const res = await fetch(`${domain}/checknewtv.php`, {
         headers: newTvHeaders("nf"),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(4000),
       });
       for (const c of jarCookies(res.headers)) {
         const k = c.split("=")[0];

@@ -216,8 +216,10 @@ export async function GET(
   const parts = id.split(":");
   const s = series ? Number(parts[1]) : 1;
   const e = series ? Number(parts[2]) : 1;
+  let sess = "";
   try {
     const { diag: hashDiag, jar } = await fetchHashT();
+    sess = hashDiag;
     /* proceed with whatever session exists - a hashT-less jar still gets
      * one attempt; refused stages throw with the session diag attached */
     if (!jar) throw new Error(`verify trick failed (${hashDiag})`);
@@ -398,8 +400,8 @@ export async function GET(
         streams: [],
         captions: [],
         laneError: blocked
-          ? "NetMirror blocks this flow from our servers - try Server 10 or 21 (same catalog, reachable lane)."
-          : `Playlists lane: ${msg}`,
+          ? "NetMirror blocks this flow from our servers - try Server 10 (same catalog, reachable lane)."
+          : `Playlists lane: ${msg}${sess ? ` [${sess.slice(0, 160)}]` : ""}`,
         ...(blocked ? { diag: msg.slice(0, 400) } : {}),
       },
       { headers: { "cache-control": "no-store" } }
