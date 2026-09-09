@@ -31,6 +31,12 @@ type Props = {
   resumeSuffix?: string;
   /** empty-state hint override */
   emptyHint?: string;
+  /** loading-lines override (default: OTT lines) */
+  loadLines?: string[];
+  /** hide the NetMirror site-player button (non-NetMirror lanes) */
+  hideSiteLink?: boolean;
+  /** release year, forwarded as &year= for title matching */
+  year?: string;
 };
 
 type Status = "loading" | "ready" | "empty" | "error";
@@ -78,6 +84,9 @@ export default function HindiSources({
   laneTitle,
   resumeSuffix,
   emptyHint,
+  loadLines,
+  hideSiteLink,
+  year,
 }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<NmRow[]>([]);
@@ -123,7 +132,7 @@ export default function HindiSources({
         const kind = type === "movie" ? "movie" : "series";
         const id = type === "movie" ? tmdbId : `${tmdbId}:${season}:${episode}`;
         const res = await fetch(
-          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}`,
+          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}${year ? `&year=${encodeURIComponent(year)}` : ""}`,
           { signal: ctrl.signal }
         );
         if (!alive.current) return;
@@ -380,19 +389,21 @@ export default function HindiSources({
     <div className="relative flex h-full flex-col bg-black">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
         <span className="text-[13px] font-bold">{laneTitle || "🇮🇳 Hindi sources"}</span>
-        <a
-          href={
-            type === "movie"
-              ? `https://netmirror.center/movie/${tmdbId}/?embed=1`
-              : `https://netmirror.center/tv/${tmdbId}/?embed=1&s=${season}&e=${episode}`
-          }
-          target="_blank"
-          rel="noreferrer"
-          title="Open this title in NetMirror's own site player (new tab)"
-          className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
-        >
-          NetMirror ↗
-        </a>
+        {!hideSiteLink && (
+          <a
+            href={
+              type === "movie"
+                ? `https://netmirror.center/movie/${tmdbId}/?embed=1`
+                : `https://netmirror.center/tv/${tmdbId}/?embed=1&s=${season}&e=${episode}`
+            }
+            target="_blank"
+            rel="noreferrer"
+            title="Open this title in NetMirror's own site player (new tab)"
+            className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+          >
+            NetMirror ↗
+          </a>
+        )}
         {status === "ready" && (
           <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[11px] font-semibold text-brand">
             {rows.length} found
@@ -431,7 +442,7 @@ export default function HindiSources({
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
             <p className="text-[13px] font-semibold">
-              {LOAD_LINES[Math.min(tick, LOAD_LINES.length - 1)]}
+              {(loadLines || LOAD_LINES)[Math.min(tick, (loadLines || LOAD_LINES).length - 1)]}
             </p>
             <p className="max-w-xs text-[11.5px] text-neutral-500">
               Live search across the OTT sources — first load can take up to a minute.

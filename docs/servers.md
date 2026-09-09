@@ -1,8 +1,8 @@
 # Server map: pill -> source
 
 Pills render in `PROVIDERS` order (`Server N` = Nth visible pill).
-11 pills on movies/TV. Anime titles add megaplay ("Anime 1") after pill
-11. Default server: VidOut (pill 7, `useState("netout")`). Brand names
+12 pills on movies/TV. Anime titles add megaplay ("Anime 1") after pill
+12. Default server: VidOut (pill 7, `useState("netout")`). Brand names
 never display - pills only.
 
 2026-09-09 prune: pills past 11 removed (free embeds 12-20 +
@@ -47,6 +47,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 9 | webstreamr | VlcSources -> /api/webstreamr -> self-hosted WebStreamrMBG Stremio addon, India-first config (multi+hi+ta+te): 4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc + HubCloud/GDFlix/... extractors; in-player audio changer; VLC handoff |
 | 10 | netmirror | HindiSources -> /api/netmirror/stream -> net27.cc embed-tmdb (signed mp4 360-1080p + captions) + NewTV fan-out (mobiledetect* discovery -> player.php M3U8; 403-gated from Pages); :site-nm resume; Hindi subs default |
 | 11 | desiddl | DdlSources -> /api/desiddl -> VegaMovies (new2.vegamovies.futbol) + MoviesDrive (new3.moviesdrive.christmas) + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix); hub links (G-Direct/fastdl, V-Cloud, HubCloud, GDFlix) embedded, user generates -> auto-plays; :site-dd resume |
+| 12 | castle | HindiSources -> /api/castle/stream -> CastleTV app backend (api.hlowb.com, IndiaA): AES search/details/getVideo2, Hindi track + 1 fallback, 4K/1080p/720p/480p + subs; :site-cs resume; playback step un-triaged live (site down), diag-driven |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

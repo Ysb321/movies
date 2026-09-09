@@ -321,6 +321,27 @@ function WatchContent() {
                 season={season}
                 episode={episode}
               />
+            ) : provider.id === "castle" ? (
+              <HindiSources
+                key={`cs-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/castle/stream"
+                laneTitle="🏰 Castle · Hindi"
+                resumeSuffix="site-cs"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Castle sources…",
+                  "Searching Hindi + OST tracks…",
+                  "Still searching — the source is slow right now…",
+                  "Almost there — signing the stream urls…",
+                ]}
+                emptyHint="Castle covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
+              />
             ) : provider.id === "desiddl" ? (
               <DdlSources
                 key={`dd-${t}-${id}-${season}-${episode}`}

@@ -79,6 +79,8 @@
  *  (2026-09-09 prune: pills past 11 removed - free embeds + NetMirror
  *  Direct/Playlists. Their code stays in-tree; re-append entries to
  *  restore. Full map: docs/servers.md.)
+ *  (Server 12 Castle added after the prune, by request - Hindi-first
+ *  API lane. Full map: docs/hindi-providers.md.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -419,6 +421,22 @@ export const PROVIDERS: EmbedProvider[] = [
      * tag "HDMovie2"). */
     id: "desiddl",
     name: "DesiDDL",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 12 - Castle (vlcOnly Hindi-first API lane - the watch page
+     * renders HindiSources with endpoint=/api/castle/stream; stubs never
+     * called). CastleTV app backend (api.hlowb.com, channel IndiaA):
+     * search -> details -> getVideo2 (AES-128-CBC via WebCrypto), Hindi
+     * track preferred + one fallback, 4K/1080p/720p/480p + subtitle
+     * tracks; own :site-cs resume namespace. Search + details decrypt
+     * verified live 2026-09-09; the playback step is a verbatim port of
+     * the TMDB-Embed-API provider with stage diagnostics for live debug
+     * (full map: docs/hindi-providers.md). */
+    id: "castle",
+    name: "Castle",
     vlcOnly: true,
     movie: () => "",
     tv: () => "",
