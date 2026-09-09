@@ -148,8 +148,9 @@ function rewriteAttrUrl(raw: string, pageUrl: string, entryHost: string): string
   return proxied(u);
 }
 
-/* wrap JS navigation sinks in __yf_prox(...) (paren-safe: only simple
- * shapes; reads and exotic expressions are left untouched). */
+/* wrap JS navigation sinks in __yf_prox(...) (location.href=, replace(),
+ * assign(), window/document.location=, bare location=, location["href"]=;
+ * paren-safe simple shapes only - reads and exotic expressions untouched). */
 function rewriteScripts(html: string): string {
   return html.replace(
     /(<script\b(?![^>]*\bsrc\s*=)[^>]*>)([\s\S]*?)(<\/script>)/gi,
@@ -168,8 +169,24 @@ function rewriteScripts(html: string): string {
         (_a, pre, expr) => `${pre}__yf_prox(${expr}))`
       );
       c = c.replace(
-        /((?:\b(?:window|top|parent|self)\s*\.\s*)location\s*=(?![=>]))\s*([^;<>]{1,200});/gi,
+        /((?:\b(?:window|top|parent|self|document)\s*\.\s*)location\s*=(?![=>]))\s*([^;<>]{1,200});/gi,
         (_a, pre, expr) => (/[{}]/.test(expr) ? _a : `${pre}__yf_prox(${expr});`)
+      );
+      /* bare location = X (landing-page redirects); the lookbehind keeps
+       * window.location (wrapped above), x.location props and locals like
+       * myLocation out of the match. */
+      c = c.replace(
+        /(?<![.\w$])location\s*=(?![=>])\s*([^;<>]{1,200});/gi,
+        (_a, expr) => (/[{}]/.test(expr) ? _a : `location=__yf_prox(${expr});`)
+      );
+      c = c.replace(
+        /(?<![.\w$])location\s*=(?![=>])\s*([^;<>]{1,200})\s*$/gi,
+        (_a, expr) => (/[{}]/.test(expr) ? _a : `location=__yf_prox(${expr})`)
+      );
+      /* computed location["href"] = X */
+      c = c.replace(
+        /location\s*\[\s*['"]href['"]\s*\]\s*=(?![=>])\s*([^;<>]{1,200});/gi,
+        (_a, expr) => (/[{}]/.test(expr) ? _a : `location["href"]=__yf_prox(${expr});`)
       );
       return `${open}${c}${close}`;
     }
@@ -327,6 +344,15 @@ async function run(entry: string, init?: RequestInit): Promise<Response> {
     const final = r.url || cur;
     const f0 = fileFromUrl(final);
     if (f0) return shell({ type: "yetflix-file", url: f0 });
+    /* dead hub links bounce off-site (blog homepages, landing pages) -
+     * never render those: their JS escapes the frame and nothing can
+     * generate there. Fail honest instead. */
+    if (!okNext(final, entryHost)) {
+      return shell({
+        type: "yetflix-embed-error",
+        message: "This hub link looks dead (the hub bounced it off-site). Try another row.",
+      });
+    }
     if (r.status === 403) {
       return shell({ type: "yetflix-embed-error", message: "The hub walled our server (403)." });
     }

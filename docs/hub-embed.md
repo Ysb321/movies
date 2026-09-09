@@ -53,7 +53,12 @@ code just watches — this doc is the map for future work on it.
 Rewriting rules: only hub-ish URLs are pulled into the proxy; external
 links keep their URL and gain `target=_blank` (site nav/ads can't hijack
 the frame); hub `Content-Security-Policy` metas are stripped (they would
-kill the bootstrap); file links are never proxied (captured on click).
+kill the bootstrap); file links are never proxied (captured on click);
+JS sinks wrapped: `location.href=` / `replace()` / `assign()` /
+`window|document.location=` / bare `location=` / `location["href"]=`.
+Dead hub links bounce off-site (blog homepages/landings) — the proxy
+refuses to render those (their JS escapes the frame) and reports the
+link dead instead, so the user picks another row.
 
 ## Prior art (where the design comes from)
 

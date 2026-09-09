@@ -293,7 +293,10 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
           playFile(embed.row, found, "Hub link");
         }
       } catch {
-        if (++throws >= 4) setEmbedLeft(true);
+        if (++throws >= 4) {
+          setEmbedLeft(true);
+          setAddr("");
+        }
       }
     }, 700);
     return () => clearInterval(id);
