@@ -181,7 +181,12 @@ Three-tier playback cascade (extension order):
    playlist.php?id=&t=&tm=&h=` -> `{sources:[{file,label,type}],
    tracks:[{kind,file,label,language}]}` (array-or-object!). Quality
    labels include Full/Mid/Low HD. Relative sub files resolve against
-   **`subscdn.top`** (new subtitle CDN). Our Server 23 lane.
+   **`subscdn.top`** (new subtitle CDN). Our Server 23 lane. The signed
+   playlists look like `net52.cc/pv/hls/<id>.m3u8?in=<tok::expiry::
+   hash>` (dead tokens answer a plain Apache 404, no CF wall); they
+   ride `/api/netmirror/hls`, which pins Referer + a cached
+   verify-trick session, rewrites segment/key/nested URLs back through
+   itself, and answers CORS for hls.js/VLC.
 3. **net27 embed-tmdb fallback**: exact shape we already consume, plus
    `noSource`/`error` ("still being added") — now surfaced.
 

@@ -232,13 +232,19 @@ export async function GET(
     const pl = Array.isArray(plRaw) ? plRaw[0] : plRaw;
     const streams = (Array.isArray(pl?.sources) ? pl.sources : [])
       .filter((x: any) => x && x.file)
-      .map((x: any) => ({
-        quality: String(x.label || "Auto").slice(0, 24),
-        url: String(x.file).startsWith("http")
+      .map((x: any) => {
+        const abs = String(x.file).startsWith("http")
           ? String(x.file)
-          : `${MAIN}${String(x.file)}`,
-        platform: "HLS",
-      }));
+          : `${MAIN}${String(x.file)}`;
+        /* HLS rides our proxy: it pins the Referer + session the CDN
+         * expects, rewrites segments, and answers CORS for hls.js. The
+         * trailing &f=.m3u8 keeps ArtPlayer's type sniff on m3u8. */
+        return {
+          quality: String(x.label || "Auto").slice(0, 24),
+          url: `/api/netmirror/hls?u=${encodeURIComponent(abs)}&f=.m3u8`,
+          platform: "HLS",
+        };
+      });
     const captions = (Array.isArray(pl?.tracks) ? pl.tracks : [])
       .filter(
         (x: any) =>
