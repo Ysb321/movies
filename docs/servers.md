@@ -48,6 +48,8 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 10 | netmirror | HindiSources -> /api/netmirror/stream -> net27.cc embed-tmdb (signed mp4 360-1080p + captions) + NewTV fan-out (mobiledetect* discovery -> player.php M3U8; 403-gated from Pages); :site-nm resume; Hindi subs default |
 | 11 | desiddl | DdlSources -> /api/desiddl -> VegaMovies (new2.vegamovies.futbol) + MoviesDrive (new3.moviesdrive.christmas) + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix); hub links (G-Direct/fastdl, V-Cloud, HubCloud, GDFlix) embedded, user generates -> auto-plays; :site-dd resume |
 | 12 | castle | HindiSources -> /api/castle/stream -> CastleTV app backend (api.hlowb.com, IndiaA): AES search/details/getVideo2, Hindi track + 1 fallback, 1080p/720p/480p + subs; :site-cs resume; playback step un-triaged live (site down), diag-driven; in-player lang switch (position-preserving) |
+| 13 | moviesmod | HindiSources -> /api/moviesmod/stream -> moviesmod.zone Dual/Multi Audio Hindi posts (480p-2160p, movies + series): search -> post -> modpro/modrefer -> cloud SID bypass (CSX ?go= flow) -> driveseed file page -> Instant/Worker/Direct/Resume finals; :site-mm resume; CF 50-subrequest budget build (mm5) |
+| 14 | ultrastream | HindiSources -> /api/ultrastream/stream -> the newhdmovie2 Ultra Stream players (newhdmovie2.best, .im fallback): search -> post [data-source-embed] -> hdm2.ink HLS / prvs.top JW finals; movies + per-episode series; :site-us resume |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

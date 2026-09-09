@@ -81,6 +81,7 @@
  *  restore. Full map: docs/servers.md.)
  *  (Server 12 Castle added after the prune, by request - Hindi-first
  *  API lane. Full map: docs/hindi-providers.md.)
+ *  (Servers 13/14: MoviesMod DDL lane + UltraStream player lane.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -457,6 +458,20 @@ export const PROVIDERS: EmbedProvider[] = [
      * is a verbatim port with stage diagnostics for live debug. */
     id: "moviesmod",
     name: "MoviesMod",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 14 - UltraStream (vlcOnly Hindi lane - the watch page
+     * renders HindiSources with endpoint=/api/ultrastream/stream;
+     * stubs never called). The newhdmovie2 "Ultra Stream" players
+     * (newhdmovie2.best, .im fallback): post page [data-source-embed]
+     * iframes -> hdm2.ink HLS (#player-loader data-stream-url) /
+     * prvs.top JW file:, movies + per-episode series pages. Ported
+     * from the provider-hdmovie2 Stremio provider (Jul 2026). */
+    id: "ultrastream",
+    name: "UltraStream",
     vlcOnly: true,
     movie: () => "",
     tv: () => "",

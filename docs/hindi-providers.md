@@ -2,7 +2,7 @@
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
-12)** + **MoviesMod (Server 13)**. This doc is the full map for future
+12)** + **MoviesMod (Server 13)** + **UltraStream (Server 14)**. This doc is the full map for future
 development.
 
 ## Already in the app (Hindi coverage before this round)
@@ -177,3 +177,17 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   always re-verify blog domains before porting (Megix Utils
   urls.json refreshes ours every 4h; Hindmovie domians.json is the
   cross-check).
+
+## Shipped this round: UltraStream (Server 14)
+
+- Upstream: newhdmovie2 DooPlay blog (user domain newhdmovie2.best,
+  newhdmovie2.im fallback - same network as the provider below).
+- Chain: `/?s={title}` -> article.item cards (title+link) -> post
+  `[data-source-embed]` iframes ("Ultra Stream V3", "Ultra Stream 2")
+  -> hdm2.ink `#player-loader[data-stream-url]` HLS /
+  prvs.top JW Player `file:` finals. Series hop to the per-episode
+  page (own embeds) via Episode/SxxExx anchors.
+- Ported from `Prashant825567/provider-hdmovie2` (Stremio provider,
+  Jul 2026: stream.js CASE 1/2/3 + posts/meta/episodes selectors).
+- Budget: ~10 subrequests cold (search 1 + post 1 + episode 0-1 +
+  embeds 3 + HEADs 3). Diag tag `us:` with `emb:`/`val:` notes.

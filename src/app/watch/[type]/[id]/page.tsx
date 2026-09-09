@@ -363,6 +363,27 @@ function WatchContent() {
                 ]}
                 emptyHint="MoviesMod covers Hindi and Hindi-dubbed titles — try a Server above, or check back later."
               />
+            ) : provider.id === "ultrastream" ? (
+              <HindiSources
+                key={`us-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/ultrastream/stream"
+                laneTitle="UltraStream - Hindi"
+                resumeSuffix="site-us"
+                hideSiteLink
+                loadLines={[
+                  "Contacting UltraStream sources...",
+                  "Searching Hindi-dubbed posts...",
+                  "Still searching - resolving the player links...",
+                  "Almost there - validating the streams...",
+                ]}
+                emptyHint="UltraStream covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
             ) : provider.id === "desiddl" ? (
               <DdlSources
                 key={`dd-${t}-${id}-${season}-${episode}`}
