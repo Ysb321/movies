@@ -195,6 +195,7 @@ async function searchBlog(base: string, title: string): Promise<Hit[]> {
     imdb: h.document?.imdb_id || "",
   }));
 }
+const STOP = new Set(["the", "a", "an", "of", "and", "to", "in", "on", "vs"]);
 function pickHit(hits: Hit[], title: string, year: string, imdb: string): Hit | null {
   if (imdb) {
     const m = hits.find((h) => h.imdb.toLowerCase() === imdb.toLowerCase());
@@ -204,7 +205,7 @@ function pickHit(hits: Hit[], title: string, year: string, imdb: string): Hit | 
    * for a 1999 title); no dated hit -> no rows beats wrong rows. */
   const pool = year ? hits.filter((h) => h.title.includes(year)) : hits;
   if (!pool.length) return null;
-  const words = title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const words = title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
   let best: Hit | null = null;
   let bestScore = 0;
   for (const h of pool) {
@@ -217,7 +218,21 @@ function pickHit(hits: Hit[], title: string, year: string, imdb: string): Hit | 
       best = h;
     }
   }
-  return bestScore > 0 ? best : null;
+  /* every significant word must be present - partial matches are how
+   * wrong movies slip in. */
+  return best && bestScore >= words.length ? best : null;
+}
+/* the post page itself must agree (title tag carries the full post title
+ * on all three blogs) - kills wrong-movie rows at the source. */
+function verifyPost(html: string, title: string, year: string): boolean {
+  const words = title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  if (!words.length) return true;
+  const tag = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || "";
+  const h1 = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] || "";
+  const t = strip(`${tag} ${h1}`).toLowerCase();
+  if (!t) return true;
+  if (year && !t.includes(year)) return false;
+  return words.every((w) => t.includes(w));
 }
 async function getHtml(url: string, ms: number): Promise<string> {
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(ms) });
@@ -490,9 +505,11 @@ async function searchHdmovie2(base: string, title: string): Promise<Hit[]> {
   return [...seen].map(([url, t]) => ({ title: t, url, imdb: "" }));
 }
 async function hdmovie2Rows(
-  base: string, postUrl: string, postTitle: string, series: boolean, s: number, e: number
+  base: string, postUrl: string, postTitle: string, series: boolean, s: number, e: number,
+  qtitle: string, qyear: string
 ): Promise<Row[]> {
   const post = await getHtml(postUrl, 15000);
+  if (!verifyPost(post, qtitle, qyear)) return [];
   const audio = parseAudio(postTitle);
   const links: { url: string; text: string }[] = [];
   for (const m of post.matchAll(/<a\b[^>]*href="(https?:\/\/hdm\.im\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
@@ -557,12 +574,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
         const hits = await searchHdmovie2(base, title);
         const hit = pickHit(hits, title, year, imdb);
         if (!hit) return [];
-        return hdmovie2Rows(base, hit.url, hit.title, series, s, e);
+        return hdmovie2Rows(base, hit.url, hit.title, series, s, e, title, year);
       }
       const hits = await searchBlog(base, title);
       const hit = pickHit(hits, title, year, imdb);
       if (!hit) return [];
       const post = await getHtml(abs(hit.url, base), 15000);
+      if (!verifyPost(post, title, year)) return [];
       if (key === "vegamovies") {
         return series
           ? vegaSeries(base, post, hit.title, s, e)

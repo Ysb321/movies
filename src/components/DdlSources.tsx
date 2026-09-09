@@ -96,6 +96,8 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
   const [embedError, setEmbedError] = useState("");
   const [embedLeft, setEmbedLeft] = useState(false);
   const [paste, setPaste] = useState("");
+  const [addr, setAddr] = useState("");
+  const [frameKey, setFrameKey] = useState(0);
   const [note, setNote] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [player, setPlayer] = useState<{
@@ -221,6 +223,7 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
     setEmbedError("");
     setEmbedLeft(false);
     setPaste("");
+    setAddr("");
     setNote((n) => ({ ...n, [row.key]: "Hub page open — generate the link, it auto-plays" }));
   }, []);
 
@@ -248,6 +251,14 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
       if (d.type === "yetflix-file" && typeof d.url === "string" && d.url.startsWith("https://")) {
         const u = d.url;
         playFile(embed.row, u, guessServer(u));
+      } else if (d.type === "yetflix-navigate" && typeof d.url === "string" && d.url.startsWith("/api/desiddl/embed?url=")) {
+        try {
+          iframeRef.current?.contentWindow?.location.replace(d.url);
+        } catch {
+          /* poll backstop covers it */
+        }
+      } else if (d.type === "yetflix-embed-left") {
+        setEmbedLeft(true);
       } else if (d.type === "yetflix-embed-ready") {
         setEmbedReady(true);
       } else if (d.type === "yetflix-embed-error") {
@@ -269,20 +280,45 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
       try {
         const href = fr.contentWindow?.location.href || "";
         throws = 0;
+        setEmbedLeft(false);
+        try {
+          const target = new URL(href).searchParams.get("url") || "";
+          setAddr(target ? target.replace(/^https?:\/\//i, "").slice(0, 64) : "");
+        } catch {
+          /* keep last */
+        }
         const found = extractFile(href);
         if (found) {
           clearInterval(id);
           playFile(embed.row, found, "Hub link");
         }
       } catch {
-        if (++throws >= 4) {
-          setEmbedLeft(true);
-          clearInterval(id);
-        }
+        if (++throws >= 4) setEmbedLeft(true);
       }
     }, 700);
     return () => clearInterval(id);
   }, [embed, playFile]);
+
+  const goBack = useCallback(() => {
+    try {
+      iframeRef.current?.contentWindow?.history.back();
+    } catch {
+      /* cross-origin: nothing to go back to */
+    }
+  }, []);
+
+  const goReload = useCallback(() => {
+    if (!embed) return;
+    if (embed.mode === "direct") {
+      setFrameKey((k) => k + 1);
+      return;
+    }
+    try {
+      iframeRef.current?.contentWindow?.location.reload();
+    } catch {
+      setFrameKey((k) => k + 1);
+    }
+  }, [embed]);
 
   const playPasted = useCallback(() => {
     const u = paste.trim();
@@ -440,6 +476,22 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
           >
             <ChevronIcon dir="left" className="h-3.5 w-3.5" /> Sources
           </button>
+          {embed.mode === "proxy" && (
+            <button
+              onClick={goBack}
+              title="Back"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-neutral-200 hover:bg-white/20"
+            >
+              <ChevronIcon dir="left" className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={goReload}
+            title="Reload"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-neutral-200 hover:bg-white/20"
+          >
+            <RotateCcwIcon className="h-3.5 w-3.5" />
+          </button>
           <span className="min-w-0 flex-1 truncate text-neutral-400">
             {embed.row.quality} · {embed.row.blog} · {embed.row.source}
             {embed.row.size ? ` · ${embed.row.size}` : ""}
@@ -488,10 +540,15 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
             copy it, paste it below and it plays here.
           </div>
         )}
+        {embed.mode === "proxy" && addr && (
+          <div className="truncate border-b border-white/10 px-3 py-1 font-mono text-[10.5px] text-neutral-500">
+            {addr}
+          </div>
+        )}
         <div className="min-h-0 flex-1 bg-white">
           <iframe
             ref={iframeRef}
-            key={`${embed.mode}-${embed.row.key}`}
+            key={`${embed.mode}-${embed.row.key}-${frameKey}`}
             src={src}
             title="Hub page — generate the download link here"
             sandbox="allow-scripts allow-same-origin allow-forms"
