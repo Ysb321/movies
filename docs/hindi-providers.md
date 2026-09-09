@@ -72,6 +72,11 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   2026): modpro pages had dropped driveseed/tech.* links for
   cloud-SID links (token is an encrypted blob - the verify dance
   is mandatory, no shortcut).
+- Triage 2026-09-09 (Deadpool 293660, CF Pages): search/match/post
+  + SID all live (`resolved: 2/5`) but `streams: 0` - final stage
+  instrumented (mm3 diag: redirect hosts, filepage status/size,
+  button map, method outcomes, HEAD codes) + instant unwrap fixed
+  to HEAD-follow (redirect:manual hides Location on edge).
 
 ## Live sources for future ports (ranked)
 

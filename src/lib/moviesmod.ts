@@ -224,18 +224,19 @@ const jarPostForm = async (
   }
 };
 
-/* no-follow GET -> Location header (CSX instant-link unwrap) */
-const headerLocation = async (url: string): Promise<string> => {
+/* HEAD with redirects followed -> final url (CSX instant-link unwrap;
+ * redirect:"manual" hides Location on edge runtimes, so follow w/o body) */
+const headFollow = async (url: string): Promise<string> => {
   try {
     const ctrl = new AbortController();
     const killer = setTimeout(() => ctrl.abort(), T_GET);
     try {
       const res = await fetch(url, {
+        method: "HEAD",
         headers: { "User-Agent": UA },
-        redirect: "manual",
         signal: ctrl.signal,
       });
-      return res.headers.get("location") || "";
+      return res.url || "";
     } finally {
       clearTimeout(killer);
     }
@@ -684,13 +685,18 @@ async function resolveSid(sidUrl: string): Promise<string | null> {
   }
 }
 
-async function followRedirectToFilePage(redirectUrl: string): Promise<{ html: string; url: string }> {
+async function followRedirectToFilePage(
+  redirectUrl: string,
+  note?: (s: string) => void
+): Promise<{ html: string; url: string }> {
   const r = await httpGet(redirectUrl, undefined, T_GET);
   const scripts = scriptsWith(r.text, "window.location.replace");
   const m = scripts.length ? /window\.location\.replace\("([^"]+)"\)/.exec(scripts[0]) : null;
+  note?.(`fp:${r.status}/${Math.round(r.text.length / 1024)}k${m ? "[r]" : ""}`);
   if (m && m[1]) {
     const filePage = new URL(m[1], new URL(redirectUrl).origin).href;
     const r2 = await httpGet(filePage);
+    note?.(`fp2:${r2.status}/${Math.round(r2.text.length / 1024)}k`);
     return { html: r2.text, url: r2.url || filePage };
   }
   return { html: r.text, url: r.url || redirectUrl };
@@ -708,11 +714,9 @@ const filePageInfo = (html: string): { size: number; name: string } => {
   return { size: parseSizeBytes(sizeM ? sizeM[1] : ""), name };
 };
 
-/* HEAD check: 200-399 valid; network/timeout (0) = uncertain -> keep
- * (upstream drops; we keep so one slow CDN doesn't nuke the lane) */
-async function validVideoUrl(url: string): Promise<boolean> {
-  const st = await httpHead(url);
-  return st === 0 || (st >= 200 && st < 400);
+/* HEAD check -> status (0 = network/timeout = uncertain -> keep) */
+async function validVideoUrl(url: string): Promise<number> {
+  return httpHead(url);
 }
 
 async function apiKeysToUrl(href: string, origin: string): Promise<string | null> {
@@ -742,16 +746,29 @@ const isDirectCdn = (href: string) =>
   (href.startsWith("http") && !href.includes("?url="));
 
 /* file page -> final playable url (linkResolver port) */
-async function extractFinalDownload(html: string, pageUrl: string): Promise<string | null> {
+async function extractFinalDownload(
+  html: string,
+  pageUrl: string,
+  note?: (s: string) => void
+): Promise<string | null> {
   const origin = new URL(pageUrl).origin;
   const all = anchorsIn(html);
   const firstValid = async (urls: (string | null)[]): Promise<string | null> => {
     for (const u of urls) {
       if (!u || !/^https?:/i.test(u)) continue;
-      if (await validVideoUrl(u)) return u;
+      const st = await validVideoUrl(u);
+      try {
+        note?.(`val:${new URL(u).hostname}=${st}`);
+      } catch {}
+      if (st === 0 || (st >= 200 && st < 400)) return u;
     }
     return null;
   };
+  note?.(
+    `btns:${[/Cloud Download/i, /Instant Download/i, /Resume Worker Bot/i, /Direct Links/i, /Resume Cloud/i]
+      .map((rx) => (all.some((a) => rx.test(a.text)) ? "1" : "0"))
+      .join("")}`
+  );
   const byText = (rx: RegExp) => all.find((a) => rx.test(a.text));
 
   /* 1. Cloud Download (direct href) */
@@ -767,19 +784,24 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
       const hit = await firstValid([fixWorkerUrl(instant.href)]);
       if (hit) return hit;
     } else {
+      /* follow (HEAD, no body) -> final url may carry ?url=<file> */
       try {
-        const loc = await headerLocation(new URL(instant.href, origin).href);
-        if (loc) {
-          let unwrapped = loc.includes("?url=") ? loc.slice(loc.indexOf("?url=") + 5) : loc;
+        const f = await headFollow(new URL(instant.href, origin).href);
+        if (f && f !== instant.href) {
+          note?.(`inst302:${f.slice(0, 90)}`);
+          let unwrapped = f.includes("?url=") ? f.slice(f.indexOf("?url=") + 5) : f;
           try {
             if (unwrapped.includes("%")) unwrapped = decodeURIComponent(unwrapped);
           } catch {}
-          const abs = /^https?:/i.test(unwrapped) ? unwrapped : new URL(unwrapped, origin).href;
-          const hit = await firstValid([abs]);
-          if (hit) return hit;
+          if (/googleusercontent|workers\.dev|\.r2\.dev|\.mp4|\.mkv|\.m3u8/i.test(unwrapped) || f.includes("?url=")) {
+            const abs = /^https?:/i.test(unwrapped) ? unwrapped : new URL(unwrapped, origin).href;
+            const hit = await firstValid([abs]);
+            if (hit) return hit;
+          }
         }
       } catch {}
       const via = await apiKeysToUrl(instant.href, origin);
+      note?.(`instApi:${via ? "y" : "n"}`);
       const hit = await firstValid([via]);
       if (hit) return hit;
     }
@@ -808,6 +830,7 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
           });
           try {
             const j = JSON.parse(api.text) as { url?: string };
+            note?.(`work:${typeof j.url === "string" && j.url ? "y" : "n"}`);
             const hit = await firstValid([typeof j.url === "string" ? j.url : null]);
             if (hit) return hit;
           } catch {}
@@ -832,6 +855,7 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
           }
         })
       );
+      note?.(`dir:${pages.flat().length}`);
       const hit = await firstValid(pages.flat());
       if (hit) return hit;
     } catch {}
@@ -854,6 +878,7 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
   }
   /* 6. last resort: plausible direct links on the page */
   const scan = all.find((a) => /workers\.dev|workerseed|driveleech\.net\/d\/|driveseed\.org\/d\//i.test(a.href));
+  note?.(`scan:${scan ? "y" : "n"}`);
   return firstValid([scan ? scan.href : null]);
 }
 
@@ -889,7 +914,7 @@ type DriveseedHit = { server: string; url: string; driveseedRedirectUrl: string 
 
 export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModResult> {
   const { title, year, kind, season, episode } = opts;
-  const d: string[] = [`mm: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
+  const d: string[] = [`mm3: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
   const cacheKey = `mm:v1:${kind}:${season}:${episode}:${title}:${year || ""}`;
   const cached = resultCache.get(cacheKey);
   if (cached && Date.now() - cached.at < RESULT_TTL) {
@@ -965,16 +990,24 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
   }
 
   /* per-link: redirect -> file page -> final cdn url (parallel) */
+  const notes: string[] = [];
+  const note = (s: string) => {
+    if (notes.length < 16) notes.push(s);
+  };
   const seenFiles = new Set<string>();
   const seenUrls = new Set<string>();
   const streams: MoviesModStream[] = [];
   const fJobs = qualities.map(async (q): Promise<MoviesModStream[]> => {
     const jobs = q.hits.map(async (h): Promise<MoviesModStream | null> => {
       try {
-        const fp = await followRedirectToFilePage(h.driveseedRedirectUrl);
+        try {
+          note(`rh:${new URL(h.driveseedRedirectUrl).hostname}`);
+        } catch {}
+        const fp = await followRedirectToFilePage(h.driveseedRedirectUrl, note);
         const info = filePageInfo(fp.html);
+        note(`fi:${info.size || 0}/${info.name ? info.name.slice(0, 24) : "noname"}`);
         if (info.name && seenFiles.has(info.name)) return null;
-        let final = await extractFinalDownload(fp.html, fp.url);
+        let final = await extractFinalDownload(fp.html, fp.url, note);
         if (!final) return null;
         if (final.includes("cdn.video-leech.pro")) final = await unwrapVideoLeech(final);
         if (seenUrls.has(final)) return null;
@@ -996,6 +1029,7 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
   for (const batch of await Promise.all(fJobs)) streams.push(...batch);
   streams.sort((a, b) => qualityNum(b.quality) - qualityNum(a.quality) || b.size - a.size);
   d.push(`streams: ${streams.length}`);
+  d.push(`final: ${notes.join("; ") || "nolinks"}`);
 
   const out: MoviesModResult = {
     title: picked.title,
