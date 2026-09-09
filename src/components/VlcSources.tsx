@@ -357,6 +357,7 @@ export default function VlcSources({ type, tmdbId, imdbId, season, episode }: Pr
           <SitePlayer
             key={`${player.mountId}-${isHlsFile(player.url) ? "h" : "p"}`}
             mountId={player.mountId}
+            showAudio
             url={player.url}
             title={player.filename}
             sources={rows.map((r) => ({

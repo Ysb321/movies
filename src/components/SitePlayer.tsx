@@ -34,6 +34,9 @@ type Props = {
    *  in-player quality selector, mini progress bar, no source-panel
    *  button) for the NetMirror lanes */
   variant?: "netmirror";
+  /** show the in-player audio-language selector (lanes whose rows carry
+   *  per-row audio languages, e.g. Server 9's Hindi/Tamil/Telugu dubs) */
+  showAudio?: boolean;
 };
 
 /* Inbuilt site player (ArtPlayer - the same engine family as Multiverse's
@@ -52,7 +55,9 @@ type Props = {
  * selectors (Cineverse-complete): servers switch platform keeping
  * quality when possible; subtitles switch caption tracks via
  * art.subtitle.switch (OFF hides). onSelect returns void per the 5.4.0
- * types, so labels sync explicitly via syncSelectorLabels. */
+ * types, so labels sync explicitly via syncSelectorLabels.
+ * showAudio adds an audio-language selector over sources[].audio
+ * (Server 9's Hindi/Tamil/Telugu dubs); hidden unless 2+ languages. */
 export default function SitePlayer({
   mountId,
   url,
@@ -68,6 +73,7 @@ export default function SitePlayer({
   onDownload,
   onReport,
   variant,
+  showAudio,
 }: Props) {
   const host = useRef<HTMLDivElement | null>(null);
   const artRef = useRef<any>(null);
@@ -80,12 +86,13 @@ export default function SitePlayer({
   const mountVals = useRef({ url, title, startAt, subs: subtitles });
   mountVals.current = { url, title, startAt, subs: subtitles };
   /* live mirrors for the mount-frozen selector controls (nm variant) */
-  const live = useRef({ key: currentKey, server: "", quality: "Auto", sub: "OFF", busy: false });
+  const live = useRef({ key: currentKey, server: "", quality: "Auto", sub: "OFF", audio: "", busy: false });
   {
     const cur = sources.find((s) => s.key === currentKey) || sources[0];
     live.current.key = currentKey;
     live.current.server = cur?.source || "";
     live.current.quality = cur?.quality || "Auto";
+    live.current.audio = (cur?.audio || "").trim();
   }
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
@@ -100,6 +107,9 @@ export default function SitePlayer({
     html: s.name || s.lang || "CC",
     url: s.url,
   }));
+  const audioItems = Array.from(
+    new Set(sources.map((s) => (s.audio || "").trim()).filter(Boolean))
+  ).map((a) => ({ html: a, audio: a }));
   /* explicit label sync: onSelect returns void per the 5.4.0 types
    * (ArtPlayer ignores any return), so labels follow truth here - a
    * no-op for controls that don't exist, safe for both variants */
@@ -112,6 +122,7 @@ export default function SitePlayer({
       set("servers", live.current.server);
       set("quality_new", live.current.quality);
       set("subtitles", live.current.sub);
+      set("audio", live.current.audio || "Audio");
     } catch {}
   }, []);
   const [panel, setPanel] = useState(false);
@@ -196,6 +207,32 @@ export default function SitePlayer({
           hotkey: true,
           screenshot: VARIANT !== "netmirror",
           controls: [
+            ...(showAudio && audioItems.length > 1
+              ? [
+                  {
+                    name: "audio",
+                    position: "right",
+                    html: live.current.audio || "Audio",
+                    tooltip: "Audio language",
+                    selector: audioItems,
+                    onSelect: (item: any) => {
+                      try {
+                        const a = item && (item as any).audio;
+                        if (a && a !== live.current.audio) {
+                          const rows = sourcesRef.current;
+                          const row =
+                            rows.find(
+                              (s) =>
+                                (s.audio || "").trim() === a &&
+                                s.quality === live.current.quality
+                            ) || rows.find((s) => (s.audio || "").trim() === a);
+                          hopToRow(row?.key);
+                        }
+                      } catch {}
+                    },
+                  },
+                ]
+              : []),
             ...(VARIANT === "netmirror"
               ? [
                   ...(serverItems.length > 1
