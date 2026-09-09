@@ -1,12 +1,14 @@
-/* UltraStream (Server 14) - the newhdmovie2 "Ultra Stream" players as a
- * lane: DooPlay search -> post page [data-source-embed] iframes
- * ("Ultra Stream V3", "Ultra Stream 2", ...) -> hdm2.ink (#player-loader
- * data-stream-url HLS) / prvs.top (JW Player file:) finals, played in
- * the inbuilt site player. Movies + series (per-episode pages carry
- * their own embeds). Chain ported from the Prashant825567
- * provider-hdmovie2 Stremio provider (Jul 2026, newhdmovie2.im),
- * pointed at the user's domain (newhdmovie2.best, .im fallback).
- * Edge-safe: native fetch + regex, no deps, ~10 subrequests/cold run. */
+/* UltraStream (Server 14) - the newhdmovie2 "Ultra Stream" players,
+ * embedded AS-IS (their player, not our links): DooPlay search ->
+ * post page [data-source-embed] player urls ("Ultra Stream V3",
+ * "Ultra Stream 2", ...) -> picked from chips and iframed by
+ * UltraPlayer. Movies + series (per-episode pages carry their own
+ * embeds). Chain ported from the Prashant825567 provider-hdmovie2
+ * Stremio provider (Jul 2026, newhdmovie2.im), pointed at the user's
+ * domain (newhdmovie2.best, .im fallback).
+ * resolveUltraEmbeds() is the live path; resolveUltraStream() (direct
+ * HLS/mp4 finals) is kept as an unused fallback path.
+ * Edge-safe: native fetch + regex, no deps, ~5 subrequests/cold run. */
 
 export type UltraStreamArgs = {
   title: string;
@@ -14,6 +16,19 @@ export type UltraStreamArgs = {
   kind: "movie" | "series";
   season: number;
   episode: number;
+};
+
+export type UltraEmbed = {
+  title: string;
+  url: string;
+};
+
+export type UltraEmbedsResult = {
+  title: string;
+  embeds: UltraEmbed[];
+  noSource: boolean;
+  laneError?: string;
+  diag: string;
 };
 
 export type UltraStreamRow = {
@@ -41,7 +56,7 @@ const RESULT_TTL = 4 * 3600 * 1000;
 const BASES = ["https://newhdmovie2.best", "https://newhdmovie2.im"];
 
 let baseCache = { at: 0, base: "" };
-const resultCache = new Map<string, { at: number; data: UltraStreamResult }>();
+const resultCache = new Map<string, { at: number; data: UltraStreamResult | UltraEmbedsResult }>();
 
 type GetOut = { status: number; text: string; url: string };
 
@@ -183,11 +198,9 @@ function pickHit(hits: Hit[], title: string, year: string, series: boolean, seas
   return { hit: top.h, strict: top.overlap >= 0.66 && (!year || top.yearHit) };
 }
 
-type Embed = { title: string; url: string };
-
-/* post/episode page -> [data-source-embed] iframe urls (+ nearby .title) */
-function parseEmbeds(html: string, base: string): Embed[] {
-  const out: Embed[] = [];
+/* post/episode page -> [data-source-embed] player urls (+ nearby .title) */
+function parseEmbeds(html: string, base: string): UltraEmbed[] {
+  const out: UltraEmbed[] = [];
   const seen = new Set<string>();
   for (const m of html.matchAll(/data-source-embed="([^"]*)"/gi)) {
     const inner = unescapeAttr(m[1]);
@@ -243,8 +256,117 @@ function findEpisodeUrl(html: string, base: string, season: number, episode: num
   return null;
 }
 
-/* embed page -> direct file (hdm2.ink HLS / prvs.top JW file:) */
-async function resolveEmbed(embed: Embed, referer: string, note: (s: string) => void): Promise<string | null> {
+/* search -> match -> post -> (episode) -> player embeds. Throws on failure. */
+async function locateEmbeds(
+  title: string,
+  year: string,
+  kind: "movie" | "series",
+  season: number,
+  episode: number,
+  d: string[],
+  notes: string[]
+): Promise<{ postTitle: string; embeds: UltraEmbed[]; base: string }> {
+  const note = (s: string) => {
+    if (notes.length < 16) notes.push(s);
+  };
+  const base = await pickBase(d);
+
+  let searchHtml: GetOut;
+  try {
+    searchHtml = await httpGet(`${base}/?s=${encodeURIComponent(title)}`);
+  } catch (e) {
+    throw new Error(`search failed: ${e instanceof Error ? e.message.slice(0, 60) : "?"}`);
+  }
+  if (searchHtml.status < 200 || searchHtml.status >= 400) {
+    throw new Error(`search http ${searchHtml.status}`);
+  }
+  const hits = parseSearch(searchHtml.text, base);
+  d.push(`search: ${hits.length} hits`);
+  const directPost = !hits.length && /data-source-embed=/i.test(searchHtml.text);
+
+  let postUrl = "";
+  let postTitle = "";
+  if (directPost) {
+    postUrl = searchHtml.url;
+    postTitle = title;
+    d.push("match-direct");
+  } else {
+    const picked = pickHit(hits, title, year, kind === "series", season);
+    if (!picked) throw new Error(`no match (${hits.length} hits)`);
+    postUrl = picked.hit.url;
+    postTitle = picked.hit.title;
+    d.push(picked.strict ? "match-strict" : "match-loose");
+  }
+
+  let postHtml: string;
+  try {
+    const r = directPost ? searchHtml : await httpGet(postUrl, { Referer: base });
+    if (r.status < 200 || r.status >= 400) throw new Error(`post http ${r.status}`);
+    postHtml = r.text;
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : "post failed");
+  }
+  d.push(`post: "${postTitle.slice(0, 50)}"`);
+
+  if (kind === "series") {
+    const epUrl = findEpisodeUrl(postHtml, base, season, episode);
+    note(`ep:${epUrl ? "found" : "missing"}`);
+    if (epUrl) {
+      try {
+        const r = await httpGet(epUrl, { Referer: postUrl });
+        if (r.status >= 200 && r.status < 400) postHtml = r.text;
+        else note(`ep:http${r.status}`);
+      } catch (e) {
+        note(`ep:err:${(e instanceof Error ? e.message : "?").slice(0, 30)}`);
+      }
+    }
+  }
+
+  let embeds = parseEmbeds(postHtml, base);
+  if (!embeds.length) {
+    const dl = parseDlLinks(postHtml);
+    note(`dl:${dl.length}`);
+    if (dl.length) {
+      try {
+        const r = await httpGet(dl[0].url, { Referer: postUrl });
+        if (r.status >= 200 && r.status < 400) embeds = parseEmbeds(r.text, base);
+      } catch {}
+    }
+  }
+  d.push(`embeds: ${embeds.length}${embeds.length ? ` (${embeds.map((e) => e.title).join(", ").slice(0, 80)})` : ""}`);
+  if (!embeds.length) throw new Error("post has no stream embeds");
+  return { postTitle, embeds, base };
+}
+
+/* LIVE PATH: player urls for UltraPlayer to iframe as-is. */
+export async function resolveUltraEmbeds(args: UltraStreamArgs): Promise<UltraEmbedsResult> {
+  const { title, year = "", kind, season, episode } = args;
+  const d: string[] = [`us: "${title.slice(0, 60)}" ${kind}`];
+  const notes: string[] = [];
+  const cacheKey = `emb:${kind}:${title.toLowerCase()}:${year}:${season}:${episode}`;
+  const cached = resultCache.get(cacheKey);
+  if (cached && "embeds" in cached.data && Date.now() - cached.at < RESULT_TTL) return cached.data;
+
+  const diag = () => `${d.join(" | ")}${notes.length ? ` | final: ${notes.join("; ")}` : ""}`;
+  try {
+    const { postTitle, embeds } = await locateEmbeds(title, year, kind, season, episode, d, notes);
+    const data: UltraEmbedsResult = {
+      title: postTitle.slice(0, 140),
+      embeds,
+      noSource: false,
+      diag: diag(),
+    };
+    resultCache.set(cacheKey, { at: Date.now(), data });
+    return data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "ultrastream failed";
+    return { title: "", embeds: [], noSource: true, laneError: msg.slice(0, 160), diag: diag() };
+  }
+}
+
+/* embed page -> direct file (hdm2.ink HLS / prvs.top JW file:).
+ * FALLBACK PATH, currently unused by the UI (embed-first by request). */
+async function resolveEmbed(embed: UltraEmbed, referer: string, note: (s: string) => void): Promise<string | null> {
   let host = "";
   try {
     host = new URL(embed.url).hostname;
@@ -291,6 +413,7 @@ async function resolveEmbed(embed: Embed, referer: string, note: (s: string) => 
   return null;
 }
 
+/* FALLBACK PATH: same embeds resolved to direct files. Unused by the UI. */
 export async function resolveUltraStream(args: UltraStreamArgs): Promise<UltraStreamResult> {
   const { title, year = "", kind, season, episode } = args;
   const d: string[] = [`us: "${title.slice(0, 60)}" ${kind}`];
@@ -298,127 +421,43 @@ export async function resolveUltraStream(args: UltraStreamArgs): Promise<UltraSt
   const note = (s: string) => {
     if (notes.length < 16) notes.push(s);
   };
-  const cacheKey = `${kind}:${title.toLowerCase()}:${year}:${season}:${episode}`;
+  const cacheKey = `lnk:${kind}:${title.toLowerCase()}:${year}:${season}:${episode}`;
   const cached = resultCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < RESULT_TTL) return cached.data;
+  if (cached && "streams" in cached.data && Date.now() - cached.at < RESULT_TTL) return cached.data;
 
-  const fail = (msg: string): UltraStreamResult => {
-    const data: UltraStreamResult = {
-      title: "",
-      streams: [],
-      captions: [],
-      noSource: true,
-      laneError: msg.slice(0, 160),
-      diag: `${d.join(" | ")}${notes.length ? ` | final: ${notes.join("; ")}` : ""}`,
-    };
-    return data;
-  };
-
-  let base: string;
+  const diag = () => `${d.join(" | ")}${notes.length ? ` | final: ${notes.join("; ")}` : ""}`;
   try {
-    base = await pickBase(d);
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : "no base");
-  }
-
-  /* 1. search (+ single-result redirect lands straight on the post) */
-  let searchHtml: GetOut;
-  try {
-    searchHtml = await httpGet(`${base}/?s=${encodeURIComponent(title)}`);
-  } catch (e) {
-    return fail(`search failed: ${e instanceof Error ? e.message.slice(0, 60) : "?"}`);
-  }
-  if (searchHtml.status < 200 || searchHtml.status >= 400) {
-    return fail(`search http ${searchHtml.status}`);
-  }
-  let hits = parseSearch(searchHtml.text, base);
-  d.push(`search: ${hits.length} hits`);
-  const directPost = !hits.length && /data-source-embed=/i.test(searchHtml.text);
-
-  /* 2. match */
-  let postUrl = "";
-  let postTitle = "";
-  if (directPost) {
-    postUrl = searchHtml.url;
-    postTitle = title;
-    d.push("match-direct");
-  } else {
-    const picked = pickHit(hits, title, year, kind === "series", season);
-    if (!picked) return fail(`no match (${hits.length} hits)`);
-    postUrl = picked.hit.url;
-    postTitle = picked.hit.title;
-    d.push(picked.strict ? "match-strict" : "match-loose");
-  }
-
-  /* 3. post page -> embeds */
-  let postHtml: string;
-  try {
-    const r = directPost ? searchHtml : await httpGet(postUrl, { Referer: base });
-    if (r.status < 200 || r.status >= 400) return fail(`post http ${r.status}`);
-    postHtml = r.text;
-  } catch (e) {
-    return fail(`post failed: ${e instanceof Error ? e.message.slice(0, 60) : "?"}`);
-  }
-  d.push(`post: "${postTitle.slice(0, 50)}"`);
-
-  /* 4. series: hop to the episode page (own embeds) */
-  if (kind === "series") {
-    const epUrl = findEpisodeUrl(postHtml, base, season, episode);
-    note(`ep:${epUrl ? "found" : "missing"}`);
-    if (epUrl) {
+    const { postTitle, embeds, base } = await locateEmbeds(title, year, kind, season, episode, d, notes);
+    const jobs = embeds.slice(0, 3).map(async (emb): Promise<UltraStreamRow | null> => {
       try {
-        const r = await httpGet(epUrl, { Referer: postUrl });
-        if (r.status >= 200 && r.status < 400) postHtml = r.text;
-        else note(`ep:http${r.status}`);
+        const final = await resolveEmbed(emb, base, note);
+        if (!final || !/^https?:/i.test(final)) return null;
+        const st = await httpHead(final);
+        try {
+          note(`val:${new URL(final).hostname}=${st}`);
+        } catch {}
+        if (st >= 400 && st < 600) return null;
+        return { url: final, quality: "1080", platform: emb.title || "UltraStream" };
       } catch (e) {
-        note(`ep:err:${(e instanceof Error ? e.message : "?").slice(0, 30)}`);
+        note(`err:${(e instanceof Error ? e.message : "?").slice(0, 50)}`);
+        return null;
       }
-    }
+    });
+    const rows = (await Promise.all(jobs)).filter((x): x is UltraStreamRow => !!x);
+    const seen = new Set<string>();
+    const streams = rows.filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)));
+    d.push(`streams: ${streams.length}`);
+    const data: UltraStreamResult = {
+      title: postTitle.slice(0, 140),
+      streams,
+      captions: [],
+      noSource: streams.length === 0,
+      diag: diag(),
+    };
+    if (!data.noSource) resultCache.set(cacheKey, { at: Date.now(), data });
+    return data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "ultrastream failed";
+    return { title: "", streams: [], captions: [], noSource: true, laneError: msg.slice(0, 160), diag: diag() };
   }
-
-  let embeds = parseEmbeds(postHtml, base);
-  /* hdm.im fallback: first download page sometimes carries embeds too */
-  if (!embeds.length) {
-    const dl = parseDlLinks(postHtml);
-    note(`dl:${dl.length}`);
-    if (dl.length) {
-      try {
-        const r = await httpGet(dl[0].url, { Referer: postUrl });
-        if (r.status >= 200 && r.status < 400) embeds = parseEmbeds(r.text, base);
-      } catch {}
-    }
-  }
-  d.push(`embeds: ${embeds.length}${embeds.length ? ` (${embeds.map((e) => e.title).join(", ").slice(0, 80)})` : ""}`);
-  if (!embeds.length) return fail("post has no stream embeds");
-
-  /* 5. resolve embeds in parallel + validate */
-  const jobs = embeds.slice(0, 3).map(async (emb): Promise<UltraStreamRow | null> => {
-    try {
-      const final = await resolveEmbed(emb, base, note);
-      if (!final || !/^https?:/i.test(final)) return null;
-      const st = await httpHead(final);
-      try {
-        note(`val:${new URL(final).hostname}=${st}`);
-      } catch {}
-      if (st >= 400 && st < 600) return null;
-      return { url: final, quality: "1080", platform: emb.title || "UltraStream" };
-    } catch (e) {
-      note(`err:${(e instanceof Error ? e.message : "?").slice(0, 50)}`);
-      return null;
-    }
-  });
-  const rows = (await Promise.all(jobs)).filter((x): x is UltraStreamRow => !!x);
-  const seen = new Set<string>();
-  const streams = rows.filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)));
-  d.push(`streams: ${streams.length}`);
-
-  const data: UltraStreamResult = {
-    title: postTitle.slice(0, 140),
-    streams,
-    captions: [],
-    noSource: streams.length === 0,
-    diag: `${d.join(" | ")}${notes.length ? ` | final: ${notes.join("; ")}` : ""}`,
-  };
-  if (!data.noSource) resultCache.set(cacheKey, { at: Date.now(), data });
-  return data;
 }

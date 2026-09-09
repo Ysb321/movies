@@ -182,11 +182,13 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
 
 - Upstream: newhdmovie2 DooPlay blog (user domain newhdmovie2.best,
   newhdmovie2.im fallback - same network as the provider below).
-- Chain: `/?s={title}` -> article.item cards (title+link) -> post
-  `[data-source-embed]` iframes ("Ultra Stream V3", "Ultra Stream 2")
-  -> hdm2.ink `#player-loader[data-stream-url]` HLS /
-  prvs.top JW Player `file:` finals. Series hop to the per-episode
-  page (own embeds) via Episode/SxxExx anchors.
+- Mode: EMBED-FIRST (user call - their player, not our links):
+  `/?s={title}` -> post -> `[data-source-embed]` player urls
+  ("Ultra Stream V3", "Ultra Stream 2") iframed as-is in
+  UltraPlayer (chips + sandboxed frame). Series hop to the
+  per-episode page (own embeds) via Episode/SxxExx anchors.
+- Fallback kept: resolveUltraStream() resolves the same embeds to
+  direct hdm2.ink-HLS / prvs.top-JW finals (unused by the UI).
 - Ported from `Prashant825567/provider-hdmovie2` (Stremio provider,
   Jul 2026: stream.js CASE 1/2/3 + posts/meta/episodes selectors).
 - Budget: ~10 subrequests cold (search 1 + post 1 + episode 0-1 +

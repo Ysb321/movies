@@ -463,13 +463,15 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
-    /* Server 14 - UltraStream (vlcOnly Hindi lane - the watch page
-     * renders HindiSources with endpoint=/api/ultrastream/stream;
-     * stubs never called). The newhdmovie2 "Ultra Stream" players
-     * (newhdmovie2.best, .im fallback): post page [data-source-embed]
-     * iframes -> hdm2.ink HLS (#player-loader data-stream-url) /
-     * prvs.top JW file:, movies + per-episode series pages. Ported
-     * from the provider-hdmovie2 Stremio provider (Jul 2026). */
+    /* Server 14 - UltraStream (their player, embedded as-is - the watch
+     * page renders UltraPlayer: /api/ultrastream/stream returns the
+     * post's [data-source-embed] player urls ("Ultra Stream V3",
+     * "Ultra Stream 2", ...), picked from chips and iframed sandboxed
+     * (scripts+same-origin: no popups/top-nav). Source: newhdmovie2.best
+     * (.im fallback), movies + per-episode series pages; player hosts
+     * hdm2.ink / prvs.top. (resolveUltraStream in the lib also resolves
+     * direct HLS/mp4 finals - kept as a fallback path, unused by the
+     * UI. Embed-first was the user's explicit call.) */
     id: "ultrastream",
     name: "UltraStream",
     vlcOnly: true,
@@ -528,7 +530,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "hdm2", "prvs"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
