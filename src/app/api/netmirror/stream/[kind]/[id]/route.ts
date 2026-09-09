@@ -78,6 +78,7 @@ async function fetchDirect(
     ? `${BASE}/api/embed-tmdb/${tmdb}?type=tv&se=${series.s}&ep=${series.e}`
     : `${BASE}/api/embed-tmdb/${tmdb}`;
   let last = "";
+  let lastStatus = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(url, {
@@ -86,6 +87,7 @@ async function fetchDirect(
       });
       if (!res.ok) {
         last = `direct ${res.status}`;
+        lastStatus = res.status;
         continue; /* transient 502s seen - retry once */
       }
       const data = await res.json();
@@ -130,6 +132,9 @@ async function fetchDirect(
       last = e instanceof Error ? e.message : "unreachable";
     }
   }
+  /* persistent 404 = title absent from their index (not an outage) */
+  if (lastStatus === 404)
+    return { title: "", streams: [], captions: [], noSource: true };
   throw new Error(last || "direct failed");
 }
 

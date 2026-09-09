@@ -312,3 +312,20 @@ their allowlist) - infra, not code. Server 10 keeps the reachable
 net27 core (verified live: Fight Club full streams + subs); the gated
 fan-out now fast-fails (first all-403 platform skips the rest) so
 loads stay quick, and self-heals the day gating lifts.
+
+## Round-3 recon: repos, plugins, mirrors, reddit (2026-09-09)
+
+No wireable new source found anywhere. GitHub: no netmirror Stremio
+addon exists (only a request thread); appli55/netmirror-downloader +
+Anshu78780/ScarperApi both 404 (DMCA'd); appli55/netmirror_extension
+is a video-sniffer ext (83-chunk vendor bundle, no API); CNCVerse's
+NetMirror provider source isn't public (master = README/Logos only);
+phisher repo has no nm provider. Mirrors: net11.cc flaky (API path
+redirects into the same verify wall), netmirror.my dead (parked
+gambling), netmirror.world = center alias (no API). Reddit
+(r/TeenIndia etc.): only mirror rotation (net22 -> net11 -> net77),
+no API intel. net27 series shape re-validated: query-style
+`?type=tv&se=&ep=` returns proper JSON (IGL -> honest noSource with
+resolved metadata); path-style /{id}/{s}/{e} 404s (unused by us).
+Fix shipped: persistent 404 from net27 now returns honest empty +
+noSource instead of throwing (absent series showed an error state).
