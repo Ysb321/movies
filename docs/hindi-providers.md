@@ -81,6 +81,12 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   but all 10 driveseed.org redirect GETs throw before first byte
   (no fp:/fi: notes) - mm4 captures the error text + redirect url
   to distinguish datacenter-block vs timeout vs malformed url.
+- Fix 2026-09-09 (mm4 `err:Too many subrequests...`): CF free
+  allows 50 subrequests/invocation and the chain burned ~70 (10
+  SIDs x ~4 + hops). mm5 fits: one link per quality + single
+  fallback (CSX-style), 10bit/HEVC dropped when an x264 tier-mate
+  exists, zone-first domain check (lists on failure only),
+  path-style search (no 302 hop). Budget now ~35-40 cold.
 
 ## Live sources for future ports (ranked)
 

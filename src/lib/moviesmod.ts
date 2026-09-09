@@ -21,7 +21,8 @@
  *    video-downloads.googleusercontent.com file) -> HEAD validation.
  *
  *  Slimmed for an edge route: no axios/cheerio/redis (native fetch +
- *  regex parsing + in-memory TTL cache), driveseed links preferred over
+ *  regex parsing + in-memory TTL cache), CSX SID finish
+ *  (SaurabhKaperwan/CSX bypass), driveseed links preferred over
  *  SID links (5 fewer hops), qualities/links resolved in parallel with
  *  tight timeouts, partial results returned. Hindi-ish posts (hindi /
  *  dual / multi / dubbed in the title) are preferred at match time.
@@ -415,28 +416,39 @@ const isHindiPost = (t: string) => /hindi|dual|multi|dubbed/i.test(t || "");
 
 async function pickDomain(d: string[]): Promise<string> {
   if (domainCache.base && Date.now() - domainCache.at < DOMAIN_TTL) return domainCache.base;
-  const candidates = [...DOMAIN_CANDIDATES];
-  try {
-    const r = await httpGet(DOMAINS_JSON, undefined, 6000);
-    if (r.status >= 200 && r.status < 400) {
-      try {
-        const j = JSON.parse(r.text) as { moviesmod?: string };
-        if (j.moviesmod && !candidates.includes(j.moviesmod)) candidates.push(j.moviesmod);
-      } catch {}
-    }
-  } catch {}
-  for (const c of candidates) {
+  const verify = async (c: string): Promise<boolean> => {
     try {
       const r = await httpGet(c, undefined, 6000);
-      if (r.status >= 200 && r.status < 400 && /latestPost|MoviesMod|\/download-/i.test(r.text.slice(0, 60000))) {
-        domainCache = { at: Date.now(), base: c };
-        d.push(`domain=${c}`);
-        return c;
-      }
-      d.push(`domain ${c} bad-body(${r.status})`);
-    } catch (e) {
-      d.push(`domain ${c} err:${e instanceof Error ? e.message.slice(0, 40) : "?"}`);
+      return r.status >= 200 && r.status < 400 && /latestPost|MoviesMod|\/download-/i.test(r.text.slice(0, 60000));
+    } catch {
+      return false;
     }
+  };
+  /* fast path: zone is verified alive, skip the domain lists (2 fetches) */
+  if (await verify(DOMAIN_CANDIDATES[0])) {
+    domainCache = { at: Date.now(), base: DOMAIN_CANDIDATES[0] };
+    d.push(`domain=${DOMAIN_CANDIDATES[0]}`);
+    return DOMAIN_CANDIDATES[0];
+  }
+  const candidates = [...DOMAIN_CANDIDATES];
+  const listJobs = [DOMAINS_JSON, UTILS_JSON].map(async (u) => {
+    try {
+      const r = await httpGet(u, undefined, 6000);
+      if (r.status < 200 || r.status >= 400) return;
+      const j = JSON.parse(r.text) as { moviesmod?: string };
+      if (typeof j.moviesmod === "string" && j.moviesmod && !candidates.includes(j.moviesmod)) {
+        candidates.push(j.moviesmod);
+      }
+    } catch {}
+  });
+  await Promise.all(listJobs);
+  for (const c of candidates) {
+    if (await verify(c)) {
+      domainCache = { at: Date.now(), base: c };
+      d.push(`domain=${c} (fallback)`);
+      return c;
+    }
+    d.push(`domain ${c} unreachable`);
   }
   throw new Error("no reachable moviesmod domain");
 }
@@ -444,7 +456,10 @@ async function pickDomain(d: string[]): Promise<string> {
 type SearchHit = { title: string; url: string };
 
 async function searchBlog(base: string, title: string, d: string[]): Promise<SearchHit[]> {
-  const r = await httpGet(`${base}/?s=${encodeURIComponent(title)}`);
+  let r = await httpGet(`${base}/search/${encodeURIComponent(title)}`);
+  if (r.status < 200 || r.status >= 400) {
+    r = await httpGet(`${base}/?s=${encodeURIComponent(title)}`);
+  }
   if (r.status < 200 || r.status >= 400) throw new Error(`search http ${r.status}`);
   const hits: SearchHit[] = [];
   const seen = new Set<string>();
@@ -914,7 +929,7 @@ type DriveseedHit = { server: string; url: string; driveseedRedirectUrl: string 
 
 export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModResult> {
   const { title, year, kind, season, episode } = opts;
-  const d: string[] = [`mm4: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
+  const d: string[] = [`mm5: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
   const cacheKey = `mm:v1:${kind}:${season}:${episode}:${title}:${year || ""}`;
   const cached = resultCache.get(cacheKey);
   if (cached && Date.now() - cached.at < RESULT_TTL) {
@@ -934,6 +949,25 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
   const lang = isHindiPost(picked.title) ? "Hindi" : "";
   let links = await extractDownloadLinks(picked.url, d);
   if (!links.length) throw new Error(`mm: no download links (${d.join(" | ").slice(0, 100)})`);
+  /* one row per tier: drop 10bit/HEVC when an x264 tier-mate exists
+   * (browsers can't play HEVC anyway; each spare quality costs ~8
+   * subrequests and CF free allows 50/invocation) */
+  {
+    const byTier = new Map<string, QualityLink[]>();
+    for (const l of links) {
+      const t = extractQuality(l.quality);
+      const arr = byTier.get(t) || [];
+      arr.push(l);
+      byTier.set(t, arr);
+    }
+    const kept: QualityLink[] = [];
+    for (const [, arr] of byTier) {
+      const x264 = arr.filter((l) => !/10bit|hevc|x265/i.test(l.quality));
+      kept.push(...(x264.length ? x264 : arr));
+    }
+    if (kept.length !== links.length) d.push(`tiers: ${links.length} -> ${kept.length}`);
+    links = kept;
+  }
 
   if (kind === "series") {
     const n = season;
@@ -951,25 +985,23 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
   const qJobs = links.map(async (link): Promise<Q | null> => {
     try {
       const servers = await resolveIntermediate(link.url, picked.url, link.quality, d);
-      if (!servers.length) return null;
-      const dsJobs = servers.map(async (s): Promise<DriveseedHit | null> => {
+      /* one link per quality (CSX-style) + a single fallback: each SID
+       * costs ~4 subrequests and CF free allows 50/invocation */
+      for (const s of servers.slice(0, 2)) {
         try {
           let cur = s.url;
           if (isSidUrl(cur)) {
             const sid = await resolveSid(cur);
-            if (!sid) return null;
+            if (!sid) continue;
             cur = sid;
           }
           if (cur.includes("driveseed.org") || cur.includes("driveleech")) {
-            return { server: s.server, url: s.url, driveseedRedirectUrl: cur };
+            const hit: DriveseedHit = { server: s.server, url: s.url, driveseedRedirectUrl: cur };
+            return { quality: link.quality, hits: [hit] };
           }
-          return null;
-        } catch {
-          return null;
-        }
-      });
-      const ds = (await Promise.all(dsJobs)).filter((x): x is DriveseedHit => !!x);
-      return ds.length ? { quality: link.quality, hits: ds } : null;
+        } catch {}
+      }
+      return null;
     } catch {
       return null;
     }
