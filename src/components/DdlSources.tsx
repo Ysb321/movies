@@ -54,9 +54,11 @@ const platformHint = () =>
       ? "Tap a quality — its FSL fast link plays here, or opens in your VLC app"
       : "Tap a quality — its FSL fast link plays here, or opens in VLC via the desktop app";
 
-/* Server 20 (DesiDDL) - the Hindi-DDL lane: VegaMovies + MoviesDrive dual-
- * audio posts, hub links cracked on tap (FSL fast links first). Own
- * :site-dd resume namespace (different encodes from Servers 9/19). */
+/* Server 11 (DesiDDL) - the Hindi-DDL lane: VegaMovies + MoviesDrive dual-
+ * audio posts via nexdrive intermediates (G-Direct Drive files + V-Cloud /
+ * HubCloud hubs) plus HDMovie2 GDFlix rows, all cracked on tap (direct /
+ * FSL fast links first). Own :site-dd resume namespace (different encodes
+ * from the other source-list servers). */
 export default function DdlSources({ type, tmdbId, title, year, imdbId, season, episode }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<DdRow[]>([]);
@@ -194,7 +196,7 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
       delete n[row.key];
       return n;
     });
-    setNote((n) => ({ ...n, [row.key]: "Cracking the FSL fast link…" }));
+    setNote((n) => ({ ...n, [row.key]: "Cracking the direct link…" }));
     try {
       const r = await crack(row);
       if (!alive.current) return;
@@ -204,8 +206,13 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
       } else if (r.ok) {
         setPageFor((p) => ({ ...p, [row.key]: r.url || row.hub }));
         setNote((n) => ({ ...n, [row.key]: "Couldn't auto-crack this one — open it in your browser:" }));
+      } else if (r.error === "guarded") {
+        setPageFor((p) => ({ ...p, [row.key]: row.hub }));
+        setNote((n) => ({ ...n, [row.key]: "This hub is bot-guarded — open it in your browser:" }));
+      } else if (r.error === "fetch-fail") {
+        setNote((n) => ({ ...n, [row.key]: "The hub didn't answer — try another" }));
       } else {
-        setNote((n) => ({ ...n, [row.key]: `${r.error || "Couldn't crack the link"} — try another` }));
+        setNote((n) => ({ ...n, [row.key]: "Couldn't crack this one — try another" }));
       }
     } catch {
       if (alive.current)
@@ -241,7 +248,18 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
         setNote((n) => ({ ...n, [row.key]: "Couldn't auto-crack this one — open it in your browser:" }));
         return null;
       }
-      setNote((n) => ({ ...n, [row.key]: `${r.error || "Couldn't crack the link"} — try another` }));
+      if (r.error === "guarded") {
+        setPageFor((p) => ({ ...p, [row.key]: row.hub }));
+        setNote((n) => ({ ...n, [row.key]: "This hub is bot-guarded — open it in your browser:" }));
+        return null;
+      }
+      setNote((n) => ({
+        ...n,
+        [row.key]:
+          r.error === "fetch-fail"
+            ? "The hub didn't answer — try another"
+            : "Couldn't crack this one — try another",
+      }));
       return null;
     } catch {
       return null;

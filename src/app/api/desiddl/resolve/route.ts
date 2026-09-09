@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* Server 20 (DesiDDL) hub resolver - cracks V-Cloud/HubCloud/GDFlix/GDLink
- * hub pages into direct FSL fast-link files, ported from the Megix CSX
- * extractors (MoviesDrive/VegaMovies Extractors.kt, same code in both):
- *  HubCloud/VCloud: normalize domain via urls.json -> GET page ->
- *   /video/ branch (div.vd > center > a) else script branch (vcloud:
- *   double-atob `var url`, hubcloud: plain `var url`) -> GET page 2 ->
- *   header (div.card-header) + size (i#size) -> h2 a.btn buttons:
- *   FSLv2 > FSL Server > Download File > Mega Server > BuzzServer
- *   ({link}/download hx-redirect) > 10Gbps (redirect chain, link= tail)
- *   > Pixeldrain (var pxl rewrite). (Gofile skipped: API dance.)
- *  GDFlix/GDLink: Name/Size li's -> div.text-center buttons: FSL V2 >
- *   DIRECT DL/SERVER > CLOUD DOWNLOAD [R2] > GD Index (?type=1,2 ->
- *   a.btn-success) > FAST CLOUD (card-body a) > Instant DL (location
- *   after url=) > Pixeldrain (link rewrite).
- * Candidates probe in order (1-byte Range): first alive wins; all-dead
- * still returns the first with stale:true (VLC may still try it).
- * SSRF guard: entry host must be a hub host; redirect hops stay https
- * and off localhost/private literals.
+/* Server 11 (DesiDDL) hub resolver - cracks hub pages into direct files.
+ * Verified live 2026-09-09 against real pages (Fight Club 1999 480p,
+ * India's Got Latent S02E01 480p):
+ *  G-Direct (fastdl.zip/embed?download=): 302 -> dl.php?link={Drive file
+ *   on video-downloads.googleusercontent.com} - the link param IS the
+ *   direct file, no cracking needed.
+ *  V-Cloud/HubCloud: file page (/video/ div.vd link, or `var url` script
+ *   - vcloud double-atob, hubcloud plain -, or HubCloud search-recover
+ *   /drive/ result links) -> download page -> h2 a.btn buttons (full-doc
+ *   anchor fallback): FSLv2 > FSL Server > Download File > Mega Server >
+ *   BuzzServer (/download hx-redirect) > 10Gbps (redirect chain, link=
+ *   tail) > Pixeldrain (var pxl rewrite).
+ *  GDFlix/GDLink (current template has NO FSL/DIRECT buttons): Instant DL
+ *   [10GBPS] href = direct CDN file (first lane) > GD Index (?type=1,2)
+ *   > FAST CLOUD / ZIPDISK (page is JS-gated "Generate" buttons, so the
+ *   static card parse is best-effort; HTML 200s probe dead anyway).
+ * Candidates probe in parallel (1-byte Range; 200+HTML counts as dead so
+ * footer/about links can never win): first alive in priority order wins;
+ * all-dead still returns the first with stale:true. Parse misses fall
+ * back to kind:page (user opens the hub manually); only dead hubs and
+ * bot-walls return ok:false with a stage code for the client note.
+ * SSRF guard: entry host must be a hub host; hops stay https and off
+ * localhost/private literals.
  */
 
 export const runtime = "edge";
@@ -34,8 +39,9 @@ const UA = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "text/html,*/*",
 };
-const HUB_HOST = /(hubcloud|vcloud|gdflix|gdlink)/i;
+const HUB_HOST = /(hubcloud|vcloud|gdflix|gdlink|fastdl)/i;
 const PRIV = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)/i;
+const CHALLENGE = /(challenge-platform|cf_chl_opt|Just a moment\.\.\.|Attention Required)/i;
 
 let urlCache: { at: number; map: Record<string, string> } = { at: 0, map: {} };
 async function latestBase(key: string): Promise<string> {
@@ -72,14 +78,65 @@ const okHop = (u: string) => {
   }
 };
 
-async function probe(url: string): Promise<"alive" | "dead" | "unknown"> {
+class Stage extends Error {
+  stage: string;
+  constructor(stage: string) {
+    super(stage);
+    this.stage = stage;
+  }
+}
+
+async function fetchPage(url: string, ms: number, referer = ""): Promise<{ html: string; final: string }> {
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      headers: { ...UA, ...(referer ? { Referer: referer } : {}) },
+      signal: AbortSignal.timeout(ms),
+    });
+  } catch {
+    throw new Stage("fetch-fail");
+  }
+  if (r.status === 403) throw new Stage("guarded");
+  if (!r.ok) throw new Stage("fetch-fail");
+  const html = await r.text();
+  if (CHALLENGE.test(html)) throw new Stage("guarded");
+  return { html, final: r.url || url };
+}
+
+/* Original URL first (posts already carry working mirrors like hubcloud.foo
+ * that redirect to canonical); the urls.json base is only a fallback. */
+async function fetchPageFresh(url: string, key: string, ms: number) {
+  try {
+    return await fetchPage(url, ms, baseOf(url));
+  } catch (e) {
+    if (e instanceof Stage && e.stage === "fetch-fail") {
+      const fresh = await latestBase(key);
+      const oldBase = baseOf(url);
+      if (fresh && oldBase && fresh !== oldBase) {
+        return await fetchPage(url.replace(oldBase, fresh), ms, fresh);
+      }
+    }
+    throw e;
+  }
+}
+
+async function probe(url: string, referer: string): Promise<"alive" | "dead" | "unknown"> {
   try {
     const r = await fetch(url, {
-      headers: { Range: "bytes=0-0", "User-Agent": UA["User-Agent"] },
+      headers: {
+        Range: "bytes=0-0",
+        "User-Agent": UA["User-Agent"],
+        ...(referer ? { Referer: referer } : {}),
+      },
       signal: AbortSignal.timeout(12000),
     });
-    if (r.status === 206 || r.status === 200 || r.status === 416) return "alive";
+    if (r.status === 206 || r.status === 416) return "alive";
     if (r.status === 403 || r.status === 404 || r.status === 410) return "dead";
+    if (r.status === 200) {
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      if (ct.includes("text/html")) return "dead";
+      return "alive";
+    }
     return "unknown";
   } catch {
     return "unknown";
@@ -112,50 +169,105 @@ async function resolveFinal(startUrl: string): Promise<string | null> {
 
 type Cand = { url: string; server: string };
 
+/* G-Direct: fastdl.zip/embed?download= -> dl.php?link={Drive file} */
+async function gdirectResolve(entry: string): Promise<{ cands: Cand[]; file: string; size: string }> {
+  const { html, final } = await fetchPage(entry, 15000, baseOf(entry));
+  try {
+    const link = new URL(final).searchParams.get("link") || "";
+    if (/^https:\/\//i.test(link) && okHop(link)) {
+      return { cands: [{ url: link, server: "G-Direct" }], file: "", size: "" };
+    }
+  } catch {
+    /* fall through to the in-page hunt */
+  }
+  let url = /https:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*googleusercontent\.com[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*/i.exec(html)?.[0] || "";
+  if (!url) {
+    const enc = /[?&]link=(https?%3A[^"'\s&]+)/i.exec(html)?.[1] || "";
+    if (enc) {
+      try {
+        url = decodeURIComponent(enc);
+      } catch {
+        url = "";
+      }
+    }
+  }
+  if (url && okHop(url)) {
+    return { cands: [{ url, server: "G-Direct" }], file: "", size: "" };
+  }
+  throw new Stage("no-link");
+}
+
 async function hubResolve(entry: string): Promise<{ cands: Cand[]; file: string; size: string }> {
   const key = /vcloud/i.test(entry) ? "vcloud" : "hubcloud";
-  const fresh = await latestBase(key);
-  const oldBase = baseOf(entry);
-  const url = oldBase && fresh !== oldBase ? entry.replace(oldBase, fresh) : entry;
-  const base = baseOf(url);
-  const r1 = await fetch(url, { headers: UA, signal: AbortSignal.timeout(15000) });
-  const doc = await r1.text();
-  let link = "";
-  if (url.includes("/video/")) {
-    const m = /<div[^>]*class="[^"]*\bvd\b[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"/i.exec(doc);
-    link = m?.[1] || "";
-  } else {
+  const first = await fetchPageFresh(entry, key, 15000);
+  let html = first.html;
+  let final = first.final;
+  let base = baseOf(final);
+  /* page 1 -> file page (<=3 hops: search-recover /drive/ results first,
+   * then /video/ or the var-url script, all judged on the FINAL url). */
+  let filePage = "";
+  for (let hop = 0; hop < 3 && !filePage; hop++) {
+    if (final.includes("/video/")) {
+      const m = /<div[^>]*class="[^"]*\bvd\b[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"/i.exec(html);
+      if (m?.[1]) {
+        filePage = abs(m[1], base);
+        break;
+      }
+    }
     const scripts: string[] = [];
-    for (const m of doc.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) {
+    for (const m of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) {
       if (m[1].includes("url")) scripts.push(m[1]);
     }
     const blob = scripts.join("\n");
-    if (/vcloud/i.test(url)) {
+    if (/vcloud/i.test(final)) {
       const m = /var\s+url\s*=\s*atob\s*\(\s*atob\s*\(\s*['"]([^'"]+)['"]/i.exec(blob);
       if (m) {
         try {
-          link = atob(atob(m[1]));
+          filePage = atob(atob(m[1]));
+          break;
         } catch {
-          link = "";
+          /* keep hunting */
         }
       }
     } else {
-      link = /var url = '([^']*)'/.exec(blob)?.[1] || "";
+      const link = /var url = '([^']*)'/.exec(blob)?.[1] || "";
+      if (link) {
+        filePage = link;
+        break;
+      }
     }
+    const drive = /href="([^"]*\/drive\/[A-Za-z0-9_-]{6,}[^"]*)"/i.exec(html)?.[1] || "";
+    if (drive) {
+      const p2 = await fetchPage(abs(drive, base), 15000, final);
+      html = p2.html;
+      final = p2.final;
+      base = baseOf(final);
+      continue;
+    }
+    break;
   }
-  if (!link) throw new Error("hub link not found");
-  const page2 = abs(link, base);
-  const r2 = await fetch(page2, { headers: UA, signal: AbortSignal.timeout(15000) });
-  const html = await r2.text();
+  if (!filePage) throw new Stage("no-link");
+  const page2 = await fetchPage(abs(filePage, base), 15000, final);
+  html = page2.html;
+  base = baseOf(page2.final);
   const file = strip(/<div[^>]*class="[^"]*card-header[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(html)?.[1] || "");
   const size = strip(/<i[^>]*id="size"[^>]*>([\s\S]*?)<\/i>/i.exec(html)?.[1] || "");
-  /* h2 a.btn buttons (either attr order) */
+  /* h2 a.btn buttons (either attr order), else any matching anchor */
   const btns: { href: string; text: string }[] = [];
   for (const h of html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)) {
     for (const a of h[1].matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
       if (!/class\s*=\s*"[^"]*btn/i.test(a[1])) continue;
       const href = /href\s*=\s*"([^"]+)"/i.exec(a[1])?.[1] || "";
       if (href) btns.push({ href, text: strip(a[2]) });
+    }
+  }
+  if (!btns.length) {
+    for (const a of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+      const href = /href\s*=\s*"([^"]+)"/i.exec(a[1])?.[1] || "";
+      const text = strip(a[2]);
+      if (href && /FSLv2|FSL Server|Download File|Mega Server|BuzzServer|10Gbps|pixeldra/i.test(text)) {
+        btns.push({ href, text });
+      }
     }
   }
   const cands: Cand[] = [];
@@ -203,12 +315,9 @@ async function hubResolve(entry: string): Promise<{ cands: Cand[]; file: string;
 }
 
 async function gdflixResolve(entry: string): Promise<{ cands: Cand[]; file: string; size: string }> {
-  const fresh = await latestBase("gdflix");
-  const oldBase = baseOf(entry);
-  const url = oldBase && fresh !== oldBase ? entry.replace(oldBase, fresh) : entry;
-  const base = baseOf(url);
-  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(15000) });
-  const html = await r.text();
+  const page = await fetchPageFresh(entry, "gdflix", 15000);
+  const html = page.html;
+  const base = baseOf(page.final);
   const file =
     strip(/<li[^>]*class="[^"]*list-group-item[^"]*"[^>]*>\s*Name\s*:\s*([^<]+)/i.exec(html)?.[1] || "");
   const size =
@@ -222,6 +331,12 @@ async function gdflixResolve(entry: string): Promise<{ cands: Cand[]; file: stri
       if (href) btns.push({ href, text: strip(a[2]) });
     }
   }
+  if (!btns.length) {
+    for (const a of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+      const href = /href\s*=\s*"([^"]+)"/i.exec(a[1])?.[1] || "";
+      if (href) btns.push({ href, text: strip(a[2]) });
+    }
+  }
   const cands: Cand[] = [];
   const direct = (re: RegExp, server: string) => {
     const b = btns.find((x) => re.test(x.text));
@@ -230,6 +345,27 @@ async function gdflixResolve(entry: string): Promise<{ cands: Cand[]; file: stri
   direct(/FSL V2/i, "FSL V2");
   direct(/DIRECT (DL|SERVER)/i, "Direct");
   direct(/CLOUD DOWNLOAD \[R2\]/i, "Cloud R2");
+  /* Instant DL: current GDFlix pages link the CDN file directly (older
+   * ones redirect with a url= tail) - take the href AND the dance. */
+  const inst = btns.find((x) => /Instant DL/i.test(x.text));
+  if (inst) {
+    const href = abs(inst.href, base);
+    cands.push({ url: href, server: "Instant" });
+    try {
+      const ir = await fetch(href, {
+        redirect: "manual",
+        headers: UA,
+        signal: AbortSignal.timeout(10000),
+      });
+      const loc = ir.headers.get("location") || "";
+      if (loc.includes("url=")) {
+        const u2 = loc.substring(loc.indexOf("url=") + 4);
+        if (u2 && u2 !== href) cands.push({ url: u2, server: "Instant" });
+      }
+    } catch {
+      /* href stands alone */
+    }
+  }
   /* GD Index: ?type=1,2 -> a.btn-success */
   const gdi = btns.find((x) => /GD Index/i.test(x.text));
   if (gdi) {
@@ -250,38 +386,29 @@ async function gdflixResolve(entry: string): Promise<{ cands: Cand[]; file: stri
       }
     }
   }
-  /* FAST CLOUD: card-body a */
+  /* FAST CLOUD: first non-footer link in the card (the live page is a
+   * JS-gated Generate button, so this is best-effort only). */
   const fc = btns.find((x) => /FAST CLOUD/i.test(x.text));
   if (fc) {
     try {
-      const fr = await fetch(abs(fc.href, base), { headers: UA, signal: AbortSignal.timeout(10000) });
-      const fh = await fr.text();
-      const card = /<div[^>]*class="[^"]*card-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(fh)?.[1] || "";
-      const href = /<a\b[^>]*href="([^"]+)"/i.exec(card)?.[1] || "";
-      if (href) cands.push({ url: abs(href, base), server: "Fast Cloud" });
+      const fp = await fetchPage(abs(fc.href, base), 10000, page.final);
+      const card =
+        /<div[^>]*class="[^"]*card-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(fp.html)?.[1] || fp.html;
+      const links: string[] = [];
+      for (const a of card.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>/gi)) {
+        const href = a[1];
+        if (/^\s*(#|javascript:)/i.test(href)) continue;
+        if (/\/(about|privacy|terms|contact|copyright|dmca|login|page)(\/|$)/i.test(href)) continue;
+        links.push(href);
+      }
+      const fbase = baseOf(page.final);
+      const best =
+        links.find((h) => /^https?:\/\//i.test(h) && baseOf(h) !== fbase) ||
+        links.find((h) => /download|file|\/dl|get/i.test(h)) ||
+        links[0];
+      if (best) cands.push({ url: abs(best, fbase), server: "Fast Cloud" });
     } catch {
       /* skip */
-    }
-  }
-  /* Instant DL: newer GDFlix pages link the CDN file directly (and older
-   * ones redirect with a url= tail) - take the href AND the dance. */
-  const inst = btns.find((x) => /Instant DL/i.test(x.text));
-  if (inst) {
-    const href = abs(inst.href, base);
-    cands.push({ url: href, server: "Instant" });
-    try {
-      const ir = await fetch(href, {
-        redirect: "manual",
-        headers: UA,
-        signal: AbortSignal.timeout(10000),
-      });
-      const loc = ir.headers.get("location") || "";
-      if (loc.includes("url=")) {
-        const u2 = loc.substring(loc.indexOf("url=") + 4);
-        if (u2 && u2 !== href) cands.push({ url: u2, server: "Instant" });
-      }
-    } catch {
-      /* href stands alone */
     }
   }
   /* Pixeldrain: rewrite from the link itself */
@@ -312,39 +439,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "not a hub link" }, { status: 403 });
   }
   try {
-    const { cands, file, size } = /(gdflix|gdlink)/i.test(host)
-      ? await gdflixResolve(entry)
-      : await hubResolve(entry);
+    const { cands, file, size } = /fastdl/i.test(host)
+      ? await gdirectResolve(entry)
+      : /(gdflix|gdlink)/i.test(host)
+        ? await gdflixResolve(entry)
+        : await hubResolve(entry);
     if (!cands.length) {
       return NextResponse.json({ ok: true, kind: "page", url: entry });
     }
-    let firstUnknown: Cand | null = null;
-    for (const c of cands) {
-      const verdict = await probe(c.url);
-      if (verdict === "alive") {
-        return NextResponse.json({
-          ok: true, kind: "file", url: c.url, server: c.server,
-          filename: file, size, stale: false,
-        });
-      }
-      if (verdict === "unknown" && !firstUnknown) firstUnknown = c;
-    }
-    if (firstUnknown) {
-      const c = firstUnknown;
-      return NextResponse.json({
-        ok: true, kind: "file", url: c.url, server: c.server,
-        filename: file, size, stale: false,
-      });
-    }
-    const c = cands[0];
-    return NextResponse.json({
-      ok: true, kind: "file", url: c.url, server: c.server,
-      filename: file, size, stale: true,
+    const verdicts = await Promise.all(cands.map((c) => probe(c.url, entry)));
+    const pick = (i: number, stale: boolean) => ({
+      ok: true,
+      kind: "file",
+      url: cands[i].url,
+      server: cands[i].server,
+      filename: file,
+      size,
+      stale,
     });
+    const alive = verdicts.findIndex((v) => v === "alive");
+    if (alive >= 0) return NextResponse.json(pick(alive, false));
+    const unk = verdicts.findIndex((v) => v === "unknown");
+    if (unk >= 0) return NextResponse.json(pick(unk, false));
+    return NextResponse.json(pick(0, true));
   } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "resolve failed" },
-      { status: 502 }
-    );
+    if (e instanceof Stage && (e.stage === "no-link" || e.stage === "no-buttons")) {
+      return NextResponse.json({ ok: true, kind: "page", url: entry });
+    }
+    const stage = e instanceof Stage ? e.stage : "error";
+    return NextResponse.json({ ok: false, error: stage }, { status: 502 });
   }
 }

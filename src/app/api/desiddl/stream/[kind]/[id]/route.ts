@@ -1,18 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/* Server 20 (DesiDDL) stream API - Hindi DDL blogs NOT covered by Server 9
+/* Server 11 (DesiDDL) stream API - Hindi DDL blogs NOT covered by Server 9
  * (WebStreamrMBG only scrapes 4KHDHub/HDHub4u for Hindi): VegaMovies +
- * MoviesDrive (ported from the Megix CSX CloudStream providers) +
- * HDMovie2 (newhdmovie2.best posts -> hdm.im download pages -> GDFlix)
- * (VegaMoviesProvider/MoviesDriveProvider, Kotlin -> edge TS). Flow per
- * blog: Typesense JSON search.php -> IMDb-verified hit (Vega hits carry
- * imdb_id; MoviesDrive falls back to title+year fuzzy) -> post page ->
- * quality sections -> V-Cloud/HubCloud/GDFlix/GDLink hub links. Hubs stay
- * unresolved here (fast list); taps crack them via /api/desiddl/resolve
- * (FSL fast links first). Live domains refresh from Megix Utils urls.json
- * (4h TTL per isolate). Verified live 2026-09-09: search.php returns Dual
- * Audio {Hindi-English} hits (Fight Club tt0137523 exact). Post-page
- * selectors follow the CSX code - live-verify after deploy.
+ * MoviesDrive (ported from the Megix CSX CloudStream providers, then
+ * re-verified live 2026-09-09 - both blogs changed templates) + HDMovie2
+ * (newhdmovie2.best posts -> hdm.im download pages -> GDFlix).
+ * Live shape now: Typesense JSON search.php -> IMDb-verified hit (year in
+ * title is REQUIRED when we know the year, so a 2023 namesake can never
+ * win for a 1999 title) -> post page -> per-quality sections:
+ *  VegaMovies movies: h5 "Title 480p BluRay [400MB]" + nexdrive.fit/genxfm
+ *   Download Now link -> nexdrive page lists G-Direct (fastdl) + V-Cloud
+ *   (+ Filepress/DropGalaxy, skipped: JS flows).
+ *  VegaMovies series: h3 "Season S (Episode range) 480p ..." + nexdrive
+ *   links (G-Direct / V-Cloud / V-Drive per quality) -> nexdrive page has
+ *   "-:Episodes: N:-" h4 sections each with V-Cloud/Filepress links.
+ *  MoviesDrive movies+series: h5 quality headings + h5 links which are
+ *   DIRECT HubCloud (/drive/search-recover.php) rows already; legacy
+ *   same-blog button pages are still fetched + scanned as a fallback.
+ * Hubs stay unresolved here (fast list); taps crack them via
+ * /api/desiddl/resolve (G-Direct hands the Drive file straight over,
+ * V-Cloud/HubCloud/GDFlix crack to FSL/CDN fast links). Live domains
+ * refresh from Megix Utils urls.json (4h TTL per isolate).
  */
 
 export const runtime = "edge";
@@ -29,6 +37,8 @@ const UA = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "text/html,application/json,*/*",
 };
+const NEX = /(nexdrive|\/genxfm)/i;
+const HUBREF = /(fastdl|vcloud|hubcloud|gdflix|gdlink)/i;
 
 let urlCache: { at: number; map: Record<string, string> } = { at: 0, map: {} };
 async function blogBase(key: string): Promise<string> {
@@ -50,6 +60,8 @@ const abs = (href: string, base: string) =>
   /^https?:\/\//i.test(href)
     ? href
     : `${base}${href.startsWith("/") ? "" : "/"}${href}`;
+const lookback = (post: string, idx: number, n = 900) =>
+  strip(post.slice(Math.max(0, idx - n), idx));
 
 type Anchor = { href: string; text: string; inner: string };
 function anchors(html: string): Anchor[] {
@@ -65,12 +77,40 @@ function anchors(html: string): Anchor[] {
   return out;
 }
 
+/* hub anchors with source positions (for episode segmentation) */
+type HubAnchor = { href: string; text: string; pos: number };
+function hubAnchors(html: string): HubAnchor[] {
+  const out: HubAnchor[] = [];
+  const push = (href: string, text: string, pos: number) => {
+    if (href && HUBREF.test(href)) out.push({ href, text, pos });
+  };
+  for (const m of html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    push(m[1], strip(m[2]), m.index || 0);
+  }
+  for (const m of html.matchAll(/<a\b[^>]*href='([^']+)'[^>]*>([\s\S]*?)<\/a>/gi)) {
+    push(m[1], strip(m[2]), m.index || 0);
+  }
+  return out.sort((a, b) => a.pos - b.pos);
+}
+
 const parseQuality = (s: string) => {
   const m = s.match(/(\d{3,4})[pP]/);
   if (m) return `${m[1]}p`;
   if (/8k/i.test(s)) return "4320p";
   if (/4k/i.test(s)) return "2160p";
   return "Auto";
+};
+/* last quality/size mention nearby (headings precede their links) */
+const qualityNear = (t: string) => {
+  const ms = [...t.matchAll(/(\d{3,4})[pP]/g)];
+  if (ms.length) return `${ms[ms.length - 1][1]}p`;
+  if (/8k/i.test(t)) return "4320p";
+  if (/4k/i.test(t)) return "2160p";
+  return "Auto";
+};
+const sizeNear = (t: string) => {
+  const ms = [...t.matchAll(/\[([^\]]*(?:MB|GB)[^\]]*)\]/gi)];
+  return ms.length ? ms[ms.length - 1][1].trim() : "";
 };
 const sizeMap = (postTitle: string) => {
   const m = new Map<string, string>();
@@ -84,16 +124,49 @@ const parseAudio = (t: string) => {
   if (/hindi/i.test(t)) return "🇮🇳 Hindi";
   return "";
 };
+const seasonNum = (t: string) => {
+  const m = /season\s*0*(\d{1,2})/i.exec(t) || /\bS0*(\d{1,2})E/i.exec(t);
+  return m ? Number(m[1]) : 0;
+};
 const hubKind = (u: string) =>
-  /vcloud/i.test(u) ? "vcloud" : /hubcloud/i.test(u) ? "hubcloud" : /gdlink/i.test(u) ? "gdlink" : "gdflix";
+  /fastdl/i.test(u)
+    ? "gdirect"
+    : /vcloud/i.test(u)
+      ? "vcloud"
+      : /hubcloud/i.test(u)
+        ? "hubcloud"
+        : /gdlink/i.test(u)
+          ? "gdlink"
+          : "gdflix";
 const hubLabel = (u: string) =>
-  /vcloud/i.test(u)
-    ? "V-Cloud"
-    : /hubcloud/i.test(u)
-      ? "HubCloud"
-      : /gdlink/i.test(u)
-        ? "GDLink"
-        : "GDFlix";
+  /fastdl/i.test(u)
+    ? "G-Direct"
+    : /vcloud/i.test(u)
+      ? "V-Cloud"
+      : /hubcloud/i.test(u)
+        ? "HubCloud"
+        : /gdlink/i.test(u)
+          ? "GDLink"
+          : "GDFlix";
+
+/* episode segmentation for multi-ep hub pages ("-:Episodes: N:-" h4s,
+ * Ep01/E01 marks): no marks at all -> the whole page is one file. */
+function segmentByEp<T extends { pos: number }>(html: string, items: T[], e: number): T[] {
+  const marks: { pos: number; ep: number }[] = [];
+  for (const em of html.matchAll(/episodes?\s*:?\s*0*(\d{1,3})/gi)) {
+    marks.push({ pos: em.index || 0, ep: Number(em[1]) });
+  }
+  for (const em of html.matchAll(/\bEp0*(\d{1,3})\b/gi)) {
+    marks.push({ pos: em.index || 0, ep: Number(em[1]) });
+  }
+  if (!marks.length) return items;
+  const mine = marks.filter((x) => x.ep === e);
+  if (!mine.length) return [];
+  const from = Math.min(...mine.map((x) => x.pos));
+  const after = marks.filter((x) => x.pos > from).map((x) => x.pos);
+  const to = after.length ? Math.min(...after) : Infinity;
+  return items.filter((x) => x.pos > from && x.pos < to);
+}
 
 type Row = {
   key: string;
@@ -126,24 +199,24 @@ function pickHit(hits: Hit[], title: string, year: string, imdb: string): Hit | 
     const m = hits.find((h) => h.imdb.toLowerCase() === imdb.toLowerCase());
     if (m && m.url) return m;
   }
+  /* year known -> only titles carrying it (a 2023 namesake must never win
+   * for a 1999 title); no dated hit -> no rows beats wrong rows. */
+  const pool = year ? hits.filter((h) => h.title.includes(year)) : hits;
+  if (!pool.length) return null;
   const words = title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
-  for (const useYear of year ? [true, false] : [false]) {
-    let best: Hit | null = null;
-    let bestScore = 0;
-    for (const h of hits) {
-      if (!h.url) continue;
-      const t = h.title.toLowerCase();
-      if (useYear && !t.includes(year)) continue;
-      let s = 0;
-      for (const w of words) if (t.includes(w)) s++;
-      if (s > bestScore) {
-        bestScore = s;
-        best = h;
-      }
+  let best: Hit | null = null;
+  let bestScore = 0;
+  for (const h of pool) {
+    if (!h.url) continue;
+    const t = h.title.toLowerCase();
+    let s = 0;
+    for (const w of words) if (t.includes(w)) s++;
+    if (s > bestScore) {
+      bestScore = s;
+      best = h;
     }
-    if (best && bestScore > 0) return best;
   }
-  return null;
+  return bestScore > 0 ? best : null;
 }
 async function getHtml(url: string, ms: number): Promise<string> {
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(ms) });
@@ -155,26 +228,42 @@ async function getHtml(url: string, ms: number): Promise<string> {
 async function vegaMovie(base: string, post: string, postTitle: string): Promise<Row[]> {
   const sizes = sizeMap(postTitle);
   const audio = parseAudio(postTitle);
-  const btns = anchors(post).filter((a) => a.href && a.inner.includes("dwd-button"));
+  const file = strip(postTitle).replace(/^Download\s+/i, "").slice(0, 90);
+  const cands: { href: string; text: string; pos: number }[] = [];
+  for (const m of post.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = abs(m[1], base);
+    if (NEX.test(href)) {
+      cands.push({ href, text: strip(m[2]), pos: m.index || 0 });
+    } else if (href.startsWith(base) && /\/(button|buttons|download-button)|dwd/i.test(m[1])) {
+      cands.push({ href, text: strip(m[2]), pos: m.index || 0 });
+    }
+  }
   const out: Row[] = [];
   await Promise.all(
-    btns.map(async (b, i) => {
+    cands.slice(0, 8).map(async ({ href, text, pos }, i) => {
       try {
-        const h = await getHtml(abs(b.href, base), 12000);
-        const v = anchors(h).find((a) => a.href && a.text.toLowerCase().includes("v-cloud"));
-        if (!v) return;
-        const q = parseQuality(b.text);
-        out.push({
-          key: `vega-${q}-${i}`,
-          blog: "VegaMovies",
-          quality: q,
-          size: sizes.get(q.toLowerCase()) || "",
-          source: "V-Cloud",
-          file: strip(postTitle).replace(/^Download\s+/i, "").slice(0, 90),
-          audio,
-          hub: abs(v.href, base),
-          hubKind: "vcloud",
-        });
+        const near = `${lookback(post, pos)} ${text}`;
+        const q = qualityNear(near);
+        if (q === "Auto") return;
+        const size = sizeNear(near) || sizes.get(q.toLowerCase()) || "";
+        const h = await getHtml(href, 12000);
+        const seen = new Set<string>();
+        for (const hb of hubAnchors(h)) {
+          const kind = hubKind(hb.href);
+          if (seen.has(kind)) continue;
+          seen.add(kind);
+          out.push({
+            key: `vega-${q}-${i}-${kind}`,
+            blog: "VegaMovies",
+            quality: q,
+            size,
+            source: hubLabel(hb.href),
+            file,
+            audio,
+            hub: abs(hb.href, base),
+            hubKind: kind,
+          });
+        }
       } catch {
         /* one dead button must not kill the rest */
       }
@@ -186,48 +275,62 @@ async function vegaSeries(
   base: string, post: string, postTitle: string, s: number, e: number
 ): Promise<Row[]> {
   const audio = parseAudio(postTitle);
+  const file = strip(postTitle).replace(/^Download\s+/i, "").slice(0, 80);
+  const heads = [...post.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)];
+  const sections: { text: string; start: number; end: number }[] = [];
+  for (let i = 0; i < heads.length; i++) {
+    const text = strip(heads[i][1]);
+    if (!/4k|\d{3,4}p/i.test(text)) continue;
+    sections.push({
+      text,
+      start: (heads[i].index || 0) + heads[i][0].length,
+      end: i + 1 < heads.length ? heads[i + 1].index || post.length : post.length,
+    });
+  }
+  const pools = sections.length
+    ? sections
+    : [{ text: postTitle, start: 0, end: post.length }];
   const out: Row[] = [];
   const jobs: Promise<void>[] = [];
-  for (const m of post.matchAll(/<h[35]\b[^>]*>([\s\S]*?)<\/h[35]>/gi)) {
-    const text = strip(m[1]);
-    if (!/4k|\d{3,4}p/i.test(text) || /zip/i.test(text)) continue;
-    const season = Number(/(?:season |s)(\d+)/i.exec(text)?.[1] || 0);
-    if (!(season === s || (season === 0 && s === 1))) continue;
-    const after = post.slice((m.index || 0) + m[0].length);
-    const pM = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(after);
-    const nextH = after.search(/<h[35]\b/i);
-    const pool = pM && (nextH === -1 || pM.index < nextH) ? pM[1] : m[1];
-    const aTags = anchors(pool).filter((a) => a.href);
-    const uni =
-      aTags.find((a) => /v-cloud|episode|download/i.test(a.text)) ||
-      aTags.find((a) => /g-direct/i.test(a.text));
-    if (!uni) continue;
-    const q = parseQuality(text);
-    jobs.push(
-      (async () => {
-        try {
-          const h = await getHtml(abs(uni.href, base), 12000);
-          const vlinks = anchors(h).filter(
-            (a) => a.href && a.href.toLowerCase().includes("vcloud")
-          );
-          const pick = vlinks[e - 1];
-          if (!pick) return;
-          out.push({
-            key: `vega-${q}-s${s}e${e}`,
-            blog: "VegaMovies",
-            quality: q,
-            size: "",
-            source: "V-Cloud",
-            file: text.slice(0, 90),
-            audio,
-            hub: abs(pick.href, base),
-            hubKind: "vcloud",
-          });
-        } catch {
-          /* skip */
-        }
-      })()
-    );
+  for (const sec of pools) {
+    const season = seasonNum(sec.text) || seasonNum(postTitle);
+    if (season !== 0 && season !== s) continue;
+    const q = qualityNear(sec.text);
+    const size = sizeNear(sec.text);
+    const chunk = post.slice(sec.start, sec.end);
+    const links = [...chunk.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)]
+      .map((m) => ({ href: abs(m[1], base), text: strip(m[2]) }))
+      .filter((a) => NEX.test(a.href));
+    const uniq = [...new Map(links.map((l) => [l.href, l])).values()].slice(0, 6);
+    for (const l of uniq) {
+      jobs.push(
+        (async () => {
+          try {
+            const h = await getHtml(l.href, 12000);
+            const mine = segmentByEp(h, hubAnchors(h), e);
+            const seen = new Set<string>();
+            for (const hb of mine) {
+              const kind = hubKind(hb.href);
+              if (seen.has(kind)) continue;
+              seen.add(kind);
+              out.push({
+                key: `vega-${q}-s${s}e${e}-${kind}-${out.length}`,
+                blog: "VegaMovies",
+                quality: q === "Auto" ? parseQuality(l.text) : q,
+                size,
+                source: hubLabel(hb.href),
+                file: `${file} E${e}`.slice(0, 90),
+                audio,
+                hub: abs(hb.href, base),
+                hubKind: kind,
+              });
+            }
+          } catch {
+            /* skip */
+          }
+        })()
+      );
+    }
   }
   await Promise.all(jobs);
   return out;
@@ -237,37 +340,63 @@ async function vegaSeries(
 async function mdriveMovie(base: string, post: string, postTitle: string): Promise<Row[]> {
   const sizes = sizeMap(postTitle);
   const audio = parseAudio(postTitle);
+  const file = strip(postTitle).replace(/^Download\s+/i, "").slice(0, 90);
   const out: Row[] = [];
   const jobs: Promise<void>[] = [];
   let i = 0;
   for (const m of post.matchAll(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi)) {
-    const b = anchors(m[1]).find((a) => a.href);
-    if (!b) continue;
-    const q = parseQuality(b.text);
-    const idx = i++;
-    jobs.push(
-      (async () => {
-        try {
-          const h = await getHtml(abs(b.href, base), 12000);
-          const hubs = anchors(h).filter((a) => a.href && /hubcloud|gdflix|gdlink/i.test(a.href));
-          for (const [j, hb] of hubs.entries()) {
-            out.push({
-              key: `mdrive-${q}-${idx}-${j}`,
-              blog: "MoviesDrive",
-              quality: q,
-              size: sizes.get(q.toLowerCase()) || "",
-              source: hubLabel(hb.href),
-              file: strip(postTitle).replace(/^Download\s+/i, "").slice(0, 90),
-              audio,
-              hub: abs(hb.href, base),
-              hubKind: hubKind(hb.href),
-            });
-          }
-        } catch {
-          /* skip */
-        }
-      })()
-    );
+    const inner = m[1];
+    const idx = m.index || 0;
+    for (const a of anchors(inner).filter((x) => x.href)) {
+      const href = abs(a.href, base);
+      const near = `${lookback(post, idx)} ${a.text}`;
+      const q = qualityNear(near);
+      if (q === "Auto") continue;
+      if (/^https?:\/\//i.test(a.href) && HUBREF.test(href)) {
+        /* direct hub link (current template) - no intermediate hop */
+        out.push({
+          key: `mdrive-${q}-${i++}`,
+          blog: "MoviesDrive",
+          quality: q,
+          size: sizeNear(near) || sizes.get(q.toLowerCase()) || "",
+          source: hubLabel(href),
+          file,
+          audio,
+          hub: href,
+          hubKind: hubKind(href),
+        });
+      } else if (href.startsWith(base)) {
+        /* legacy same-blog button page -> fetch + scan */
+        const myQ = q;
+        const id = i++;
+        jobs.push(
+          (async () => {
+            try {
+              const h = await getHtml(href, 12000);
+              const seen = new Set<string>();
+              for (const hb of hubAnchors(h)) {
+                const kind = hubKind(hb.href);
+                if (seen.has(kind)) continue;
+                seen.add(kind);
+                out.push({
+                  key: `mdrive-${myQ}-${id}-${kind}`,
+                  blog: "MoviesDrive",
+                  quality: myQ,
+                  size: sizes.get(myQ.toLowerCase()) || "",
+                  source: hubLabel(hb.href),
+                  file,
+                  audio,
+                  hub: abs(hb.href, base),
+                  hubKind: kind,
+                });
+              }
+            } catch {
+              /* skip */
+            }
+          })()
+        );
+      }
+    }
   }
   await Promise.all(jobs);
   return out;
@@ -276,63 +405,71 @@ async function mdriveSeries(
   base: string, post: string, postTitle: string, s: number, e: number
 ): Promise<Row[]> {
   const audio = parseAudio(postTitle);
+  const file = strip(postTitle).replace(/^Download\s+/i, "").slice(0, 80);
   const out: Row[] = [];
   const jobs: Promise<void>[] = [];
+  let i = 0;
   for (const m of post.matchAll(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi)) {
     const inner = m[1];
+    const idx = m.index || 0;
     if (/zip/i.test(strip(inner))) continue;
-    const b = anchors(inner).find((a) => a.href);
-    if (!b) continue;
-    const before = strip(post.slice(Math.max(0, (m.index || 0) - 600), m.index || 0)).slice(-200);
-    const season = Number(/(?:season |s)(\d+)/i.exec(`${before} ${strip(inner)}`)?.[1] || 0);
+    const ctx = `${lookback(post, idx, 350)} ${strip(inner)}`;
+    const season = seasonNum(ctx) || seasonNum(postTitle);
     if (!(season === s || (season === 0 && s === 1))) continue;
-    const q = parseQuality(strip(inner));
-    jobs.push(
-      (async () => {
-        try {
-          const h = await getHtml(abs(b.href, base), 12000);
-          const hubPos: { pos: number; href: string }[] = [];
-          for (const hm of h.matchAll(
-            /<a\b[^>]*href="([^"]*(?:hubcloud|gdflix|gdlink)[^"]*)"[^>]*>/gi
-          )) {
-            hubPos.push({ pos: hm.index || 0, href: hm[1] });
-          }
-          const epMarks: { pos: number; ep: number }[] = [];
-          for (const em of h.matchAll(/Ep(\d{2})/g)) {
-            epMarks.push({ pos: em.index || 0, ep: Number(em[1]) });
-          }
-          const mine = epMarks.find((x) => x.ep === e);
-          let picked: string[] = [];
-          if (mine) {
-            const next = epMarks.filter((x) => x.pos > mine.pos).map((x) => x.pos);
-            const end = next.length ? Math.min(...next) : Infinity;
-            picked = hubPos.filter((x) => x.pos > mine.pos && x.pos < end).map((x) => x.href);
-          }
-          if (!picked.length) {
-            /* fallback: HubCloud/GDFlix-text anchors, eth one */
-            const named = anchors(h).filter(
-              (a) => a.href && /hubcloud|gdflix/i.test(a.text) && /hubcloud|gdflix|gdlink/i.test(a.href)
-            );
-            if (named[e - 1]) picked = [named[e - 1].href];
-          }
-          for (const [j, href] of picked.entries()) {
-            out.push({
-              key: `mdrive-${q}-s${s}e${e}-${j}`,
-              blog: "MoviesDrive",
-              quality: q,
-              size: "",
-              source: hubLabel(href),
-              file: strip(inner).slice(0, 90),
-              audio,
-              hub: abs(href, base),
-              hubKind: hubKind(href),
-            });
-          }
-        } catch {
-          /* skip */
-        }
-      })()
-    );
+    if (/episodes?\s*:?\s*\d|\bEp?\d{1,3}\b/i.test(ctx)) {
+      const marks = [
+        ...ctx.matchAll(/episodes?\s*:?\s*0*(\d{1,3})/gi),
+        ...ctx.matchAll(/\bEp?0*(\d{1,3})\b/gi),
+      ].map((x) => Number(x[1]));
+      if (marks.length && !marks.includes(e)) continue;
+    }
+    for (const a of anchors(inner).filter((x) => x.href)) {
+      const href = abs(a.href, base);
+      const q = qualityNear(`${ctx} ${a.text}`);
+      if (/^https?:\/\//i.test(a.href) && HUBREF.test(href)) {
+        out.push({
+          key: `mdrive-${q}-s${s}e${e}-${i++}`,
+          blog: "MoviesDrive",
+          quality: q,
+          size: "",
+          source: hubLabel(href),
+          file: `${file} E${e}`.slice(0, 90),
+          audio,
+          hub: href,
+          hubKind: hubKind(href),
+        });
+      } else if (href.startsWith(base)) {
+        const myQ = q;
+        const id = i++;
+        jobs.push(
+          (async () => {
+            try {
+              const h = await getHtml(href, 12000);
+              const mine = segmentByEp(h, hubAnchors(h), e);
+              const seen = new Set<string>();
+              for (const hb of mine) {
+                const kind = hubKind(hb.href);
+                if (seen.has(kind)) continue;
+                seen.add(kind);
+                out.push({
+                  key: `mdrive-${myQ}-s${s}e${e}-${id}-${kind}`,
+                  blog: "MoviesDrive",
+                  quality: myQ,
+                  size: "",
+                  source: hubLabel(hb.href),
+                  file: `${file} E${e}`.slice(0, 90),
+                  audio,
+                  hub: abs(hb.href, base),
+                  hubKind: kind,
+                });
+              }
+            } catch {
+              /* skip */
+            }
+          })()
+        );
+      }
+    }
   }
   await Promise.all(jobs);
   return out;

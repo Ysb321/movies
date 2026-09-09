@@ -77,11 +77,12 @@
  *    tracks with Hindi subs auto-loaded, played in the inbuilt site player
  *    (HindiSources list, own :site-nm resume namespace). Netflix-direct is
  *    verified live; NewTV Hotstar/Prime/Disney fan-out best-effort.
- *  - DesiDDL (Server 20, vlcOnly Hindi-DDL lane): VegaMovies + MoviesDrive
- *    + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix) DDL posts via
- *    /api/desiddl - search, IMDb-hit verify, hub
- *    links (V-Cloud/HubCloud/GDFlix/GDLink) cracked on tap with FSL fast
- *    links first, played in the site player (DdlSources list, own :site-dd
+ *  - DesiDDL (Server 11, no-iframe Hindi-DDL lane): VegaMovies +
+ *    MoviesDrive + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix) DDL
+ *    posts via /api/desiddl - search, IMDb-hit verify, hub
+ *    links (G-Direct/V-Cloud/HubCloud/GDFlix/GDLink) cracked on tap with
+ *    direct + FSL fast links first, played in the site player (DdlSources
+ *    list, own :site-dd
  *    resume namespace). Ported from the Megix CSX CloudStream providers.
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
@@ -403,15 +404,16 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: () => "",
   },
   {
-    /* Server 20 - DesiDDL (vlcOnly Hindi-DDL lane, no iframe - the watch
-     * page renders DdlSources instead; stubs never called). VegaMovies +
+    /* Server 11 - DesiDDL (no-iframe Hindi-DDL lane - the watch page
+     * renders DdlSources instead; stubs never called). VegaMovies +
      * MoviesDrive dual-audio posts (the Hindi blogs Server 9 doesn't
      * scrape) via our /api/desiddl routes: Typesense search, IMDb-hit
-     * verify, hub links cracked on tap (FSL fast links first). Ported
-     * from the Megix CSX providers; search.php verified live 2026-09-09
-     * (Fight Club dual-audio exact hit) - post selectors need a live
-     * check after deploy. HDMovie2 (newhdmovie2.best -> hdm.im ->
-     * GDFlix) rides the same lane (blog tag "HDMovie2"). */
+     * verify, nexdrive intermediates -> G-Direct / V-Cloud / HubCloud
+     * links cracked on tap (direct + FSL fast links first). Full chain
+     * re-verified live 2026-09-09 (Fight Club 1999 posts, Lanterns S01
+     * post, nexdrive + vcloud + hubcloud + GDFlix pages). HDMovie2
+     * (newhdmovie2.best -> hdm.im -> GDFlix) rides the same lane (blog
+     * tag "HDMovie2"). */
     id: "desiddl",
     name: "DesiDDL",
     vlcOnly: true,
