@@ -253,3 +253,16 @@ the base root / verify page with manual hops, accumulate Set-Cookie)
 and replay Referer + Cookie on every call. If 403s persist it is
 IP/ASN gating (datacenter edge) or CF clearance - unwireable edge-side,
 and the lanes stay honest-empty.
+
+## Verdict: app surfaces IP-gated from Pages (2026-09-09)
+
+Warmup changed nothing: `warm st=403 ck=0` on net77/verify2 and
+`warm:0ck` + `search http 403` on every NewTV platform. The net52/77
+app surfaces gate Cloudflare-Pages edge IPs wholesale (flat 403, zero
+cookies, both redirect modes) - IP/ASN or CF-clearance gating, not a
+header/cookie gap. Server 23 (native) and the NewTV fan-out cannot run
+from this hosting; they stay in-tree, honest-empty, behind diag. The
+net27 embed API (Server 19/22 core) is unaffected: Fight Club (550)
+returns full 360/480/720p + captions live. Spider-Man BND (969681) is
+genuinely absent (`mode:none noSource:true`, their own "couldn't find
+this title" message) - theaters-only until ~Nov 2026.
