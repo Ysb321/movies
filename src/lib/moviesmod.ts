@@ -10,12 +10,13 @@
  *    blog search (?s=) -> similarity + year match -> post page
  *    (.thecontent h4 per quality / h3 Season episode buttons) ->
  *    modrefer.in (base64 ?url=) | links/posts/episodes.modpro.blog ->
- *    driveseed.org direct (fast path) | tech.* SID dance (#landing
- *    _wp_http -> _wp_http2+token -> s_343 cookie + href -> meta
- *    refresh) -> driveseed redirect -> window.location.replace file
+ *    driveseed/driveleech direct (fast path) | unblocked* SID verify
+ *    (cloud.unblockedgames.world ?sid=, CSX bypass: #landing forms
+ *    -> ?go= token + cookie -> meta refresh; legacy s_343 dance kept
+ *    as fallback) -> redirect -> window.location.replace file
  *    page -> Instant Download (?url= keys -> POST {origin}/api,
  *    x-token=host) | Resume Worker Bot (token + /download?id=) |
- *    Direct Links (?type=1) | Resume Cloud -> workers.dev / .r2.dev /
+ *    Cloud Download | Direct (?type=1+2) | Resume Cloud -> workers / r2 /
  *    cdn.video-leech.pro CDN (video-seed.pro hop unwrapped to the
  *    video-downloads.googleusercontent.com file) -> HEAD validation.
  *
@@ -66,6 +67,8 @@ const RESULT_TTL = 4 * 3600 * 1000;
 const DOMAIN_CANDIDATES = ["https://moviesmod.zone", "https://moviesmod.build"];
 const DOMAINS_JSON =
   "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+const UTILS_JSON =
+  "https://raw.githubusercontent.com/SaurabhKaperwan/Utils/refs/heads/main/urls.json";
 
 let domainCache = { at: 0, base: "" };
 const resultCache = new Map<string, { at: number; data: MoviesModResult }>();
@@ -198,6 +201,49 @@ const jarPost = async (
   }
 };
 
+const jarPostForm = async (
+  jar: Jar,
+  url: string,
+  body: FormData,
+  headers?: Record<string, string>
+): Promise<GetOut> => {
+  const ctrl = new AbortController();
+  const killer = setTimeout(() => ctrl.abort(), T_POST);
+  try {
+    const ck = jar.header();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "User-Agent": UA, ...(ck ? { Cookie: ck } : {}), ...headers },
+      body: body as BodyInit,
+      signal: ctrl.signal,
+    });
+    jar.store(setCookiesOf(res));
+    return { status: res.status, text: await res.text().catch(() => ""), url: res.url || url };
+  } finally {
+    clearTimeout(killer);
+  }
+};
+
+/* no-follow GET -> Location header (CSX instant-link unwrap) */
+const headerLocation = async (url: string): Promise<string> => {
+  try {
+    const ctrl = new AbortController();
+    const killer = setTimeout(() => ctrl.abort(), T_GET);
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA },
+        redirect: "manual",
+        signal: ctrl.signal,
+      });
+      return res.headers.get("location") || "";
+    } finally {
+      clearTimeout(killer);
+    }
+  } catch {
+    return "";
+  }
+};
+
 /* ── tiny html utils (regex, no cheerio) ── */
 
 const decodeEntities = (s: string) =>
@@ -230,11 +276,23 @@ const anchorsIn = (html: string): Anchor[] => {
   return out;
 };
 
-const inputVal = (formHtml: string, name: string): string => {
-  let m =
-    new RegExp(`<input\\b[^>]*?\\bname="${name}"[^>]*?\\bvalue="([^"]*)"`, "i").exec(formHtml) ||
-    new RegExp(`<input\\b[^>]*?\\bvalue="([^"]*)"[^>]*?\\bname="${name}"`, "i").exec(formHtml);
-  return m ? decodeEntities(m[1]) : "";
+const allInputs = (formInner: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  const re = /<input\b[^>]*?>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(formInner)) !== null) {
+    const nm = /name="([^"]*)"/i.exec(m[0]);
+    if (!nm || !nm[1]) continue;
+    const vl = /value="([^"]*)"/i.exec(m[0]);
+    out[nm[1]] = vl ? decodeEntities(vl[1]) : "";
+  }
+  return out;
+};
+
+const toParams = (o: Record<string, string>): URLSearchParams => {
+  const p = new URLSearchParams();
+  for (const k of Object.keys(o)) p.append(k, o[k]);
+  return p;
 };
 
 const formById = (html: string, id: string): { action: string; inner: string } | null => {
@@ -273,6 +331,20 @@ const b64ToUtf8 = (s: string): string => {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(bytes);
+};
+
+/* blog buttons sometimes hide the target in ?url=<base64> (CSX flow) */
+const unb64Href = (href: string): string => {
+  if (href.includes("modrefer.in")) return href;
+  const i = href.indexOf("url=");
+  if (i < 0) return href;
+  const b64 = href.slice(i + 4).split("&")[0].split("#")[0];
+  if (!b64 || b64.length > 4000) return href;
+  try {
+    const dec = b64ToUtf8(b64);
+    if (/^https?:\/\//i.test(dec) && dec.length < 2000) return dec;
+  } catch {}
+  return href;
 };
 
 /* Dice bigram similarity (string-similarity replacement, ~20 lines) */
@@ -463,13 +535,15 @@ async function extractDownloadLinks(postUrl: string, d: string[]): Promise<Quali
     const block = r.text.slice(h.end, i + 1 < heads.length ? heads[i + 1].start : h.end + 20000);
     if (h.tag === "h3" && h.text.toLowerCase().includes("season")) {
       for (const a of anchorsIn(block)) {
-        if (!/maxbutton-(episode-links|batch-zip)/i.test(a.tag)) continue;
+        if (!/maxbutton-(episode-links|batch-zip|g-drive|af-download)/i.test(a.tag)) continue;
         if (/batch/i.test(a.text)) continue;
-        links.push({ quality: `${h.text} - ${a.text}`, url: a.href });
+        links.push({ quality: `${h.text} - ${a.text}`, url: unb64Href(a.href) });
       }
     } else if (h.tag === "h4") {
-      const a = anchorsIn(block).find((x) => /modrefer\.in|links\.modpro\.blog|posts\.modpro\.blog/i.test(x.href));
-      if (a) links.push({ quality: extractQuality(h.text), url: a.href });
+      const hit = anchorsIn(block)
+        .map((x) => unb64Href(x.href))
+        .find((h) => /modrefer\.in|modpro\.blog|unblocked|driveseed|driveleech/i.test(h));
+      if (hit) links.push({ quality: extractQuality(h.text), url: hit });
     }
   });
   d.push(`post: ${links.length} quality-links`);
@@ -478,12 +552,13 @@ async function extractDownloadLinks(postUrl: string, d: string[]): Promise<Quali
 
 type ServerLink = { server: string; url: string };
 
-const SID_HOSTS = ["tech.unblockedgames.world", "tech.creativeexpressionsblog.com", "tech.examzculture.in"];
+/* SID verifiers: any unblocked* host (tech.* legacy, cloud.* current) */
+const isSidUrl = (u: string) => u.includes("unblocked");
+
+const fastScore = (u: string) => (u.includes("driveseed") || u.includes("driveleech") ? 0 : 1);
 
 const sortFastFirst = (links: ServerLink[]): ServerLink[] =>
-  links
-    .slice(0, 6)
-    .sort((a, b) => (a.url.includes("driveseed.org") ? 0 : 1) - (b.url.includes("driveseed.org") ? 0 : 1));
+  links.slice(0, 6).sort((a, b) => fastScore(a.url) - fastScore(b.url));
 
 async function resolveIntermediate(
   initialUrl: string,
@@ -526,19 +601,22 @@ async function resolveIntermediate(
     if (host.includes("cinematickit.org")) {
       const r = await httpGet(initialUrl, { Referer: refererUrl });
       const all = anchorsIn(r.text);
-      let found = all.filter((a) => a.href.includes("driveseed.org") && a.text && !/batch/i.test(a.text));
+      let found = all.filter(
+        (a) => /driveseed|driveleech|unblocked/i.test(a.href) && a.text && !/batch/i.test(a.text)
+      );
       if (!found.length) found = all.filter((a) => /modrefer\.in|dramadrip\.com/i.test(a.href) && a.text);
       return sortFastFirst(found.map((a) => ({ server: a.text, url: a.href })));
     }
-    if (/^(episodes|links|posts)\.modpro\.blog$/i.test(host) || host.endsWith(".modpro.blog")) {
+    if (host.endsWith(".modpro.blog")) {
       const r = await httpGet(initialUrl, { Referer: refererUrl });
-      const sidPat = SID_HOSTS.map(escapeRegExp).join("|");
       const found = anchorsIn(r.text).filter(
         (a) =>
-          new RegExp(`driveseed\\.org|${sidPat}`, "i").test(a.href) &&
+          /driveseed|driveleech|unblocked/i.test(a.href) &&
           a.text &&
           !/batch|comment/i.test(a.text)
       );
+      /* CSX picks a.maxbutton-1 / a.maxbutton-5 first (sort is stable) */
+      found.sort((a, b) => (/maxbutton-[15]/i.test(a.tag) ? 0 : 1) - (/maxbutton-[15]/i.test(b.tag) ? 0 : 1));
       return sortFastFirst(found.map((a) => ({ server: a.text, url: a.href })));
     }
     if (host.includes("modrefer.in")) {
@@ -554,8 +632,7 @@ async function resolveIntermediate(
       const sec = /<div[^>]*timed-content-client_show_0_5_0[^>]*>([\s\S]*?)<\/div>/i.exec(r.text);
       let pool = sec ? anchorsIn(sec[1]) : [];
       if (!pool.length) {
-        const sidPat = SID_HOSTS.map(escapeRegExp).join("|");
-        pool = anchorsIn(r.text).filter((a) => new RegExp(`driveseed\\.org|${sidPat}|modpro\\.blog`, "i").test(a.href));
+        pool = anchorsIn(r.text).filter((a) => /driveseed|driveleech|unblocked|modpro\.blog/i.test(a.href));
       }
       return sortFastFirst(pool.filter((a) => a.href).map((a) => ({ server: a.text || "link", url: a.href })));
     }
@@ -567,32 +644,38 @@ async function resolveIntermediate(
   }
 }
 
-/* tech.* SID dance -> driveleech/driveseed redirect url */
+/* unblocked* SID verify -> driveleech/driveseed redirect url (CSX bypass
+ * port: #landing forms -> ?go= token + cookie -> meta refresh; the
+ * legacy s_343 dance is kept as fallback for old verifier pages) */
 async function resolveSid(sidUrl: string): Promise<string | null> {
   try {
     const origin = new URL(sidUrl).origin;
     const jar = new Jar();
     const s0 = await jarGet(jar, sidUrl);
     const f0 = formById(s0.text, "landing");
-    const w1 = f0 ? inputVal(f0.inner, "_wp_http") : "";
-    if (!f0 || !w1 || !f0.action) return null;
-    const a0 = new URL(f0.action, s0.url).href;
-    const s1 = await jarPost(jar, a0, new URLSearchParams({ _wp_http: w1 }), { Referer: sidUrl });
+    if (!f0 || !f0.action) return null;
+    const in0 = allInputs(f0.inner);
+    if (!Object.keys(in0).length) return null;
+    const s1 = await jarPost(jar, new URL(f0.action, s0.url).href, toParams(in0), { Referer: s0.url });
     const f1 = formById(s1.text, "landing");
     if (!f1 || !f1.action) return null;
-    const a1 = new URL(f1.action, s1.url).href;
-    const s2 = await jarPost(
-      jar,
-      a1,
-      new URLSearchParams({ _wp_http2: inputVal(f1.inner, "_wp_http2"), token: inputVal(f1.inner, "token") }),
-      { Referer: s1.url }
-    );
+    const in1 = allInputs(f1.inner);
+    const s2 = await jarPost(jar, new URL(f1.action, s1.url).href, toParams(in1), { Referer: s1.url });
+    /* current finish: ?go=<token>, cookie named = token holds _wp_http2 */
+    const goScript = scriptsWith(s2.text, "?go=").find((s) => /\?go=([^"'\s&]+)/.test(s));
+    const goM = goScript ? /\?go=([^"'\s&]+)/.exec(goScript) : null;
+    if (goM && goM[1]) {
+      jar.set(goM[1], in1["_wp_http2"] || "");
+      const s3 = await jarGet(jar, `${origin}?go=${goM[1]}`, { Referer: s2.url });
+      const meta = metaRefreshUrl(s3.text);
+      if (meta) return new URL(meta, origin).href;
+    }
+    /* legacy finish: s_343 cookie + c.setAttribute href page */
     const cM = /s_343\('([^']+)',\s*'([^']+)'/.exec(s2.text);
     const lM = /c\.setAttribute\("href",\s*"([^"]+)"\)/.exec(s2.text);
     if (!cM || !lM) return null;
     jar.set(cM[1].trim(), cM[2].trim());
-    const finalUrl = new URL(lM[1].trim(), origin).href;
-    const s3 = await jarGet(jar, finalUrl, { Referer: s2.url });
+    const s3 = await jarGet(jar, new URL(lM[1].trim(), origin).href, { Referer: s2.url });
     const meta = metaRefreshUrl(s3.text);
     if (!meta) return null;
     return new URL(meta, origin).href;
@@ -671,24 +754,43 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
   };
   const byText = (rx: RegExp) => all.find((a) => rx.test(a.text));
 
-  /* 1. Instant Download */
+  /* 1. Cloud Download (direct href) */
+  const cloud = byText(/Cloud Download/i);
+  if (cloud?.href && /^https?:/i.test(cloud.href)) {
+    const hit = await firstValid([cloud.href]);
+    if (hit) return hit;
+  }
+  /* 2. Instant Download: CSX 302 unwrap first, /api POST fallback */
   const instant = byText(/Instant Download/i);
   if (instant?.href) {
     if (isDirectCdn(instant.href)) {
       const hit = await firstValid([fixWorkerUrl(instant.href)]);
       if (hit) return hit;
     } else {
+      try {
+        const loc = await headerLocation(new URL(instant.href, origin).href);
+        if (loc) {
+          let unwrapped = loc.includes("?url=") ? loc.slice(loc.indexOf("?url=") + 5) : loc;
+          try {
+            if (unwrapped.includes("%")) unwrapped = decodeURIComponent(unwrapped);
+          } catch {}
+          const abs = /^https?:/i.test(unwrapped) ? unwrapped : new URL(unwrapped, origin).href;
+          const hit = await firstValid([abs]);
+          if (hit) return hit;
+        }
+      } catch {}
       const via = await apiKeysToUrl(instant.href, origin);
       const hit = await firstValid([via]);
       if (hit) return hit;
     }
   }
-  /* 2. Resume Worker Bot */
+  /* 3. Resume Worker Bot (jar keeps PHPSESSID for the token POST) */
   const worker = byText(/Resume Worker Bot/i);
   if (worker?.href) {
     try {
       const workerUrl = new URL(worker.href, origin).href;
-      const r = await httpGet(workerUrl);
+      const wjar = new Jar();
+      const r = await jarGet(wjar, workerUrl);
       const target = scriptsWith(r.text, "formData.append('token'").find(
         (s) => /formData\.append\('token', '([^']+)'\)/.test(s) && /fetch\('\/download\?id=([^']+)',/.test(s)
       );
@@ -698,9 +800,11 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
         if (token && id) {
           const fd = new FormData();
           fd.append("token", token);
-          const api = await httpPost(`${new URL(workerUrl).origin}/download?id=${id}`, fd, {
+          const wOrigin = new URL(workerUrl).origin;
+          const api = await jarPostForm(wjar, `${wOrigin}/download?id=${id}`, fd, {
             "x-requested-with": "XMLHttpRequest",
             Referer: workerUrl,
+            Origin: wOrigin,
           });
           try {
             const j = JSON.parse(api.text) as { url?: string };
@@ -711,19 +815,28 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
       }
     } catch {}
   }
-  /* 3. Direct Links (?type=1) */
+  /* 4. Direct Links (?type=1+2, all .btn-success) */
   const direct = byText(/Direct Links/i);
   if (direct?.href) {
     try {
       const cf = new URL(direct.href, origin);
-      const withType = `${cf.href}${cf.search ? "&" : "?"}type=1`;
-      const r = await httpGet(withType);
-      const btns = anchorsIn(r.text).filter((a) => /btn-success/i.test(a.tag) && /^https?:/i.test(a.href));
-      const hit = await firstValid(btns.map((a) => a.href));
+      const pages = await Promise.all(
+        ["1", "2"].map(async (t) => {
+          try {
+            const r = await httpGet(`${cf.href}${cf.search ? "&" : "?"}type=${t}`);
+            return anchorsIn(r.text)
+              .filter((a) => /btn-success/i.test(a.tag) && /^https?:/i.test(a.href))
+              .map((a) => a.href);
+          } catch {
+            return [] as string[];
+          }
+        })
+      );
+      const hit = await firstValid(pages.flat());
       if (hit) return hit;
     } catch {}
   }
-  /* 4. Resume Cloud */
+  /* 5. Resume Cloud */
   const resume = byText(/Resume Cloud|Cloud Resume Download/i);
   if (resume?.href) {
     const directHttp = /^https?:/i.test(resume.href) && isDirectCdn(resume.href);
@@ -739,7 +852,7 @@ async function extractFinalDownload(html: string, pageUrl: string): Promise<stri
       } catch {}
     }
   }
-  /* 5. last resort: plausible direct links on the page */
+  /* 6. last resort: plausible direct links on the page */
   const scan = all.find((a) => /workers\.dev|workerseed|driveleech\.net\/d\/|driveseed\.org\/d\//i.test(a.href));
   return firstValid([scan ? scan.href : null]);
 }
@@ -817,7 +930,7 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
       const dsJobs = servers.map(async (s): Promise<DriveseedHit | null> => {
         try {
           let cur = s.url;
-          if (SID_HOSTS.some((h) => cur.includes(h))) {
+          if (isSidUrl(cur)) {
             const sid = await resolveSid(cur);
             if (!sid) return null;
             cur = sid;

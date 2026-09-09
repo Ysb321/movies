@@ -43,6 +43,36 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
 (Hindmovie + meowtv consensus). TV series use the same lane with
   a per-season details redirect + episode picker (ported defensively).
 
+## Shipped this round: MoviesMod (Server 13)
+
+- Upstream: MoviesMod WP DDL blog, official domain
+  `moviesmod.zone` (verified alive 2026-09-09, fresh Sep 2026
+  Hindi-dubbed posts; `.army` parked, `.build` dead, `.gd` is an
+  unrelated English streaming clone). Dual Audio {Hindi-English} /
+  Multi Audio WEB-DL + BluRay, 480p-2160p, movies + series + Hindi
+  Series / K-Drama / Anime.
+- Chain: `?s=` search -> Dice-similarity + year match (Hindi-ish
+  posts preferred) -> post h4/h3 links -> modrefer.in (base64) /
+  modpro.blog -> driveleech/driveseed direct or unblocked* SID
+  verify -> file page (Size/Name) -> Cloud/Instant/Worker/Direct/
+  Resume final CDN (302 ?url= unwrap, worker token POST, ?type=1+2,
+  video-seed.pro GDrive unwrap) -> HEAD validation.
+- Code: `src/lib/moviesmod.ts` (edge-safe: native fetch + regex,
+  manual cookie jar, driveseed-first, parallel + partial results,
+  in-memory 4h cache) + route, rendered by HindiSources
+  (`resumeSuffix=site-mm`). Structure from NuvioStreamsAddon
+  `moviesmod` provider (Feb 2026, instance sunset); SID finish
+  (`?go=` token + cookie, legacy s_343 fallback) + file-page
+  finish re-ported from the maintained CSX `bypass`/Driveleech
+  (SaurabhKaperwan/CSX) after the Sep 2026 move to
+  `cloud.unblockedgames.world/?sid=`. Blog buttons decode base64
+  `url=`; domains from TVVVV + CSX-Utils lists (+ zone/build).
+- Every stage appends to `diag`; fatal stages throw `mm: <stage>`
+  laneErrors. Fix 2026-09-09 ("intermediates dead" on The Runner
+  2026): modpro pages had dropped driveseed/tech.* links for
+  cloud-SID links (token is an encrypted blob - the verify dance
+  is mandatory, no shortcut).
+
 ## Live sources for future ports (ranked)
 
 1. **Hindmovie SkyStream repo** (likhithkrishna1103-tech/Hindmovie,
