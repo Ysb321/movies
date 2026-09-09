@@ -128,6 +128,20 @@ const absUrl = (href: string, base: string): string | null => {
   }
 };
 
+/* anchors whose OPEN TAG matches cls (attribute-order agnostic:
+ * class-before-href regexes silently miss href-first markup) */
+function anchorsWithClass(html: string, cls: RegExp): { href: string; text: string }[] {
+  const out: { href: string; text: string }[] = [];
+  for (const m of html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const open = m[0].slice(0, m[0].indexOf(">") + 1);
+    if (!cls.test(open)) continue;
+    const href = /href="([^"]+)"/i.exec(open)?.[1];
+    if (!href) continue;
+    out.push({ href, text: strip(m[1]).slice(0, 120) });
+  }
+  return out;
+}
+
 const hostOf = (url: string): string => {
   try {
     return new URL(url).hostname.toLowerCase();
@@ -286,10 +300,9 @@ async function extractHubCloud(
     const quality = qualityOf(header);
     const bytes = sizeBytes(size);
     const btns: Btn[] = [];
-    for (const m of r.text.matchAll(/<a\b[^>]*class="[^"]*btn[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-      const t = strip(m[2]);
-      if (/telegram/i.test(t) || /telegram/i.test(m[1])) continue;
-      btns.push({ href: m[1], text: t });
+    for (const a of anchorsWithClass(r.text, /class="[^"]*btn/i)) {
+      if (/telegram/i.test(a.text) || /telegram/i.test(a.href)) continue;
+      btns.push({ href: a.href, text: a.text });
       if (btns.length >= 8) break;
     }
     const rank = (b: Btn): number => {
@@ -363,7 +376,7 @@ async function resolveFinal(
   if (h.includes("hubdrive")) {
     try {
       const r = await httpGet(url, { Referer: referer });
-      const href = /<a\b[^>]*class="[^"]*btn-success1[^"]*"[^>]*href="([^"]+)"/i.exec(r.text)?.[1];
+      const href = anchorsWithClass(r.text, /btn-success1/i)[0]?.href;
       const abs = href ? absUrl(href, url) : null;
       return abs ? resolveFinal(abs, url, tag, note, depth + 1) : [];
     } catch {
@@ -456,11 +469,16 @@ async function resolveXD(args: NuvioArgs, d: string[], note: (s: string) => void
   d.push("xd:match:tmdb");
   const lang = /hindi|dubbed|dual/i.test(`${matched.title || ""} ${matched.name || ""} ${title}`) ? "Hindi" : "";
   let html = "";
+  d.push(`xd:path:${(matched.path || "").slice(0, 60)}`);
   try {
     const r = await httpGet(`${base}${matched.path}`, { ...XD_HEADERS, Referer: `${base}/` });
-    if (r.status < 200 || r.status >= 400) return [];
+    if (r.status < 200 || r.status >= 400) {
+      d.push(`xd:page:http${r.status}`);
+      return [];
+    }
     html = r.text;
-  } catch {
+  } catch (e) {
+    d.push(`xd:page:err:${(e instanceof Error ? e.message : "?").slice(0, 30)}`);
     return [];
   }
   const raws: string[] = [];
@@ -578,8 +596,8 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
   const finals: string[] = [];
   if (kind === "movie") {
     const btns: string[] = [];
-    for (const m of post.matchAll(/<a\b[^>]*class="[^"]*maxbutton[^"]*"[^>]*href="([^"]+)"[^>]*>/gi)) {
-      const abs = absUrl(m[1], postUrl);
+    for (const a of anchorsWithClass(post, /class="[^"]*maxbutton/i)) {
+      const abs = absUrl(a.href, postUrl);
       if (abs) btns.push(abs);
       if (btns.length >= 2) break;
     }
@@ -601,13 +619,14 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
         } catch {}
       })
     );
+    d.push(`hmz:linkpages:${linkPages.length}`);
     await Promise.all(
       linkPages.slice(0, 2).map(async (lp) => {
         try {
           const r = await httpGet(lp, { ...HMZ_HEADERS, Referer: postUrl });
           if (r.status < 200 || r.status >= 400) return;
-          for (const m of r.text.matchAll(/<a\b[^>]*class="[^"]*\bbtn\b[^"]*"[^>]*href="(https?[^"]+)"[^>]*>/gi)) {
-            finals.push(m[1]);
+          for (const a of anchorsWithClass(r.text, /class="[^"]*\bbtn\b/i)) {
+            if (/^https?:/i.test(a.href)) finals.push(a.href);
             if (finals.length >= 4) break;
           }
         } catch {}
@@ -631,8 +650,8 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
       }
       const r2 = await httpGet(epAbs, { ...HMZ_HEADERS, Referer: postUrl });
       if (r2.status < 200 || r2.status >= 400) return [];
-      for (const m of r2.text.matchAll(/<a\b[^>]*class="[^"]*\bbtn\b[^"]*"[^>]*href="(https?[^"]+)"[^>]*>/gi)) {
-        finals.push(m[1]);
+      for (const a of anchorsWithClass(r2.text, /class="[^"]*\bbtn\b/i)) {
+        if (/^https?:/i.test(a.href)) finals.push(a.href);
         if (finals.length >= 3) break;
       }
       d.push(`hmz:ep:btns:${finals.length}`);
@@ -640,6 +659,7 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
       return [];
     }
   }
+  d.push(`hmz:finals:${finals.length}`);
   const jobs = finals.slice(0, 4).map(async (f): Promise<NuvioStream[]> => {
     try {
       const rows = await resolveFinal(f, postUrl, "HMZ", note);
@@ -658,7 +678,7 @@ export async function resolveNuvio(args: NuvioArgs): Promise<NuvioResult> {
   const d: string[] = [`nv: "${title.slice(0, 60)}" ${kind}`];
   const notes: string[] = [];
   const note = (s: string) => {
-    if (notes.length < 14) notes.push(s);
+    if (notes.length < 18) notes.push(s);
   };
   const cacheKey = `nv:${kind}:${tmdbId}:${season}:${episode}`;
   const cached = resultCache.get(cacheKey);
