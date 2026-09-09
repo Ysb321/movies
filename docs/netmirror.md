@@ -242,3 +242,14 @@ status/content-type/location/set-cookie-count for each - Cloudflare
 edge header behavior for manual redirects is the prime suspect when
 `t_hash_t` comes back empty. net27's own verdict for absent titles:
 `mode:"none", noSource:true, error:"We couldn't find this title..."`.
+
+## 403s from edge IPs + warmup fix (2026-09-09)
+
+Live diag: NewTV discovery works (`base:ok@mobiledetects.com`) but
+`search.php` answers **403** bare, and `verify.php` POST 403s bare too
+(`st=403 ct=text/html sc=0`, both redirect modes). The reference client
+always carries ambient cookies, so both routes now warm up first (walk
+the base root / verify page with manual hops, accumulate Set-Cookie)
+and replay Referer + Cookie on every call. If 403s persist it is
+IP/ASN gating (datacenter edge) or CF clearance - unwireable edge-side,
+and the lanes stay honest-empty.

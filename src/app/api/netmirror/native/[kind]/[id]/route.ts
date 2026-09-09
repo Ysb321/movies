@@ -59,9 +59,56 @@ const guessLang = (file: string, label: string, code: string): string => {
 /* the verify trick: /verify2 accepts ANY random string as the recaptcha
  * response and sets t_hash_t (~15h). No redirects: the cookie arrives
  * on the 302 itself. */
+/* warmup: GET the verify page first (manual hops, accumulating cookies)
+ * and replay them on the trick POST - bare POSTs 403 from edge IPs */
+async function warmVerify(): Promise<{ jar: string; d: string }> {
+  try {
+    let url = "https://net77.cc/verify2";
+    const jar: string[] = [];
+    let st = 0;
+    for (let hop = 0; hop < 3; hop++) {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA, Accept: "text/html,*/*" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
+      });
+      st = res.status;
+      const getter = (
+        res.headers as unknown as { getSetCookie?: () => string[] }
+      ).getSetCookie;
+      const raw: string[] =
+        typeof getter === "function"
+          ? getter.call(res.headers)
+          : [res.headers.get("set-cookie") || ""];
+      for (const c of raw) {
+        const pair = (c || "").split(";")[0].trim();
+        if (!pair.includes("=")) continue;
+        const k = pair.split("=")[0];
+        const i = jar.findIndex((x) => x.split("=")[0] === k);
+        if (i >= 0) jar[i] = pair;
+        else jar.push(pair);
+      }
+      await res.arrayBuffer().catch(() => null);
+      const loc = res.headers.get("location");
+      if (st >= 300 && st < 400 && loc) {
+        url = new URL(loc, url).toString();
+        continue;
+      }
+      break;
+    }
+    return { jar: jar.join("; "), d: `warm st=${st} ck=${jar.length}` };
+  } catch (err) {
+    return {
+      jar: "",
+      d: `warm EXC ${(err instanceof Error ? err.message : "err").slice(0, 50)}`,
+    };
+  }
+}
+
 async function fetchHashT(): Promise<{ v: string; diag: string }> {
   const attempt = async (
-    redirect: RequestRedirect
+    redirect: RequestRedirect,
+    jar: string
   ): Promise<{ v: string; d: string }> => {
     try {
       const res = await fetch(`${MAIN}/verify.php`, {
@@ -72,6 +119,8 @@ async function fetchHashT(): Promise<{ v: string; diag: string }> {
           Referer: "https://net77.cc/verify2",
           "User-Agent": UA,
           Accept: "text/html,*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+          ...(jar ? { Cookie: jar } : {}),
         },
         body: `g-recaptcha-response=${encodeURIComponent(crypto.randomUUID())}`,
         redirect,
@@ -108,10 +157,11 @@ async function fetchHashT(): Promise<{ v: string; diag: string }> {
   };
   /* manual first (cookie arrives on the 302 itself); follow as fallback
    * in case the edge runtime mangles manual-redirect headers */
-  const a = await attempt("manual");
-  if (a.v) return { v: a.v, diag: a.d };
-  const b = await attempt("follow");
-  return { v: b.v, diag: `${a.d} | ${b.d}` };
+  const w = await warmVerify();
+  const a = await attempt("manual", w.jar);
+  if (a.v) return { v: a.v, diag: `${w.d} | ${a.d}` };
+  const b = await attempt("follow", w.jar);
+  return { v: b.v, diag: `${w.d} | ${a.d} | ${b.d}` };
 }
 
 async function jget(url: string, jar: string, referer: string): Promise<any> {

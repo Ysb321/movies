@@ -132,7 +132,56 @@ async function fetchDirect(
   throw new Error(last || "direct failed");
 }
 
-const newTvHeaders = (ott: string, extra: Record<string, string> = {}) => ({
+const jarCookies = (h: Headers): string[] => {
+  const getter = (h as unknown as { getSetCookie?: () => string[] }).getSetCookie;
+  const raw: string[] =
+    typeof getter === "function" ? getter.call(h) : [h.get("set-cookie") || ""];
+  return raw
+    .map((c) => (c || "").split(";")[0].trim())
+    .filter((c) => c.includes("="));
+};
+
+/* warmup: walk the api base root (manual hops, accumulating cookies) so
+ * search/post/player carry the session a browser would. The backend
+ * 403s bare NewTV calls from edge IPs; the reference client always has
+ * ambient cookies, so we mint our own. Cached per isolate. */
+let newTvJar = "";
+async function warmNewTv(api: string, notes?: string[]): Promise<string> {
+  if (newTvJar) return newTvJar;
+  try {
+    let url = `${api}/`;
+    const jar: string[] = [];
+    for (let hop = 0; hop < 3; hop++) {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA, Accept: "text/html,*/*" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000),
+      });
+      for (const c of jarCookies(res.headers)) {
+        const k = c.split("=")[0];
+        const i = jar.findIndex((x) => x.split("=")[0] === k);
+        if (i >= 0) jar[i] = c;
+        else jar.push(c);
+      }
+      await res.arrayBuffer().catch(() => null);
+      const loc = res.headers.get("location");
+      if (res.status >= 300 && res.status < 400 && loc) {
+        url = new URL(loc, url).toString();
+        continue;
+      }
+      break;
+    }
+    newTvJar = jar.join("; ");
+    notes?.push(`warm:${jar.length}ck`);
+  } catch (err) {
+    notes?.push(
+      `warm:EXC ${err instanceof Error ? err.message.slice(0, 40) : "err"}`
+    );
+  }
+  return newTvJar;
+}
+
+const newTvHeaders = (ott: string, extra: Record<string, string> = {}, base = "", jar = "") => ({
   "Cache-Control": "no-cache, no-store, must-revalidate",
   Pragma: "no-cache",
   Expires: "0",
@@ -141,6 +190,8 @@ const newTvHeaders = (ott: string, extra: Record<string, string> = {}) => ({
   Ott: ott,
   "User-Agent": UA,
   "Accept-Language": "en-IN,en;q=0.9,hi;q=0.7",
+  ...(base ? { Referer: `${base}/` } : {}),
+  ...(jar ? { Cookie: jar } : {}),
   ...extra,
 });
 
@@ -191,8 +242,9 @@ async function fetchPlatform(
   try {
     const ott = OTT[platform];
     const api = await resolveNewTv(notes);
+    const jar = await warmNewTv(api, notes);
     const searchRes = await fetch(`${api}/newtv/search.php?s=${encodeURIComponent(title)}`, {
-      headers: newTvHeaders(ott),
+      headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, api, jar),
       signal: AbortSignal.timeout(12000),
     });
     if (!searchRes.ok) {
@@ -206,7 +258,7 @@ async function fetchPlatform(
       return [];
     }
     const postRes = await fetch(`${api}/newtv/post.php?id=${encodeURIComponent(first.id)}`, {
-      headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }),
+      headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, api, jar),
       signal: AbortSignal.timeout(12000),
     });
     if (!postRes.ok) {
@@ -229,7 +281,7 @@ async function fetchPlatform(
       if (post.nextPageShow === 1 && seasonId) {
         try {
           const p2 = await fetch(`${api}/newtv/episodes.php?id=${encodeURIComponent(seasonId)}&page=2`, {
-            headers: newTvHeaders(ott),
+            headers: newTvHeaders(ott, {}, api, jar),
             signal: AbortSignal.timeout(12000),
           });
           const p2j = await p2.json();
@@ -254,7 +306,7 @@ async function fetchPlatform(
       targetId = post.main_id || first.id;
     }
     const playRes = await fetch(`${api}/newtv/player.php?id=${encodeURIComponent(targetId)}`, {
-      headers: newTvHeaders(ott, { Usertoken: "" }),
+      headers: newTvHeaders(ott, { Usertoken: "" }, api, jar),
       signal: AbortSignal.timeout(12000),
     });
     if (!playRes.ok) {
