@@ -59,20 +59,23 @@ const guessLang = (file: string, label: string, code: string): string => {
 /* the verify trick: /verify2 accepts ANY random string as the recaptcha
  * response and sets t_hash_t (~15h). No redirects: the cookie arrives
  * on the 302 itself. */
-/* warmup: GET the verify page first (manual hops, accumulating cookies)
- * and replay them on the trick POST - bare POSTs 403 from edge IPs */
-async function warmVerify(): Promise<{ jar: string; d: string }> {
-  try {
-    let url = "https://net77.cc/verify2";
-    const jar: string[] = [];
-    let st = 0;
-    for (let hop = 0; hop < 3; hop++) {
-      const res = await fetch(url, {
-        headers: { "User-Agent": UA, Accept: "text/html,*/*" },
-        redirect: "manual",
-        signal: AbortSignal.timeout(10000),
+/* harvest-first session: checknewtv.php answers 200 from our edge (the
+ * verify page 403s) - if it plants t_hash_t (or any session the mobile
+ * surface accepts), the whole native flow unlocks verify-free */
+const HARVEST_HOSTS = [
+  "https://mobiledetects.com",
+  "https://mobidetcts.top",
+  "https://mobiledetects.top",
+  "https://mobidetect.click",
+];
+async function harvestSession(): Promise<{ jar: string; names: string; hashT: string }> {
+  const jar: string[] = [];
+  for (const host of HARVEST_HOSTS) {
+    try {
+      const res = await fetch(`${host}/checknewtv.php`, {
+        headers: { "User-Agent": UA, Accept: "application/json,*/*" },
+        signal: AbortSignal.timeout(8000),
       });
-      st = res.status;
       const getter = (
         res.headers as unknown as { getSetCookie?: () => string[] }
       ).getSetCookie;
@@ -89,23 +92,19 @@ async function warmVerify(): Promise<{ jar: string; d: string }> {
         else jar.push(pair);
       }
       await res.arrayBuffer().catch(() => null);
-      const loc = res.headers.get("location");
-      if (st >= 300 && st < 400 && loc) {
-        url = new URL(loc, url).toString();
-        continue;
-      }
-      break;
+    } catch {
+      /* next host */
     }
-    return { jar: jar.join("; "), d: `warm st=${st} ck=${jar.length}` };
-  } catch (err) {
-    return {
-      jar: "",
-      d: `warm EXC ${(err instanceof Error ? err.message : "err").slice(0, 50)}`,
-    };
   }
+  const hashT = (/t_hash_t=([^;]+)/i.exec(jar.join("; ")) || [])[1] || "";
+  const names = jar.map((c) => c.split("=")[0]).join(",");
+  const full = [...jar];
+  if (!full.some((c) => c.startsWith("hd="))) full.push("hd=on");
+  if (!full.some((c) => c.startsWith("ott="))) full.push("ott=nf");
+  return { jar: full.join("; "), names, hashT };
 }
 
-async function fetchHashT(): Promise<{ v: string; diag: string }> {
+async function fetchHashT(): Promise<{ v: string; diag: string; jar: string }> {
   const attempt = async (
     redirect: RequestRedirect,
     jar: string
@@ -157,11 +156,20 @@ async function fetchHashT(): Promise<{ v: string; diag: string }> {
   };
   /* manual first (cookie arrives on the 302 itself); follow as fallback
    * in case the edge runtime mangles manual-redirect headers */
-  const w = await warmVerify();
-  const a = await attempt("manual", w.jar);
-  if (a.v) return { v: a.v, diag: `${w.d} | ${a.d}` };
-  const b = await attempt("follow", w.jar);
-  return { v: b.v, diag: `${w.d} | ${a.d} | ${b.d}` };
+  const h = await harvestSession();
+  const pre = `harvest:ck=${h.names || "none"}`;
+  if (h.hashT) return { v: h.hashT, diag: `${pre} (hit)`, jar: h.jar };
+  const a = await attempt("manual", h.jar);
+  if (a.v)
+    return { v: a.v, diag: `${pre} | ${a.d}`, jar: `t_hash_t=${a.v}; hd=on; ott=nf` };
+  const b = await attempt("follow", h.jar);
+  if (b.v)
+    return {
+      v: b.v,
+      diag: `${pre} | ${a.d} | ${b.d}`,
+      jar: `t_hash_t=${b.v}; hd=on; ott=nf`,
+    };
+  return { v: "", diag: `${pre} | ${a.d} | ${b.d}`, jar: h.jar };
 }
 
 async function jget(url: string, jar: string, referer: string): Promise<any> {
@@ -209,15 +217,20 @@ export async function GET(
   const s = series ? Number(parts[1]) : 1;
   const e = series ? Number(parts[2]) : 1;
   try {
-    const { v: hashT, diag: hashDiag } = await fetchHashT();
-    if (!hashT) throw new Error(`verify trick failed (${hashDiag})`);
-    const jar = `t_hash_t=${hashT}; hd=on; ott=nf`;
+    const { diag: hashDiag, jar } = await fetchHashT();
+    /* proceed with whatever session exists - a hashT-less jar still gets
+     * one attempt; refused stages throw with the session diag attached */
+    if (!jar) throw new Error(`verify trick failed (${hashDiag})`);
     await sleep(1200);
     const search = await jget(
       `${MAIN}/mobile/search.php?s=${encodeURIComponent(title)}&t=${unix()}`,
       jar,
       `${MAIN}/home`
     );
+    /* sessionless search degrades to Top Searches - never resolve a title
+     * against that (wrong-movie rows); fail loudly instead */
+    if (search && search.head === "Top Searches")
+      throw new Error(`search refused (top-searches fallback) [${hashDiag}]`);
     const results: Array<{ id?: string; t?: string }> = Array.isArray(
       search?.searchResult
     )
@@ -239,6 +252,8 @@ export async function GET(
       jar,
       `${MAIN}/home`
     );
+    if (post && typeof post.error === "string" && post.error)
+      throw new Error(`post refused (${post.error.slice(0, 60)}) [${hashDiag}]`);
     const postTitle: string =
       typeof post?.title === "string" && post.title ? post.title : title;
     let targetId: string = first.id;

@@ -274,3 +274,23 @@ NetMirror Direct/Playlists 21-22 are gone from the UI. Server 10 keeps
 the default skin (the nm ArtPlayer variant, the /api/netmirror/native
 lane and the /api/netmirror/hls proxy stay in-tree, unused, ready to
 restore). This file's history above stays as the record.
+
+## Site recon: where the embed comes from (2026-09-09)
+
+Full scrape: netmirror.center is a React SPA (Vite bundle
+index-a4f9aaa1.js, ~22 chunks, mostly vendor - not worth mining
+blind). SSR shells only; player loads via JS. The site HAS titles
+net27 lacks (Spider-Man BND [Hindi] trends on the homepage) while
+their movie/969681 page 500s for datacenter clients - so the site's
+embed is NOT (only) net27. Evidence points at the NATIVE flow
+(play.php -> playlist.php pv/hls HLS + subscdn subs): the mobile
+catalog shape matches the site (Hindi dubs + Hollywood), and the
+user-captured playlist sample is that exact format. Mobile search
+works bare but degrades to Top Searches; post.php answers bare with
+`Invalid User` - session is mandatory past search. Unlock attempt:
+multi-base NewTV search (gating may differ per backend host),
+checknewtv cookie harvest (+mobidetect.click discovery domain from
+the app RE report), static hd/ott cookies, and refusal guards that
+fail loudly instead of resolving wrong titles. netmirror.app is only
+an APK landing page (no API); net22/net20 serve nothing; urlscan
+results + OTX passive_dns are auth-walled.

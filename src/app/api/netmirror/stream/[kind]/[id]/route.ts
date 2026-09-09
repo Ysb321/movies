@@ -142,46 +142,7 @@ const jarCookies = (h: Headers): string[] => {
     .filter((c) => c.includes("="));
 };
 
-/* warmup: walk the api base root (manual hops, accumulating cookies) so
- * search/post/player carry the session a browser would. The backend
- * 403s bare NewTV calls from edge IPs; the reference client always has
- * ambient cookies, so we mint our own. Cached per isolate. */
-let newTvJar = "";
-async function warmNewTv(api: string, notes?: string[]): Promise<string> {
-  if (newTvJar) return newTvJar;
-  try {
-    let url = `${api}/`;
-    const jar: string[] = [];
-    for (let hop = 0; hop < 3; hop++) {
-      const res = await fetch(url, {
-        headers: { "User-Agent": UA, Accept: "text/html,*/*" },
-        redirect: "manual",
-        signal: AbortSignal.timeout(8000),
-      });
-      for (const c of jarCookies(res.headers)) {
-        const k = c.split("=")[0];
-        const i = jar.findIndex((x) => x.split("=")[0] === k);
-        if (i >= 0) jar[i] = c;
-        else jar.push(c);
-      }
-      await res.arrayBuffer().catch(() => null);
-      const loc = res.headers.get("location");
-      if (res.status >= 300 && res.status < 400 && loc) {
-        url = new URL(loc, url).toString();
-        continue;
-      }
-      break;
-    }
-    newTvJar = jar.join("; ");
-    notes?.push(`warm:${jar.length}ck`);
-  } catch (err) {
-    notes?.push(
-      `warm:EXC ${err instanceof Error ? err.message.slice(0, 40) : "err"}`
-    );
-  }
-  return newTvJar;
-}
-
+let newTvJar = ""; /* checknewtv harvest, set by discovery */
 const newTvHeaders = (ott: string, extra: Record<string, string> = {}, base = "", jar = "") => ({
   "Cache-Control": "no-cache, no-store, must-revalidate",
   Pragma: "no-cache",
@@ -269,17 +230,29 @@ async function fetchPlatform(
 ): Promise<NmStream[]> {
   try {
     const ott = OTT[platform];
-    const api = await resolveNewTv(notes);
-    const jar = await warmNewTv(api, notes);
-    const searchRes = await fetch(`${api}/newtv/search.php?s=${encodeURIComponent(title)}`, {
-      headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, api, jar),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!searchRes.ok) {
-      notes.push(`${platform}: search http ${searchRes.status}`);
-      return [];
+    const bases = await discoverNewTv(notes);
+    const jar = [newTvJar, "hd=on", "ott=nf"].filter(Boolean).join("; ");
+    let api = bases[0];
+    /* per-base loop: gating may differ by backend host */
+    let search: any = null;
+    for (const b of bases) {
+      api = b;
+      const searchRes = await fetch(`${b}/newtv/search.php?s=${encodeURIComponent(title)}`, {
+        headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, b, jar),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (searchRes.status === 403) {
+        notes.push(`${platform}: ${shortHost(b)} 403`);
+        continue;
+      }
+      if (!searchRes.ok) {
+        notes.push(`${platform}: search http ${searchRes.status}`);
+        return [];
+      }
+      search = await searchRes.json();
+      break;
     }
-    const search = await searchRes.json();
+    if (!search) return [];
     const first = search && Array.isArray(search.searchResult) ? search.searchResult[0] : null;
     if (!first || !first.id) {
       notes.push(`${platform}: no search results`);
