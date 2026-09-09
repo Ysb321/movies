@@ -21,6 +21,8 @@ type Props = {
   title: string;
   season: number;
   episode: number;
+  /** SitePlayer skin - "netmirror" renders their ArtPlayer config */
+  playerVariant?: "netmirror";
 };
 
 type Status = "loading" | "ready" | "empty" | "error";
@@ -57,7 +59,7 @@ const platformHint = () =>
  * link generation needed, so taps play instantly. Subtitle tracks ride
  * along (Hindi auto-loads). Resume key is namespaced (:site-nm) so it
  * never collides with Server 9's (:site) - different encodes. */
-export default function HindiSources({ type, tmdbId, title, season, episode }: Props) {
+export default function HindiSources({ type, tmdbId, title, season, episode, playerVariant }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<NmRow[]>([]);
   const [captions, setCaptions] = useState<NmCaption[]>([]);
@@ -312,6 +314,7 @@ export default function HindiSources({ type, tmdbId, title, season, episode }: P
           <SitePlayer
             key={`${player.mountId}-${isHlsFile(player.url) ? "h" : "p"}`}
             mountId={player.mountId}
+            variant={playerVariant}
             url={player.url}
             title={player.filename}
             sources={rows.map((r) => ({

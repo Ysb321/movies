@@ -30,6 +30,10 @@ type Props = {
   onVlc?: () => void;
   onDownload?: () => void;
   onReport?: () => void;
+  /** "netmirror": NetMirror's own ArtPlayer config (light-blue theme,
+   *  in-player quality selector, mini progress bar, no source-panel
+   *  button) for the NetMirror lanes */
+  variant?: "netmirror";
 };
 
 /* Inbuilt site player (ArtPlayer - the same engine family as Multiverse's
@@ -40,7 +44,11 @@ type Props = {
  * resume seeks once after mount. Browser-codec limits still apply
  * (HEVC/Dolby need real VLC) - failures surface via onError and the VLC
  * control stays one tap away. The Hindi lane passes subtitle tracks -
- * Hindi auto-loads first (ArtPlayer's own settings toggle them). */
+ * Hindi auto-loads first (ArtPlayer's own settings toggle them).
+ * variant="netmirror": NetMirror's own player config - #b7daff theme,
+ * volume 0.7, mini progress bar, in-player quality selector (their
+ * quality_new control shape) wired into onPickSource, no pip/lock/
+ * screenshot extras, no source-panel button. */
 export default function SitePlayer({
   mountId,
   url,
@@ -55,6 +63,7 @@ export default function SitePlayer({
   onVlc,
   onDownload,
   onReport,
+  variant,
 }: Props) {
   const host = useRef<HTMLDivElement | null>(null);
   const artRef = useRef<any>(null);
@@ -66,6 +75,12 @@ export default function SitePlayer({
    * remount never plays stale props) */
   const mountVals = useRef({ url, title, startAt, subs: subtitles });
   mountVals.current = { url, title, startAt, subs: subtitles };
+  /* live mirrors for the mount-frozen quality selector */
+  const live = useRef({ key: currentKey, label: "Auto", busy: false });
+  live.current.key = currentKey;
+  live.current.label =
+    sources.find((s) => s.key === currentKey)?.quality || sources[0]?.quality || "Auto";
+  const qualItems = sources.map((s) => ({ html: s.quality || "Auto", key: s.key }));
   const [panel, setPanel] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [pickFail, setPickFail] = useState(false);
@@ -85,6 +100,7 @@ export default function SitePlayer({
           subs.find((s) => s.lang.toLowerCase().startsWith("en")) ||
           subs[0];
         const isHls = /\.m3u8(\?|#|$)/i.test(init.url);
+        const VARIANT = variant || "default";
         const art = new Artplayer({
           container: host.current,
           url: init.url,
@@ -114,20 +130,48 @@ export default function SitePlayer({
               }
             : {}),
           title: init.title,
-          theme: "#e50914",
-          volume: 0.8,
+          theme: VARIANT === "netmirror" ? "#b7daff" : "#e50914",
+          volume: VARIANT === "netmirror" ? 0.7 : 0.8,
           autoplay: true,
           muted: false,
           playsInline: true,
-          pip: true,
+          miniProgressBar: VARIANT === "netmirror",
+          pip: VARIANT !== "netmirror",
           fullscreen: true,
-          lock: true,
+          lock: VARIANT !== "netmirror",
           playbackRate: true,
           aspectRatio: true,
           flip: true,
           hotkey: true,
-          screenshot: true,
+          screenshot: VARIANT !== "netmirror",
           controls: [
+            ...(VARIANT === "netmirror"
+              ? [
+                  {
+                    name: "quality_new",
+                    position: "right",
+                    html: live.current.label,
+                    selector: qualItems,
+                    onSelect: (item: any) => {
+                      try {
+                        const k = item && (item as any).key;
+                        if (k && k !== live.current.key && !live.current.busy) {
+                          live.current.busy = true;
+                          Promise.resolve(cbs.current.onPickSource(k))
+                            .catch(() => {})
+                            .finally(() => {
+                              live.current.busy = false;
+                            });
+                        }
+                      } catch {}
+                      /* truth label, never optimistic: the hop effect
+                       * below rewrites it on success, so a failed hop
+                       * can never desync it */
+                      return live.current.label;
+                    },
+                  },
+                ]
+              : []),
             {
               name: "vlc",
               position: "right",
@@ -142,20 +186,25 @@ export default function SitePlayer({
               tooltip: "Download",
               click: () => cbs.current.onDownload?.(),
             },
-            {
-              name: "sources",
-              position: "right",
-              html: "☰",
-              tooltip: "Select source",
-              click: () => {
-                /* the panel lives outside the art container, so it can't
-                 * show over fullscreen - drop out first, then open */
-                try {
-                  art.fullscreen = false;
-                } catch {}
-                setPanel((p) => !p);
-              },
-            },
+            ...(VARIANT === "netmirror"
+              ? []
+              : [
+                  {
+                    name: "sources",
+                    position: "right",
+                    html: "☰",
+                    tooltip: "Select source",
+                    click: () => {
+                      /* the panel lives outside the art container, so it
+                       * can't show over fullscreen - drop out first,
+                       * then open */
+                      try {
+                        art.fullscreen = false;
+                      } catch {}
+                      setPanel((p) => !p);
+                    },
+                  },
+                ]),
             {
               name: "report",
               position: "right",
@@ -208,7 +257,9 @@ export default function SitePlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mountId]);
 
-  /* source hops: seamless url swap (position resets - different encode) */
+  /* source hops: seamless url swap (position resets - different encode).
+   * nm variant: the in-player quality label follows truth here (no-op
+   * when the control doesn't exist, so the default variant is safe). */
   useEffect(() => {
     const art = artRef.current;
     if (art && url && url !== appliedUrl.current) {
@@ -220,7 +271,19 @@ export default function SitePlayer({
         art.title = title;
       } catch {}
     }
-  }, [url, title]);
+    try {
+      const el = host.current?.querySelector(
+        ".art-control-quality_new .art-selector-value"
+      );
+      if (el) {
+        const q =
+          sources.find((s) => s.key === currentKey)?.quality ||
+          sources[0]?.quality ||
+          "";
+        if (q) el.textContent = q;
+      }
+    } catch {}
+  }, [url, title, currentKey, sources]);
 
   const pick = async (key: string) => {
     if (key === currentKey || connecting) {

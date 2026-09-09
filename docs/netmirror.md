@@ -111,3 +111,19 @@ provider. Bonus intel from the captured DOM: a sibling frontend
 TMDB-keyed -> not wireable) plays the same CDN streams fine from a
 third-party origin — further evidence our-origin direct mp4 playback
 should pass their CDN guard.
+
+## Their ArtPlayer on Server 22 (2026-09-09)
+
+Per the user's ask ("i want with their art player"), the `netembed`
+lane renders NetMirror's own player config: `SitePlayer`
+`variant="netmirror"` (Server 19 keeps the default Multiverse-style
+skin). Matched from the user's captured DOM of their player
+(ArtPlayer 5.4.0): `--art-theme: #b7daff`, volume 0.7, mini progress
+bar, in-player `quality_new` selector (480P/1080P-style items from the
+API streams) wired into the existing `onPickSource` hop flow (VLC /
+Download / resume stay consistent; the label follows truth in the hop
+effect, never optimistic, so failed hops can't desync it), no
+pip/lock/screenshot extras, no source-panel button. Rate/aspect/flip +
+subtitle toggle stay in the settings cog as on theirs. Not cloned:
+their Play-on-TV + ratio-toggle customs, rewind/forward touch layers,
+subtitle upload items (our lane ships real caption tracks instead).

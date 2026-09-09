@@ -320,6 +320,7 @@ function WatchContent() {
                 title={title}
                 season={season}
                 episode={episode}
+                playerVariant={provider.id === "netembed" ? "netmirror" : undefined}
               />
             ) : provider.id === "desiddl" ? (
               <DdlSources
