@@ -59,6 +59,10 @@
  *    location canonicalizer vs the proxy pathname = infinite reload
  *    loop), so it now shares the proven API lane. Full site player one
  *    tap away via the "NetMirror" deep-link button (new tab, no XFO).
+ *  - NetMirror Playlists (Server 23, vlcOnly): the native playlist lane
+ *    (/api/netmirror/native -> HindiSources, nm skin, :site-nmn resume):
+ *    HLS sources + caption tracks via the verify trick + play.php /
+ *    playlist.php. Alternate encodes when the mp4 lane is thin.
  *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
  *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
  *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
@@ -544,6 +548,20 @@ export const PROVIDERS: EmbedProvider[] = [
      * it now shares the proven API lane. The ?embed=1 deep link lives in
      * HindiSources ("NetMirror" button -> full site player in a new tab,
      * where X-Frame-Options can't bite). */
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    id: "netnative",
+    name: "NetMirror Playlists",
+    /* Server 23 - NetMirror Playlists (vlcOnly, no iframe - the watch page
+     * renders HindiSources against /api/netmirror/native; stubs never
+     * called). The NATIVE playlist lane: verify-trick cookie -> mobile
+     * search/post -> play.php h-token -> playlist.php HLS sources +
+     * subtitle tracks (the extension authors' secondary flow; their
+     * primary NewTV + net27 fallback are our Server 19 lane). HLS plays
+     * via hls.js; own :site-nmn resume namespace (different encodes). */
     vlcOnly: true,
     movie: () => "",
     tv: () => "",

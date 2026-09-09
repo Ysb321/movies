@@ -153,3 +153,51 @@ different rows, covered by server/quality switching when present; (2)
 position resets on server/quality hops (different encodes, same as the
 default variant); (3) no Play-on-TV / ratio-toggle customs (NetMirror's
 own extras, not Cineverse's).
+
+## Whole backend map (extension source, 2026-09-09)
+
+Deep scrape for the "whole embed player" ask. Sources: `Sushan64/
+NetMirror-Extension` (`NetflixMirrorProvider.kt` 19KB + `Utils.kt`,
+CloudStream-style; Disney/HotStar/Prime providers mirror the NewTV
+flow), `Inside4ndroid/TMDB-Embed-API` `providers/netmirror.js` (fully
+mined), raw `net27.cc/api/embed-tmdb/550` probe, r/StremioAddons +
+r/AndroidTVApps (no API intel; NET20.CC named as a 2025 mirror).
+Nivio (Flutter app) skipped: no netmirror client in lib/providers, and
+the extension already gives the full playback flow. CONCLUSION: the
+`?embed=1` site is a thin frontend over these same backends — there is
+no separate site API to wire. Their page itself stays unwireable (XFO
+direct, reload-loop crash proxied).
+
+Three-tier playback cascade (extension order):
+
+1. **NewTV API** (primary): discover base via `mobiledetect{s,}.*` /
+   `checknewtv.php` -> `token_hash`, then `newtv/player.php?id=` with
+   `Ott` + `X-Requested-With: NetmirrorNewTV v1.0` -> `video_link`
+   (**M3U8**!) + `referer`. Our Server 19 lane. NOTE the extension
+   throttles this fan-out (1200ms gaps — bursts trip Too Many
+   Requests): mirrored in our route.
+2. **Native playlist flow**: `POST net77.cc/play.php` (form `id`, XHR +
+   Origin/Referer net77, cookies) -> `{h}` token; `GET net52.cc/
+   playlist.php?id=&t=&tm=&h=` -> `{sources:[{file,label,type}],
+   tracks:[{kind,file,label,language}]}` (array-or-object!). Quality
+   labels include Full/Mid/Low HD. Relative sub files resolve against
+   **`subscdn.top`** (new subtitle CDN). Our Server 23 lane.
+3. **net27 embed-tmdb fallback**: exact shape we already consume, plus
+   `noSource`/`error` ("still being added") — now surfaced.
+
+Cookie/auth findings: mobile surface (`/mobile/search|post|
+episodes.php`) rides `t_hash_t` (+`hd=on`, `ott=nf`). `t_hash_t` comes
+from a TRIVIAL verify trick — `POST net52.cc/verify.php` with
+`g-recaptcha-response=<random UUID>`, Referer `net77.cc/verify2`, no
+redirects, harvest `t_hash_t` from Set-Cookie (~15h). No JS needed, so
+it runs edge-side. The extension also opportunistically collects
+`cf_clearance`/`user_token`/`t_hash_p` via page warmup (needs their
+WebView; we don't) and its video interceptor pins Referer per link
+(`videodownloader.site` for net27, `net77.cc/home` native) + Origin +
+cookies on net52/net77/net22/net27 hosts. Our blind spots: we can't set
+playback Referer from browsers, and if they start validating the
+recaptcha or gating playlist.php on clearance, Server 23 empties
+honestly (laneError) while 19/22 stand. Discovery list is now 24
+domains (added the 9 `mobidetcts.*` variants from the extension).
+net52 does NOT serve `/api/embed-tmdb` (Apache 404) — app/playlist host
+only. Poster CDN observed: `imgcdn.kim/poster/v/$id.jpg` (Referer-gated).

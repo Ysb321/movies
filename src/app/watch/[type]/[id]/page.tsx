@@ -312,15 +312,25 @@ function WatchContent() {
               </p>
             </div>
           ) : provider.vlcOnly ? (
-            (provider.id === "netmirror" || provider.id === "netembed") ? (
+            (provider.id === "netmirror" ||
+            provider.id === "netembed" ||
+            provider.id === "netnative") ? (
               <HindiSources
-                key={`nm-${t}-${id}-${season}-${episode}`}
+                key={`nm-${t}-${id}-${season}-${episode}-${provider.id}`}
                 type={t}
                 tmdbId={String(id)}
                 title={title}
                 season={season}
                 episode={episode}
-                playerVariant={provider.id === "netembed" ? "netmirror" : undefined}
+                playerVariant={provider.id === "netmirror" ? undefined : "netmirror"}
+                endpoint={provider.id === "netnative" ? "/api/netmirror/native" : undefined}
+                laneTitle={provider.id === "netnative" ? "🎞 NetMirror HLS" : undefined}
+                resumeSuffix={provider.id === "netnative" ? "site-nmn" : undefined}
+                emptyHint={
+                  provider.id === "netnative"
+                    ? "The playlist flow came up empty — the title may be missing there, or the verify trick got patched. Servers 19/22 still work."
+                    : undefined
+                }
               />
             ) : provider.id === "desiddl" ? (
               <DdlSources

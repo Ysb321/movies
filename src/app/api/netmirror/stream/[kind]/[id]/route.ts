@@ -40,6 +40,15 @@ const NEW_TV_DOMAINS_B64 = [
   "aHR0cHM6Ly9tb2JpZGV0ZWN0LnZpcA==",
   "aHR0cHM6Ly9tb2JpZGV0ZWN0Lndpa2k=",
   "aHR0cHM6Ly9tb2JpZGV0ZWN0Lnh5eg==",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5hcnQ=",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5jYw==",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5pbmZv",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5pbms=",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5saWl2ZQ==",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5wcm8=",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5zdG9yZQ==",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy50b3A=",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0cy54eXo=",
 ];
 
 const OTT: Record<string, string> = { netflix: "nf", primevideo: "pv", hotstar: "hs", disney: "hs" };
@@ -63,7 +72,7 @@ const okSeriesId = (id: string) => /^\d+:\d+:\d+$/.test(id);
 async function fetchDirect(
   tmdb: string,
   series: { s: number; e: number } | null
-): Promise<{ title: string; streams: NmStream[]; captions: NmCaption[] }> {
+): Promise<{ title: string; streams: NmStream[]; captions: NmCaption[]; noSource: boolean }> {
   const url = series
     ? `${BASE}/api/embed-tmdb/${tmdb}?type=tv&se=${series.s}&ep=${series.e}`
     : `${BASE}/api/embed-tmdb/${tmdb}`;
@@ -79,7 +88,8 @@ async function fetchDirect(
         continue; /* transient 502s seen - retry once */
       }
       const data = await res.json();
-      if (!data || data.ok !== true) return { title: "", streams: [], captions: [] };
+      if (!data || data.ok !== true)
+        return { title: "", streams: [], captions: [], noSource: !!data && data.noSource === true };
       const streams: NmStream[] = Array.isArray(data.streams)
         ? data.streams
             .filter((s: { url?: string }) => s && s.url)
@@ -109,7 +119,12 @@ async function fetchDirect(
               };
             })
         : [];
-      return { title: typeof data.title === "string" ? data.title : "", streams, captions };
+      return {
+        title: typeof data.title === "string" ? data.title : "",
+        streams,
+        captions,
+        noSource: data.noSource === true,
+      };
     } catch (e) {
       last = e instanceof Error ? e.message : "unreachable";
     }
@@ -132,8 +147,9 @@ const newTvHeaders = (ott: string, extra: Record<string, string> = {}) => ({
 async function resolveNewTv(): Promise<string> {
   if (newTvApi) return newTvApi;
   for (const b64 of NEW_TV_DOMAINS_B64) {
-    const domain = atob(b64);
+    let domain = "";
     try {
+      domain = atob(b64);
       const res = await fetch(`${domain}/checknewtv.php`, {
         headers: newTvHeaders("nf"),
         signal: AbortSignal.timeout(6000),
@@ -239,15 +255,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
     let extra: NmStream[] = [];
     if (title) {
       const wanted = PLATFORMS.filter((p) => p !== "netflix" || direct.streams.length === 0);
-      const settled = await Promise.all(
-        wanted.map((p) => fetchPlatform(p, title, series ? "series" : "movie", s, e))
-      );
-      extra = settled.flat();
+      /* serialized with 1.2s gaps: the proven NetMirror clients throttle
+       * this fan-out (bursts trip the backend's Too Many Requests block) */
+      for (const [i, p] of wanted.entries()) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+        extra.push(...(await fetchPlatform(p, title, series ? "series" : "movie", s, e)));
+      }
     }
     /* Netflix-direct first (verified lane), then Hotstar/Prime/Disney */
     const streams = [...direct.streams, ...extra];
     return NextResponse.json(
-      { title: direct.title || title, streams, captions: direct.captions },
+      {
+        title: direct.title || title,
+        streams,
+        captions: direct.captions,
+        noSource: direct.noSource,
+      },
       { headers: { "cache-control": "no-store" } }
     );
   } catch (e) {

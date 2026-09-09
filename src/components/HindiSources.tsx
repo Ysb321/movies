@@ -23,6 +23,14 @@ type Props = {
   episode: number;
   /** SitePlayer skin - "netmirror" renders their ArtPlayer config */
   playerVariant?: "netmirror";
+  /** stream endpoint root (default /api/netmirror/stream) */
+  endpoint?: string;
+  /** sources header label (default Hindi sources) */
+  laneTitle?: string;
+  /** resume namespace suffix (default site-nm - different encodes!) */
+  resumeSuffix?: string;
+  /** empty-state hint override */
+  emptyHint?: string;
 };
 
 type Status = "loading" | "ready" | "empty" | "error";
@@ -59,11 +67,23 @@ const platformHint = () =>
  * link generation needed, so taps play instantly. Subtitle tracks ride
  * along (Hindi auto-loads). Resume key is namespaced (:site-nm) so it
  * never collides with Server 9's (:site) - different encodes. */
-export default function HindiSources({ type, tmdbId, title, season, episode, playerVariant }: Props) {
+export default function HindiSources({
+  type,
+  tmdbId,
+  title,
+  season,
+  episode,
+  playerVariant,
+  endpoint,
+  laneTitle,
+  resumeSuffix,
+  emptyHint,
+}: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<NmRow[]>([]);
   const [captions, setCaptions] = useState<NmCaption[]>([]);
   const [error, setError] = useState("");
+  const [adding, setAdding] = useState(false);
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [sent, setSent] = useState<Record<string, boolean>>({});
@@ -85,7 +105,7 @@ export default function HindiSources({ type, tmdbId, title, season, episode, pla
   const [isPcWeb] = useState(() => !isDesktopVlc() && !isAndroid() && !isIOS());
   const [isPhone] = useState(() => isAndroid() || isIOS());
 
-  const siteKey = `${resumeKeyFor(type, tmdbId, season, episode)}:site-nm`;
+  const siteKey = `${resumeKeyFor(type, tmdbId, season, episode)}:${resumeSuffix || "site-nm"}`;
 
   useEffect(() => {
     alive.current = true;
@@ -93,6 +113,7 @@ export default function HindiSources({ type, tmdbId, title, season, episode, pla
     setRows([]);
     setCaptions([]);
     setError("");
+    setAdding(false);
     setTick(0);
     const ctrl = new AbortController();
     const killer = setTimeout(() => ctrl.abort(new Error("timeout")), 90000);
@@ -102,12 +123,19 @@ export default function HindiSources({ type, tmdbId, title, season, episode, pla
         const kind = type === "movie" ? "movie" : "series";
         const id = type === "movie" ? tmdbId : `${tmdbId}:${season}:${episode}`;
         const res = await fetch(
-          `/api/netmirror/stream/${kind}/${id}?title=${encodeURIComponent(title)}`,
+          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}`,
           { signal: ctrl.signal }
         );
         if (!alive.current) return;
         if (!res.ok) throw new Error(`netmirror ${res.status}`);
         const body = await res.json();
+        if (typeof body.laneError === "string" && body.laneError) {
+          if (!alive.current) return;
+          setError(body.laneError.slice(0, 160));
+          setStatus("error");
+          return;
+        }
+        setAdding(body.noSource === true);
         const streams = Array.isArray(body.streams) ? body.streams : [];
         const caps: NmCaption[] = Array.isArray(body.captions) ? body.captions : [];
         const label = typeof body.title === "string" && body.title ? body.title : title;
@@ -349,7 +377,7 @@ export default function HindiSources({ type, tmdbId, title, season, episode, pla
   return (
     <div className="relative flex h-full flex-col bg-black">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-        <span className="text-[13px] font-bold">🇮🇳 Hindi sources</span>
+        <span className="text-[13px] font-bold">{laneTitle || "🇮🇳 Hindi sources"}</span>
         <a
           href={
             type === "movie"
@@ -425,10 +453,16 @@ export default function HindiSources({ type, tmdbId, title, season, episode, pla
         {status === "empty" && (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <span className="text-3xl">📼</span>
-            <p className="text-[13px] font-bold">No Hindi sources for this title yet</p>
+            <p className="text-[13px] font-bold">
+              {adding
+                ? "Still being added — check back soon"
+                : laneTitle
+                  ? "No sources for this title yet"
+                  : "No Hindi sources for this title yet"}
+            </p>
             <p className="max-w-xs text-[11.5px] text-neutral-400">
-              Only OTT titles (Netflix / Hotstar / Prime / Disney) land here — try a Server above,
-              or check back later.
+              {emptyHint ||
+                "Only OTT titles (Netflix / Hotstar / Prime / Disney) land here — try a Server above, or check back later."}
             </p>
           </div>
         )}
