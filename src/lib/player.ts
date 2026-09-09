@@ -600,27 +600,3 @@ export const fmtTime = (s: number) => {
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
-  } catch {
-      return null;
-    }
-  }
-  if (!data || typeof data !== "object") return null;
-  const parsed = scan(data);
-  return parsed.time !== undefined ? (parsed as PlayerTime) : null;
-}
-
-export const fmtTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
-ull;
-  const parsed = scan(data);
-  return parsed.time !== undefined ? (parsed as PlayerTime) : null;
-}
-
-export const fmtTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
