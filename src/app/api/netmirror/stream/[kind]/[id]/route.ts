@@ -49,6 +49,7 @@ const NEW_TV_DOMAINS_B64 = [
   "aHR0cHM6Ly9tb2JpZGV0ZWN0cy5zdG9yZQ==",
   "aHR0cHM6Ly9tb2JpZGV0ZWN0cy50b3A=",
   "aHR0cHM6Ly9tb2JpZGV0ZWN0cy54eXo=",
+  "aHR0cHM6Ly9tb2JpZGV0ZWN0LmNsaWNr",
 ];
 
 const OTT: Record<string, string> = { netflix: "nf", primevideo: "pv", hotstar: "hs", disney: "hs" };
@@ -60,7 +61,7 @@ const LABEL: Record<string, string> = {
   disney: "Disney+",
 };
 
-let newTvApi = ""; /* resolved per isolate */
+let newTvBases: string[] = []; /* all discovered bases, per isolate */
 
 type NmStream = { quality: string; size?: number; url: string; platform: string };
 type NmCaption = { lang: string; name: string; url: string };
@@ -195,34 +196,61 @@ const newTvHeaders = (ott: string, extra: Record<string, string> = {}, base = ""
   ...extra,
 });
 
-async function resolveNewTv(notes?: string[]): Promise<string> {
-  if (newTvApi) {
-    notes?.push("base:cached");
-    return newTvApi;
+const shortHost = (u: string): string => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return "?";
   }
+};
+
+/* discovery: collect up to 3 distinct bases (gating may differ per
+ * backend host) + harvest every Set-Cookie checknewtv plants - the
+ * verify wall 403s our edge, but this endpoint answers 200 */
+async function discoverNewTv(notes?: string[]): Promise<string[]> {
+  if (newTvBases.length > 0) {
+    notes?.push(`base:cached(${newTvBases.length})`);
+    return newTvBases;
+  }
+  const bases: string[] = [];
+  const jar: string[] = [];
   let tried = 0;
   let lastErr = "";
   for (const b64 of NEW_TV_DOMAINS_B64) {
+    if (bases.length >= 3) break;
     let domain = "";
     try {
       tried++;
       domain = atob(b64);
       const res = await fetch(`${domain}/checknewtv.php`, {
         headers: newTvHeaders("nf"),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(5000),
       });
+      for (const c of jarCookies(res.headers)) {
+        const k = c.split("=")[0];
+        const i = jar.findIndex((x) => x.split("=")[0] === k);
+        if (i >= 0) jar[i] = c;
+        else jar.push(c);
+      }
       const data = await res.json();
       if (data && data.token_hash) {
-        newTvApi = atob(data.token_hash).replace(/\/$/, "");
-        notes?.push(`base:ok@${domain.replace("https://", "")}`);
-        return newTvApi;
+        const base = atob(data.token_hash).replace(/\/$/, "");
+        if (base && !bases.includes(base)) bases.push(base);
+      } else {
+        lastErr = `http ${res.status} no-token`;
       }
-      lastErr = `http ${res.status} no-token`;
     } catch (err) {
       lastErr = err instanceof Error ? err.message.slice(0, 40) : "err";
     }
   }
-  throw new Error(`newtv discovery failed (${tried} domains, last: ${lastErr})`);
+  if (bases.length === 0)
+    throw new Error(`newtv discovery failed (${tried} domains, last: ${lastErr})`);
+  newTvBases = bases;
+  newTvJar = jar.join("; ");
+  notes?.push(
+    `bases:${bases.map(shortHost).join("+")} jar:${jar.map((c) => c.split("=")[0]).join(",") || "none"}`
+  );
+  return bases;
 }
 
 const num = (v: unknown): number | null => {
