@@ -127,3 +127,29 @@ pip/lock/screenshot extras, no source-panel button. Rate/aspect/flip +
 subtitle toggle stay in the settings cog as on theirs. Not cloned:
 their Play-on-TV + ratio-toggle customs, rewind/forward touch layers,
 subtitle upload items (our lane ships real caption tracks instead).
+
+## Cineverse-complete player (2026-09-09)
+
+Per the user's ask, Server 22's player now mirrors the Cineverse
+player's full feature set (`cineverse.modiplay.xyz/embed/{slug}`:
+server list StreamHG/EarnVids/SeekStreaming/Player4Me/RPMShare/
+UpnShare/StreamP2P + multi-audio + EN/HI/... subs + download), powered
+by NetMirror streams. `SitePlayer variant="netmirror"` control row:
+**servers** (distinct API platforms, keeps quality when possible),
+**quality_new** (distinct qualities, keeps server when possible),
+**subtitles** (OFF + every caption track via
+`art.subtitle.switch(url, {type:'srt',...})`, verified against the
+pinned artplayer@5.4.0 types at unpkg), VLC / download / report,
+settings cog (rate/aspect/flip/sub-toggle). API findings that shaped
+the code (types: `subtitle.switch(url, option?) => Promise`,
+`subtitle.show` settable, `notice.show = msg`, custom-control
+`selector`/`onSelect(selector, el, event) => void`): onSelect's return
+is IGNORED, so all labels sync explicitly through
+`syncSelectorLabels()` (truth-following; failed hops revert). Honest
+exceptions to "exact": (1) true multi-audio track switching inside one
+file is impossible in browsers (no API for embedded-mp4 audio tracks)
+and our API ships no separate audio streams — different dubs arrive as
+different rows, covered by server/quality switching when present; (2)
+position resets on server/quality hops (different encodes, same as the
+default variant); (3) no Play-on-TV / ratio-toggle customs (NetMirror's
+own extras, not Cineverse's).

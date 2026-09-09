@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { XIcon } from "@/components/Icons";
 
 export type SourceMini = {
@@ -48,7 +48,11 @@ type Props = {
  * variant="netmirror": NetMirror's own player config - #b7daff theme,
  * volume 0.7, mini progress bar, in-player quality selector (their
  * quality_new control shape) wired into onPickSource, no pip/lock/
- * screenshot extras, no source-panel button. */
+ * screenshot extras, no source-panel button. Server + subtitle
+ * selectors (Cineverse-complete): servers switch platform keeping
+ * quality when possible; subtitles switch caption tracks via
+ * art.subtitle.switch (OFF hides). onSelect returns void per the 5.4.0
+ * types, so labels sync explicitly via syncSelectorLabels. */
 export default function SitePlayer({
   mountId,
   url,
@@ -75,12 +79,41 @@ export default function SitePlayer({
    * remount never plays stale props) */
   const mountVals = useRef({ url, title, startAt, subs: subtitles });
   mountVals.current = { url, title, startAt, subs: subtitles };
-  /* live mirrors for the mount-frozen quality selector */
-  const live = useRef({ key: currentKey, label: "Auto", busy: false });
-  live.current.key = currentKey;
-  live.current.label =
-    sources.find((s) => s.key === currentKey)?.quality || sources[0]?.quality || "Auto";
-  const qualItems = sources.map((s) => ({ html: s.quality || "Auto", key: s.key }));
+  /* live mirrors for the mount-frozen selector controls (nm variant) */
+  const live = useRef({ key: currentKey, server: "", quality: "Auto", sub: "OFF", busy: false });
+  {
+    const cur = sources.find((s) => s.key === currentKey) || sources[0];
+    live.current.key = currentKey;
+    live.current.server = cur?.source || "";
+    live.current.quality = cur?.quality || "Auto";
+  }
+  const sourcesRef = useRef(sources);
+  sourcesRef.current = sources;
+  const serverItems = Array.from(new Set(sources.map((s) => s.source || "Server"))).map(
+    (sv) => ({ html: sv, server: sv })
+  );
+  const qualItems = Array.from(new Set(sources.map((s) => s.quality || "Auto"))).map((q) => ({
+    html: q,
+    quality: q,
+  }));
+  const subItems = (subtitles || []).map((s) => ({
+    html: s.name || s.lang || "CC",
+    url: s.url,
+  }));
+  /* explicit label sync: onSelect returns void per the 5.4.0 types
+   * (ArtPlayer ignores any return), so labels follow truth here - a
+   * no-op for controls that don't exist, safe for both variants */
+  const syncSelectorLabels = useCallback(() => {
+    try {
+      const set = (name: string, val: string) => {
+        const el = host.current?.querySelector(`.art-control-${name} .art-selector-value`);
+        if (el && val) el.textContent = val;
+      };
+      set("servers", live.current.server);
+      set("quality_new", live.current.quality);
+      set("subtitles", live.current.sub);
+    } catch {}
+  }, []);
   const [panel, setPanel] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [pickFail, setPickFail] = useState(false);
@@ -101,6 +134,24 @@ export default function SitePlayer({
           subs[0];
         const isHls = /\.m3u8(\?|#|$)/i.test(init.url);
         const VARIANT = variant || "default";
+        const SUB_OPTS = {
+          type: "srt",
+          encoding: "utf-8",
+          style: { color: "#ffffff", "font-size": "20px" },
+        };
+        if (defSub) live.current.sub = defSub.name || defSub.lang || "CC";
+        const hopToRow = (rowKey: string | undefined) => {
+          if (!rowKey || rowKey === live.current.key || live.current.busy) return;
+          live.current.busy = true;
+          Promise.resolve(cbs.current.onPickSource(rowKey))
+            .then((file) => {
+              if (!file) syncSelectorLabels();
+            })
+            .catch(() => syncSelectorLabels())
+            .finally(() => {
+              live.current.busy = false;
+            });
+        };
         const art = new Artplayer({
           container: host.current,
           url: init.url,
@@ -147,29 +198,93 @@ export default function SitePlayer({
           controls: [
             ...(VARIANT === "netmirror"
               ? [
+                  ...(serverItems.length > 1
+                    ? [
+                        {
+                          name: "servers",
+                          position: "right",
+                          html: live.current.server,
+                          tooltip: "Select server",
+                          selector: serverItems,
+                          onSelect: (item: any) => {
+                            try {
+                              const sv = item && (item as any).server;
+                              if (sv && sv !== live.current.server) {
+                                const rows = sourcesRef.current;
+                                const row =
+                                  rows.find(
+                                    (s) =>
+                                      s.source === sv &&
+                                      s.quality === live.current.quality
+                                  ) || rows.find((s) => s.source === sv);
+                                hopToRow(row?.key);
+                              }
+                            } catch {}
+                          },
+                        },
+                      ]
+                    : []),
                   {
                     name: "quality_new",
                     position: "right",
-                    html: live.current.label,
+                    html: live.current.quality,
+                    tooltip: "Select quality",
                     selector: qualItems,
                     onSelect: (item: any) => {
                       try {
-                        const k = item && (item as any).key;
-                        if (k && k !== live.current.key && !live.current.busy) {
-                          live.current.busy = true;
-                          Promise.resolve(cbs.current.onPickSource(k))
-                            .catch(() => {})
-                            .finally(() => {
-                              live.current.busy = false;
-                            });
+                        const q = item && (item as any).quality;
+                        if (q && q !== live.current.quality) {
+                          const rows = sourcesRef.current;
+                          const row =
+                            rows.find(
+                              (s) =>
+                                s.quality === q && s.source === live.current.server
+                            ) || rows.find((s) => s.quality === q);
+                          hopToRow(row?.key);
                         }
                       } catch {}
-                      /* truth label, never optimistic: the hop effect
-                       * below rewrites it on success, so a failed hop
-                       * can never desync it */
-                      return live.current.label;
                     },
                   },
+                  ...(subItems.length
+                    ? [
+                        {
+                          name: "subtitles",
+                          position: "right",
+                          html: live.current.sub,
+                          tooltip: "Select subtitle",
+                          selector: [{ html: "OFF", off: true }, ...subItems],
+                          onSelect: (item: any) => {
+                            try {
+                              if (item && (item as any).off) {
+                                try {
+                                  art.subtitle.show = false;
+                                } catch {}
+                                live.current.sub = "OFF";
+                                syncSelectorLabels();
+                              } else if (item && (item as any).url) {
+                                const url = (item as any).url as string;
+                                const label = (item as any).html as string;
+                                try {
+                                  art.subtitle.show = true;
+                                } catch {}
+                                Promise.resolve()
+                                  .then(() => art.subtitle.switch(url, SUB_OPTS))
+                                  .then(() => {
+                                    live.current.sub = label;
+                                    syncSelectorLabels();
+                                  })
+                                  .catch(() => {
+                                    try {
+                                      art.notice.show = "Subtitle failed to load";
+                                    } catch {}
+                                    syncSelectorLabels();
+                                  });
+                              }
+                            } catch {}
+                          },
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             {
@@ -258,8 +373,8 @@ export default function SitePlayer({
   }, [mountId]);
 
   /* source hops: seamless url swap (position resets - different encode).
-   * nm variant: the in-player quality label follows truth here (no-op
-   * when the control doesn't exist, so the default variant is safe). */
+   * nm variant: the in-player selector labels follow truth here (no-op
+   * when a control doesn't exist, so the default variant is safe). */
   useEffect(() => {
     const art = artRef.current;
     if (art && url && url !== appliedUrl.current) {
@@ -271,18 +386,7 @@ export default function SitePlayer({
         art.title = title;
       } catch {}
     }
-    try {
-      const el = host.current?.querySelector(
-        ".art-control-quality_new .art-selector-value"
-      );
-      if (el) {
-        const q =
-          sources.find((s) => s.key === currentKey)?.quality ||
-          sources[0]?.quality ||
-          "";
-        if (q) el.textContent = q;
-      }
-    } catch {}
+    syncSelectorLabels();
   }, [url, title, currentKey, sources]);
 
   const pick = async (key: string) => {
