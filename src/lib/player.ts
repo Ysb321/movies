@@ -52,6 +52,11 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
+ *  - NetMirror Embed (Server 22): netmirror.center/movie|tv/{tmdb}/?embed=1
+ *    - their own site player (season/episode picker + Watch & Download
+ *    inside); TMDB-keyed so content always matches. Full page in frame
+ *    (PVRPlay-style); S/E deep-link params best-effort (path form 404s).
+ *    The API lane (Server 10) stays separate - direct mp4s via net27.cc.
  *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
  *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
  *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
@@ -517,6 +522,18 @@ export const PROVIDERS: EmbedProvider[] = [
      * vidsrc.to itself is down; same route scheme. */
     movie: (id) => `https://vidsrc.in/embed/movie/${id}`,
     tv: (id, s, e) => `https://vidsrc.in/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    id: "netembed",
+    name: "NetMirror Embed",
+    /* netmirror.center's own ?embed=1 site player (the page the user
+     * linked): TMDB-keyed movie/tv embeds with their season/episode
+     * picker + Watch & Download inside. /tv/{id}/{s}/{e} 404s, so S/E
+     * travel as best-effort s/e params (their picker covers the rest).
+     * Full site page in the frame (PVRPlay-style); framing depends on
+     * their headers on the open web, Electron strips via FRAME_HOSTS. */
+    movie: (id) => `https://netmirror.center/movie/${id}/?embed=1`,
+    tv: (id, s, e) => `https://netmirror.center/tv/${id}/?embed=1&s=${s}&e=${e}`,
   },
 ];
 
