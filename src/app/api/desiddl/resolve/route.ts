@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /* Server 11 (DesiDDL) hub resolver - cracks hub pages into direct files.
+ * NOTE (2026-09-09): the client no longer calls this - taps open the hub
+ * embedded instead (../embed route) because live bot-walls beat
+ * server-side cracking; kept intact as the cracking API for later.
  * Verified live 2026-09-09 against real pages (Fight Club 1999 480p,
  * India's Got Latent S02E01 480p):
  *  G-Direct (fastdl.zip/embed?download=): 302 -> dl.php?link={Drive file

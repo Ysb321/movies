@@ -17,10 +17,11 @@ import { NextRequest, NextResponse } from "next/server";
  *  MoviesDrive movies+series: h5 quality headings + h5 links which are
  *   DIRECT HubCloud (/drive/search-recover.php) rows already; legacy
  *   same-blog button pages are still fetched + scanned as a fallback.
- * Hubs stay unresolved here (fast list); taps crack them via
- * /api/desiddl/resolve (G-Direct hands the Drive file straight over,
- * V-Cloud/HubCloud/GDFlix crack to FSL/CDN fast links). Live domains
- * refresh from Megix Utils urls.json (4h TTL per isolate).
+ * Hubs stay unresolved here (fast list); taps open them embedded via
+ * /api/desiddl/embed - the user clicks the hub's own Download / FSL /
+ * Generate buttons and the file auto-plays in the site player (server
+ * cracking in /api/desiddl/resolve is kept but unused - live bot-walls
+ * beat it). Live domains refresh from Megix Utils urls.json (4h TTL).
  */
 
 export const runtime = "edge";

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import clsx from "clsx";
 import {
   openInVlc,
   downloadFile,
@@ -47,27 +46,58 @@ const LOAD_LINES = [
 
 const isHlsFile = (u: string) => /\.m3u8(\?|#|$)/i.test(u);
 
+const guessServer = (u: string) =>
+  /googleusercontent/i.test(u)
+    ? "G-Direct"
+    : /busycdn/i.test(u)
+      ? "Instant"
+      : /pixeldrain/i.test(u)
+        ? "Pixeldrain"
+        : "Hub link";
+
+/* file-ish iframe locations (direct files, ?link= wraps, known CDNs) */
+const extractFile = (href: string): string => {
+  if (!href || href === "about:blank") return "";
+  try {
+    const u = new URL(href);
+    const link = u.searchParams.get("link");
+    if (link && /^https:\/\//i.test(link)) return link;
+    if (/\.(mp4|mkv|avi|mov|webm|flv|wmv|m3u8|mpd|ts|m4v)(\?|#|$)/i.test(u.pathname + u.search))
+      return href;
+    if (/googleusercontent\.com|busycdn\.xyz/i.test(u.hostname) && !u.pathname.startsWith("/api/"))
+      return href;
+    return "";
+  } catch {
+    return "";
+  }
+};
+
 const platformHint = () =>
   isDesktopVlc()
-    ? "Tap a quality — its FSL fast link plays here, or opens in VLC"
+    ? "Tap a quality — the hub page opens here, generate the link and it auto-plays (or opens in VLC)"
     : isAndroid() || isIOS()
-      ? "Tap a quality — its FSL fast link plays here, or opens in your VLC app"
-      : "Tap a quality — its FSL fast link plays here, or opens in VLC via the desktop app";
+      ? "Tap a quality — the hub page opens here, generate the link and it auto-plays (or opens in your VLC app)"
+      : "Tap a quality — the hub page opens here, generate the link and it auto-plays (or opens in VLC via the desktop app)";
 
 /* Server 11 (DesiDDL) - the Hindi-DDL lane: VegaMovies + MoviesDrive dual-
- * audio posts via nexdrive intermediates (G-Direct Drive files + V-Cloud /
- * HubCloud hubs) plus HDMovie2 GDFlix rows, all cracked on tap (direct /
- * FSL fast links first). Own :site-dd resume namespace (different encodes
- * from the other source-list servers). */
+ * audio posts via nexdrive intermediates plus HDMovie2 GDFlix rows. Taps
+ * open the hub page EMBEDDED (proxied same-origin, sandboxed, popups
+ * blocked): the user clicks the hub's own Download / FSL / Generate
+ * buttons and the file auto-plays in the site player (capture script +
+ * location poll; paste box + raw-page fallback if our proxy is walled).
+ * Own :site-dd resume namespace (different encodes from the others). */
 export default function DdlSources({ type, tmdbId, title, year, imdbId, season, episode }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<DdRow[]>([]);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [embed, setEmbed] = useState<{ row: DdRow; mode: "proxy" | "direct" } | null>(null);
+  const [embedReady, setEmbedReady] = useState(false);
+  const [embedError, setEmbedError] = useState("");
+  const [embedLeft, setEmbedLeft] = useState(false);
+  const [paste, setPaste] = useState("");
   const [note, setNote] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
-  const [pageFor, setPageFor] = useState<Record<string, string>>({});
   const [player, setPlayer] = useState<{
     url: string;
     label: string;
@@ -82,6 +112,8 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
   const [reload, setReload] = useState(0);
   const alive = useRef(true);
   const lastSent = useRef(0);
+  const fileTaken = useRef(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [hint] = useState(platformHint);
   const [isPcWeb] = useState(() => !isDesktopVlc() && !isAndroid() && !isIOS());
   const [isPhone] = useState(() => isAndroid() || isIOS());
@@ -177,94 +209,86 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
     setSent((s) => ({ ...s, [row.key]: true }));
   }, [siteKey]);
 
-  const crack = useCallback(async (row: DdRow) => {
-    const res = await fetch(`/api/desiddl/resolve?url=${encodeURIComponent(row.hub)}`);
-    if (!res.ok) throw new Error(`resolve ${res.status}`);
-    return res.json() as Promise<{
-      ok: boolean; kind?: string; url?: string; server?: string;
-      filename?: string; stale?: boolean; error?: string;
-    }>;
+  /* tap -> hub page embedded -> the user generates the link there ->
+   * capture script / location poll hands the file back -> site player */
+  const play = useCallback((row: DdRow) => {
+    if (!row.hub) return;
+    fileTaken.current = false;
+    setPlayer(null);
+    setPlayError(false);
+    setEmbed({ row, mode: "proxy" });
+    setEmbedReady(false);
+    setEmbedError("");
+    setEmbedLeft(false);
+    setPaste("");
+    setNote((n) => ({ ...n, [row.key]: "Hub page open — generate the link, it auto-plays" }));
   }, []);
 
-  /* tap -> crack the hub's FSL fast link -> site player */
-  const play = useCallback(async (row: DdRow) => {
-    if (!row.hub || busy) return;
-    setBusy(row.key);
-    setPageFor((p) => {
-      if (!(row.key in p)) return p;
-      const n = { ...p };
-      delete n[row.key];
-      return n;
-    });
-    setNote((n) => ({ ...n, [row.key]: "Cracking the direct link…" }));
-    try {
-      const r = await crack(row);
-      if (!alive.current) return;
-      if (r.ok && r.kind === "file" && r.url) {
-        openPlayer(row, r.url, r.server || "", !!r.stale);
-        setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
-      } else if (r.ok) {
-        setPageFor((p) => ({ ...p, [row.key]: r.url || row.hub }));
-        setNote((n) => ({ ...n, [row.key]: "Couldn't auto-crack this one — open it in your browser:" }));
-      } else if (r.error === "guarded") {
-        setPageFor((p) => ({ ...p, [row.key]: row.hub }));
-        setNote((n) => ({ ...n, [row.key]: "This hub is bot-guarded — open it in your browser:" }));
-      } else if (r.error === "fetch-fail") {
-        setNote((n) => ({ ...n, [row.key]: "The hub didn't answer — try another" }));
-      } else {
-        setNote((n) => ({ ...n, [row.key]: "Couldn't crack this one — try another" }));
-      }
-    } catch {
-      if (alive.current)
-        setNote((n) => ({ ...n, [row.key]: "Couldn't crack the link — try another" }));
-    } finally {
-      if (alive.current) setBusy(null);
-    }
-  }, [busy, crack, openPlayer]);
+  const playFile = useCallback((row: DdRow, url: string, server: string) => {
+    if (!alive.current || fileTaken.current) return;
+    fileTaken.current = true;
+    setEmbed(null);
+    openPlayer(row, url, server, false);
+    setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
+  }, [openPlayer]);
 
   const pickSource = useCallback(async (key: string): Promise<string | null> => {
     const row = rows.find((r) => r.key === key);
-    if (!row) return null;
-    try {
-      const r = await crack(row);
-      if (!alive.current) return null;
-      if (r.ok && r.kind === "file" && r.url) {
-        setPlayError(false);
-        setPnote(r.stale ? "Link may be expired — trying anyway." : r.server ? `Playing via ${r.server}` : "");
-        setPlayer((p) =>
-          p && {
-            ...p,
-            url: r.url as string,
-            label: `${row.quality} · ${row.blog}${r.server ? ` · ${r.server}` : ""}`,
-            filename: row.file,
-            rowKey: row.key,
-          }
-        );
-        setNote((n) => ({ ...n, [row.key]: "Playing in the site player" }));
-        return r.url;
+    if (!row || !alive.current) return null;
+    play(row);
+    return null;
+  }, [rows, play]);
+
+  /* hub capture script -> file */
+  useEffect(() => {
+    if (!embed) return;
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data as { type?: string; url?: string; message?: string };
+      if (!d || typeof d !== "object") return;
+      if (d.type === "yetflix-file" && typeof d.url === "string" && d.url.startsWith("https://")) {
+        const u = d.url;
+        playFile(embed.row, u, guessServer(u));
+      } else if (d.type === "yetflix-embed-ready") {
+        setEmbedReady(true);
+      } else if (d.type === "yetflix-embed-error") {
+        setEmbedReady(true);
+        setEmbedError(d.message || "Couldn't load the hub page.");
       }
-      if (r.ok) {
-        setPageFor((p) => ({ ...p, [row.key]: r.url || row.hub }));
-        setNote((n) => ({ ...n, [row.key]: "Couldn't auto-crack this one — open it in your browser:" }));
-        return null;
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [embed, playFile]);
+
+  /* backstop: watch the iframe location for file / ?link= hops */
+  useEffect(() => {
+    if (!embed || embed.mode !== "proxy") return;
+    let throws = 0;
+    const id = setInterval(() => {
+      const fr = iframeRef.current;
+      if (!fr || !alive.current) return;
+      try {
+        const href = fr.contentWindow?.location.href || "";
+        throws = 0;
+        const found = extractFile(href);
+        if (found) {
+          clearInterval(id);
+          playFile(embed.row, found, "Hub link");
+        }
+      } catch {
+        if (++throws >= 4) {
+          setEmbedLeft(true);
+          clearInterval(id);
+        }
       }
-      if (r.error === "guarded") {
-        setPageFor((p) => ({ ...p, [row.key]: row.hub }));
-        setNote((n) => ({ ...n, [row.key]: "This hub is bot-guarded — open it in your browser:" }));
-        return null;
-      }
-      setNote((n) => ({
-        ...n,
-        [row.key]:
-          r.error === "fetch-fail"
-            ? "The hub didn't answer — try another"
-            : "Couldn't crack this one — try another",
-      }));
-      return null;
-    } catch {
-      return null;
-    }
-  }, [rows, crack]);
+    }, 700);
+    return () => clearInterval(id);
+  }, [embed, playFile]);
+
+  const playPasted = useCallback(() => {
+    const u = paste.trim();
+    if (!embed || !/^https:\/\//i.test(u)) return;
+    playFile(embed.row, u, "Pasted link");
+  }, [embed, paste, playFile]);
 
   const onSiteTime = useCallback((time: number, duration?: number) => {
     if (!alive.current || time < 5) return;
@@ -401,6 +425,106 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
     );
   }
 
+  /* ── hub embed: the user generates the link, it auto-plays ── */
+  if (embed) {
+    const src =
+      embed.mode === "proxy"
+        ? `/api/desiddl/embed?url=${encodeURIComponent(embed.row.hub)}`
+        : embed.row.hub;
+    return (
+      <div className="flex h-full flex-col bg-black">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 px-3 py-2 text-[12px]">
+          <button
+            onClick={() => setEmbed(null)}
+            className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
+          >
+            <ChevronIcon dir="left" className="h-3.5 w-3.5" /> Sources
+          </button>
+          <span className="min-w-0 flex-1 truncate text-neutral-400">
+            {embed.row.quality} · {embed.row.blog} · {embed.row.source}
+            {embed.row.size ? ` · ${embed.row.size}` : ""}
+          </span>
+          <a
+            href={embed.row.hub}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
+          >
+            Open page
+          </a>
+        </div>
+        {!embedReady && !embedError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11.5px] text-neutral-400">
+            Loading the hub page — its Download buttons work right here, no popups.
+          </div>
+        )}
+        {embedError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-amber-300">
+            {embedError}{" "}
+            {embed.mode === "proxy" ? (
+              <button
+                onClick={() => {
+                  setEmbed({ row: embed.row, mode: "direct" });
+                  setEmbedError("");
+                  setEmbedReady(false);
+                }}
+                className="underline hover:text-amber-200"
+              >
+                Load the real hub page instead
+              </button>
+            ) : (
+              "Open the page outside, generate the link, paste it below."
+            )}
+          </div>
+        )}
+        {embedLeft && !embedError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-amber-300">
+            The hub jumped out of the embed — generate the link there, copy it, paste it below.
+          </div>
+        )}
+        {embed.mode === "direct" && !embedError && (
+          <div className="border-b border-white/10 px-3 py-1.5 text-[11.5px] text-neutral-400">
+            Our server can&apos;t reach this hub, so this is the raw page — generate the link,
+            copy it, paste it below and it plays here.
+          </div>
+        )}
+        <div className="min-h-0 flex-1 bg-white">
+          <iframe
+            ref={iframeRef}
+            key={`${embed.mode}-${embed.row.key}`}
+            src={src}
+            title="Hub page — generate the download link here"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            allow="autoplay; encrypted-media; fullscreen"
+            className="h-full w-full border-0"
+            onLoad={() => setEmbedReady(true)}
+          />
+        </div>
+        <div className="flex items-center gap-1.5 border-t border-white/10 px-3 py-2">
+          <input
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && playPasted()}
+            placeholder="…or paste a hub link here"
+            inputMode="url"
+            className="min-w-0 flex-1 rounded-full bg-white/10 px-3 py-1.5 text-[12px] text-white outline-none placeholder:text-neutral-500 focus:bg-white/15"
+          />
+          <button
+            onClick={playPasted}
+            className="rounded-full bg-brand px-3 py-1.5 text-[12px] font-bold text-white"
+          >
+            Play
+          </button>
+        </div>
+        {copied && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
+            Link copied
+          </div>
+        )}
+      </div>
+    );
+  }
+
   /* ── source list ── */
   return (
     <div className="relative flex h-full flex-col bg-black">
@@ -480,15 +604,10 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
           <div
             key={row.key}
             onClick={() => play(row)}
-            className={clsx(
-              "flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition hover:bg-white/5",
-              busy === row.key && "pointer-events-none opacity-70"
-            )}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition hover:bg-white/5"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-              {busy === row.key ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : sent[row.key] ? (
+              {sent[row.key] ? (
                 <CheckIcon className="h-4 w-4" />
               ) : (
                 <PlayIcon className="h-4 w-4" />
@@ -516,24 +635,6 @@ export default function DdlSources({ type, tmdbId, title, year, imdbId, season, 
               {note[row.key] && (
                 <span className="mt-0.5 block text-[11.5px] font-medium text-brand">
                   {note[row.key]}
-                </span>
-              )}
-              {pageFor[row.key] && (
-                <span className="mt-1 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <a
-                    href={pageFor[row.key]}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-brand px-2.5 py-1 text-[11px] font-bold text-white"
-                  >
-                    Open page
-                  </a>
-                  <button
-                    onClick={() => copy(pageFor[row.key])}
-                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/20"
-                  >
-                    Copy link
-                  </button>
                 </span>
               )}
             </span>
