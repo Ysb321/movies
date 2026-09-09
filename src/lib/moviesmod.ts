@@ -914,7 +914,7 @@ type DriveseedHit = { server: string; url: string; driveseedRedirectUrl: string 
 
 export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModResult> {
   const { title, year, kind, season, episode } = opts;
-  const d: string[] = [`mm3: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
+  const d: string[] = [`mm4: "${title.slice(0, 60)}" ${kind}${kind === "series" ? ` s${season}e${episode}` : ""}`];
   const cacheKey = `mm:v1:${kind}:${season}:${episode}:${title}:${year || ""}`;
   const cached = resultCache.get(cacheKey);
   if (cached && Date.now() - cached.at < RESULT_TTL) {
@@ -992,7 +992,7 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
   /* per-link: redirect -> file page -> final cdn url (parallel) */
   const notes: string[] = [];
   const note = (s: string) => {
-    if (notes.length < 16) notes.push(s);
+    if (notes.length < 22) notes.push(s);
   };
   const seenFiles = new Set<string>();
   const seenUrls = new Set<string>();
@@ -1003,6 +1003,7 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
         try {
           note(`rh:${new URL(h.driveseedRedirectUrl).hostname}`);
         } catch {}
+        note(`ru:${h.driveseedRedirectUrl.slice(0, 100)}`);
         const fp = await followRedirectToFilePage(h.driveseedRedirectUrl, note);
         const info = filePageInfo(fp.html);
         note(`fi:${info.size || 0}/${info.name ? info.name.slice(0, 24) : "noname"}`);
@@ -1020,7 +1021,8 @@ export async function resolveMoviesMod(opts: MoviesModOpts): Promise<MoviesModRe
           platform: "MoviesMod",
           lang,
         };
-      } catch {
+      } catch (e) {
+        note(`err:${(e instanceof Error ? e.message : "?").slice(0, 70)}`);
         return null;
       }
     });

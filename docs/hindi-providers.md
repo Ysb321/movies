@@ -77,6 +77,10 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   instrumented (mm3 diag: redirect hosts, filepage status/size,
   button map, method outcomes, HEAD codes) + instant unwrap fixed
   to HEAD-follow (redirect:manual hides Location on edge).
+- Triage 2026-09-09 (The Runner 1386315, mm3): `resolved: 5/5`
+  but all 10 driveseed.org redirect GETs throw before first byte
+  (no fp:/fi: notes) - mm4 captures the error text + redirect url
+  to distinguish datacenter-block vs timeout vs malformed url.
 
 ## Live sources for future ports (ranked)
 
