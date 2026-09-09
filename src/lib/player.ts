@@ -52,17 +52,6 @@
  *    customization params, their page chrome shows inside the frame, and
  *    framing permission is not guaranteed (Electron strips any frame-block
  *    headers via FRAME_HOSTS; on the open web it depends on their headers).
- *  - NetMirror Direct (Server 21, vlcOnly): SAME HindiSources lane as
- *    Server 10 (API-resolved signed mp4s -> inline SitePlayer, quality
- *    hop, subs, resume). Previously framed their ?embed=1 site player
- *    via the embed proxy, but that hard-crashed tabs (their load-time
- *    location canonicalizer vs the proxy pathname = infinite reload
- *    loop), so it now shares the proven API lane. Full site player one
- *    tap away via the "NetMirror" deep-link button (new tab, no XFO).
- *  - NetMirror Playlists (Server 22, vlcOnly): the native playlist lane
- *    (/api/netmirror/native -> HindiSources, nm skin, :site-nmn resume):
- *    HLS sources + caption tracks via the verify trick + play.php /
- *    playlist.php. Alternate encodes when the mp4 lane is thin.
  *  - WebStreamr (Server 9, vlcOnly): the WebStreamrMBG Stremio addon -
  *    direct HTTP sources (4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc
  *    sites, HubCloud/GDFlix/... extractors), resolved per title via our
@@ -76,13 +65,6 @@
  *    generator-page scraping, sibling-index fallback, quota checks).
  *    Truly uncrackable pages open in a new tab. New/cam releases may
  *    have zero sources (empty state).
- *  - Servers 12-20 (free embed APIs, all TMDB-keyed, verified live
- *    2026-09-09): VidSrc (vidsrc.to), VidLink (vidlink.pro), VidCore
- *    (vidcore.org, 14 in-player servers), VidFast (vidfast.vc, 4K +
- *    multi-audio rows), 2Embed (2embed.cc, TMDB numerics on both
- *    routes), SuperEmbed (multiembed.mov, CF check passes in real
- *    browsers), MoviesAPI (moviesapi.to), VidSpark (vidspark.to) and
- *    VidSrc IN (vidsrc.in mirror). Default popup-killing sandbox.
  *  - NetMirror (Server 10, vlcOnly Hindi-OTT lane): Indian OTT rips via
  *    our /api/netmirror routes - direct signed mp4s (360-1080p) + caption
  *    tracks with Hindi subs auto-loaded, played in the inbuilt site player
@@ -94,6 +76,9 @@
  *    embedded on tap (user generates the link, it auto-plays in the site
  *    player; DdlSources list, own :site-dd
  *    resume namespace). Ported from the Megix CSX CloudStream providers.
+ *  (2026-09-09 prune: pills past 11 removed - free embeds + NetMirror
+ *  Direct/Playlists. Their code stays in-tree; re-append entries to
+ *  restore. Full map: docs/servers.md.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -458,114 +443,6 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: () => "",
     tv: () => "",
   },
-  {
-    /* Servers 12-20 - free TMDB-keyed embed APIs (verified live
-     * 2026-09-09: Fight Club 550 resolves with title on every movie
-     * route below; TV routes verified on Breaking Bad 1396 S01E01).
-     * All run under the default popup-killing sandbox until a player
-     * proves it needs relaxing - report dead ones, they rotate
-     * domains constantly. */
-    id: "vidsrc",
-    name: "VidSrc",
-    /* the original embed API - plain player shell, no login/key. */
-    movie: (id) => `https://vidsrc.to/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidlink",
-    name: "VidLink",
-    /* multi-server player + subtitles; iframe embed is keyless (only
-     * their JSON API needs a key). */
-    movie: (id) => `https://vidlink.pro/movie/${id}`,
-    tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidcore",
-    name: "VidCore",
-    /* multi-server ArtPlayer (Pacific/Orion/Nova/Armor/Tiki/1Embed/
-     * Cinextream/Filmubox/Movy/Orchestr/Overlook/VAPlayer/VidNest/
-     * Viduki) with anime + subtitle support. */
-    movie: (id) => `https://vidcore.org/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidfast",
-    name: "VidFast",
-    /* multi-server player (vRapid/vEdge/Cobra/Cine/vFast/Horizon/
-     * Bravo, 4K + multi-audio rows), subtitles, quality picker. */
-    movie: (id) => `https://vidfast.vc/movie/${id}`,
-    tv: (id, s, e) => `https://vidfast.vc/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "twoembed",
-    name: "2Embed",
-    /* most reliable of the 2Embed family; TMDB numerics work on both
-     * routes (their own embed code confirms). NB: direct (non-iframe)
-     * hits bounce to a 2embed.skin watch page - inside our iframe it
-     * serves the player, like the thousands of sites embedding it. */
-    movie: (id) => `https://www.2embed.cc/embed/movie/${id}`,
-    tv: (id, s, e) => `https://www.2embed.cc/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "superembed",
-    name: "SuperEmbed",
-    /* multi-server failover; base URL only (directstream.php is dead).
-     * multiembed.mov -> streamingnow.mov redirect is normal; a Cloud-
-     * flare invisible check runs first and passes in real browsers. */
-    movie: (id) => `https://multiembed.mov/${qs({ video_id: id, tmdb: 1 })}`,
-    tv: (id, s, e) => `https://multiembed.mov/${qs({ video_id: id, tmdb: 1, s, e })}`,
-  },
-  {
-    id: "moviesapi",
-    name: "MoviesAPI",
-    /* path is /movie/{id} (the old /embed/movie/{id} is gone). */
-    movie: (id) => `https://moviesapi.to/movie/${id}`,
-    tv: (id, s, e) => `https://moviesapi.to/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidspark",
-    name: "VidSpark",
-    /* same codebase as MoviesAPI, separate deployment. */
-    movie: (id) => `https://vidspark.to/movie/${id}`,
-    tv: (id, s, e) => `https://vidspark.to/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "vidsrcin",
-    name: "VidSrc IN",
-    /* VidSrc mirror (vsembed.ru backend) - failover pill for when
-     * vidsrc.to itself is down; same route scheme. */
-    movie: (id) => `https://vidsrc.in/embed/movie/${id}`,
-    tv: (id, s, e) => `https://vidsrc.in/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    id: "netembed",
-    name: "NetMirror Direct",
-    /* Server 21 - NetMirror Direct (vlcOnly, no iframe - the watch page
-     * renders HindiSources instead; stubs never called). SAME lane as
-     * Server 10: API-resolved signed mp4s -> inline SitePlayer. This pill
-     * previously framed their ?embed=1 site player via the embed proxy
-     * (?allow=nm), but that hard-crashed tabs (infinite reload loop), so
-     * it now shares the proven API lane. The ?embed=1 deep link lives in
-     * HindiSources ("NetMirror" button -> full site player in a new tab,
-     * where X-Frame-Options can't bite). */
-    vlcOnly: true,
-    movie: () => "",
-    tv: () => "",
-  },
-  {
-    id: "netnative",
-    name: "NetMirror Playlists",
-    /* Server 22 - NetMirror Playlists (vlcOnly, no iframe - the watch page
-     * renders HindiSources against /api/netmirror/native; stubs never
-     * called). The NATIVE playlist lane: verify-trick cookie -> mobile
-     * search/post -> play.php h-token -> playlist.php HLS sources +
-     * subtitle tracks (the extension authors' secondary flow; their
-     * primary NewTV + net27 fallback are our Server 10 lane). HLS plays
-     * via hls.js; own :site-nmn resume namespace (different encodes). */
-    vlcOnly: true,
-    movie: () => "",
-    tv: () => "",
-  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -598,7 +475,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "vidsrc", "vidlink", "vidcore", "vidfast", "2embed", "multiembed", "streamingnow", "moviesapi", "vidspark", "netmirror"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

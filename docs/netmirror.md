@@ -266,3 +266,11 @@ net27 embed API (Server 10/21 core) is unaffected: Fight Club (550)
 returns full 360/480/720p + captions live. Spider-Man BND (969681) is
 genuinely absent (`mode:none noSource:true`, their own "couldn't find
 this title" message) - theaters-only until ~Nov 2026.
+
+## Pill prune (2026-09-09)
+
+Pills past 11 removed per the user's ask: free embeds 12-20 and
+NetMirror Direct/Playlists 21-22 are gone from the UI. Server 10 keeps
+the default skin (the nm ArtPlayer variant, the /api/netmirror/native
+lane and the /api/netmirror/hls proxy stay in-tree, unused, ready to
+restore). This file's history above stays as the record.
