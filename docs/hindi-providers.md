@@ -2,7 +2,7 @@
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
-12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)** + **Nuvio (Server 15)** + **Movieland (Server 17)**. This doc is the full map for future
+12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)** + **Nuvio (Server 15)**. This doc is the full map for future
 development.
 
 ## Already in the app (Hindi coverage before this round)
@@ -219,7 +219,12 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   Location reads), unknown hosts HEAD-gated (upstream passes blind).
 - Budget: ~35 cold (XD ~20 + HMZ ~12 + heads); diag tag `nv:`.
 
-## Shipped this round: Movieland (Server 17)
+## Movieland (Server 17) - REMOVED 2026-09-09, replaced by Laika embed
+
+> Removed: the rotated player hosts 404'd the lane's embed stage, and
+> the user-supplied raw player URL works better as a direct embed
+> (slot 17 now = Laika, laika422mon.com/play/{imdb}). Notes below kept
+> as an IndStream/HDVBPlayer protocol reference.
 
 - Upstream: `EpicGGCoder/allmovieland-api` (Apr 2026), found via the
   user's player.js (allmovieland.link uses the SAME slast backend as

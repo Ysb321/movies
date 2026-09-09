@@ -52,7 +52,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 14 | autoplay | AutoSources -> /api/webstreamr (addon search) -> zero-tap: ranked rows auto-resolve + play best in SmartPlayer (ArtPlayer + hls.js + dash.js: HLS/DASH/progressive, quality/audio/server/subtitle selectors, VLC + Download), auto-advance on dead links; :site-auto resume |
 | 15 | nuvio | HindiSources -> /api/nuvio/stream -> XDMovies (search API + tmdb_id match -> HubCloud FSL/S3/10Gbps, HubCDN HLS, Pixeldrain, StreamTape) + HindMoviez (title search -> maxbutton/get-links/a.btn -> full extractor); movies + series; :site-nv resume |
 | 16 | movierulz | https://slast430did.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; framing open, no referer gate; prefersImdb; ad armor: no downloads/popups/referrer) |
-| 17 | movieland | HindiSources -> /api/movieland/stream -> AllMovieLand direct m3u8 (DLE search -> player config -> HDVBPlayer embed -> playlist API -> per-language m3u8, Hindi first); movies + series folder walk; :site-ml resume |
+| 17 | laika | https://laika422mon.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; same IndStream family as 16; prefersImdb; ad armor: no downloads/popups/referrer) |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

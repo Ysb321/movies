@@ -84,7 +84,7 @@
  *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
  *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
  *  (Server 16: MovieRulz slast embed.)
- *  (Server 17: Movieland direct-m3u8 lane.)
+ *  (Server 17: Laika laika422mon embed.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -517,18 +517,19 @@ export const PROVIDERS: EmbedProvider[] = [
     tv: (id) => `https://slast430did.com/play/${id}`,
   },
   {
-    /* Server 17 - Movieland (vlcOnly Hindi lane - the watch page renders
-     * HindiSources with endpoint=/api/movieland/stream; stubs never
-     * called). AllMovieLand direct m3u8: DLE search -> detail player
-     * config (AwsIndStreamDomain + src - the same slast backend Server
-     * 16 embeds) -> HDVBPlayer embed -> playlist API (X-CSRF-TOKEN)
-     * -> per-language m3u8 (Hindi first). Movies + series (folder
-     * walk). Ported from EpicGGCoder/allmovieland-api. */
-    id: "movieland",
-    name: "Movieland",
-    vlcOnly: true,
-    movie: () => "",
-    tv: () => "",
+    /* Server 17 - Laika (replaces the Movieland lane): raw IndStream
+     * player embed on laika422mon.com (same backend family as Server
+     * 16's slast430did.com - verified 2026-09-09: BB tt0903747 S1-S5
+     * + tt33094114 S2 render full players with Hindi audio). IMDb-keyed,
+     * movies + TV same URL, in-player S/E. Same ad armor as 16. */
+    id: "laika",
+    name: "Laika",
+    prefersImdb: true,
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
+    denyPopups: true,
+    noReferrer: true,
+    movie: (id) => `https://laika422mon.com/play/${id}`,
+    tv: (id) => `https://laika422mon.com/play/${id}`,
   },
   {
     id: "megaplay",
@@ -582,7 +583,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast", "laika"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
