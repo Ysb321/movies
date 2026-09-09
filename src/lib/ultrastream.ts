@@ -122,13 +122,17 @@ const strip = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const unescapeAttr = (s: string) =>
-  s
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&amp;/gi, "&");
+const unescapeAttr = (s: string) => {
+  const once = (x: string) =>
+    x
+      .replace(/&quot;/gi, '"')
+      .replace(/&#0?39;/g, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&amp;/gi, "&");
+  /* twice: survives double-escaped attrs (&amp;quot;) as well as single */
+  return once(once(s));
+};
 
 /* search page -> post hits (article.item cards, /movie/ anchor fallback) */
 function parseSearch(html: string, base: string): Hit[] {
@@ -204,7 +208,7 @@ function parseEmbeds(html: string, base: string): UltraEmbed[] {
   const seen = new Set<string>();
   for (const m of html.matchAll(/data-source-embed="([^"]*)"/gi)) {
     const inner = unescapeAttr(m[1]);
-    const src = /src="([^"]+)"/i.exec(inner)?.[1];
+    const src = /src="([^"]+)"/i.exec(inner)?.[1] || /src='([^']+)'/i.exec(inner)?.[1];
     if (!src || seen.has(src)) continue;
     seen.add(src);
     let abs = "";
@@ -378,12 +382,13 @@ async function resolveEmbed(embed: UltraEmbed, referer: string, note: (s: string
     note(`emb:${host}=http${r.status}`);
     return null;
   }
-  if (host.includes("hdm2.ink")) {
+  /* hdm2.* (live host is hdm2.biz/play?v= - same player family) */
+  if (host.includes("hdm2.")) {
     const path = /data-stream-url="([^"]+)"/i.exec(r.text)?.[1];
     note(`emb:${host}=${path ? "hls" : "no-stream-url"}`);
     if (!path) return null;
     try {
-      return new URL(path, "https://hdm2.ink").href;
+      return new URL(path, `https://${host}`).href;
     } catch {
       return null;
     }

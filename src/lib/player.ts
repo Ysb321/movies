@@ -469,7 +469,7 @@ export const PROVIDERS: EmbedProvider[] = [
      * "Ultra Stream 2", ...), picked from chips and iframed sandboxed
      * (scripts+same-origin: no popups/top-nav). Source: newhdmovie2.best
      * (.im fallback), movies + per-episode series pages; player hosts
-     * hdm2.ink / prvs.top. (resolveUltraStream in the lib also resolves
+     * hdm2.biz / prvs.top. (resolveUltraStream in the lib also resolves
      * direct HLS/mp4 finals - kept as a fallback path, unused by the
      * UI. Embed-first was the user's explicit call.) */
     id: "ultrastream",

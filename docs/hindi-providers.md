@@ -188,7 +188,7 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   UltraPlayer (chips + sandboxed frame). Series hop to the
   per-episode page (own embeds) via Episode/SxxExx anchors.
 - Fallback kept: resolveUltraStream() resolves the same embeds to
-  direct hdm2.ink-HLS / prvs.top-JW finals (unused by the UI).
+  direct hdm2.*-HLS (live host hdm2.biz) / prvs.top-JW finals (unused by the UI).
 - Ported from `Prashant825567/provider-hdmovie2` (Stremio provider,
   Jul 2026: stream.js CASE 1/2/3 + posts/meta/episodes selectors).
 - Budget: ~10 subrequests cold (search 1 + post 1 + episode 0-1 +
