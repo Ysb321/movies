@@ -48,7 +48,7 @@ export type CastleResult = {
   diag: string;
 };
 
-const b64ToBytes = (s: string): Uint8Array => {
+const b64ToBytes = (s: string) => {
   const bin = atob(s.replace(/\s+/g, ""));
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
