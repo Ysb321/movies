@@ -230,10 +230,15 @@ async function fetchPlatform(
   type: "movie" | "series",
   season: number,
   episode: number,
-  notes: string[]
+  notes: string[],
+  state: { gated: boolean }
 ): Promise<NmStream[]> {
   try {
     const ott = OTT[platform];
+    if (state.gated) {
+      notes.push(`${platform}: skipped (backend gates our edge)`);
+      return [];
+    }
     const bases = await discoverNewTv(notes);
     const jar = [newTvJar, "hd=on", "ott=nf"].filter(Boolean).join("; ");
     let api = bases[0];
@@ -256,7 +261,10 @@ async function fetchPlatform(
       search = await searchRes.json();
       break;
     }
-    if (!search) return [];
+    if (!search) {
+      state.gated = true;
+      return [];
+    }
     const first = search && Array.isArray(search.searchResult) ? search.searchResult[0] : null;
     if (!first || !first.id) {
       notes.push(`${platform}: no search results`);
@@ -348,13 +356,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
     const direct = await fetchDirect(tmdb, series ? { s, e } : null);
     let extra: NmStream[] = [];
     const diag: string[] = [];
+    const gateState = { gated: false };
     if (title) {
       const wanted = PLATFORMS.filter((p) => p !== "netflix" || direct.streams.length === 0);
       /* serialized with 1.2s gaps: the proven NetMirror clients throttle
        * this fan-out (bursts trip the backend's Too Many Requests block) */
       for (const [i, p] of wanted.entries()) {
         if (i > 0) await new Promise((r) => setTimeout(r, 1200));
-        extra.push(...(await fetchPlatform(p, title, series ? "series" : "movie", s, e, diag)));
+        extra.push(...(await fetchPlatform(p, title, series ? "series" : "movie", s, e, diag, gateState)));
       }
     }
     /* Netflix-direct first (verified lane), then Hotstar/Prime/Disney */

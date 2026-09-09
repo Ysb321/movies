@@ -294,3 +294,21 @@ the app RE report), static hd/ott cookies, and refusal guards that
 fail loudly instead of resolving wrong titles. netmirror.app is only
 an APK landing page (no API); net22/net20 serve nothing; urlscan
 results + OTX passive_dns are auth-walled.
+
+## Final verdict: exact site sources unwireable from Pages (2026-09-09)
+
+The site's embed = the NATIVE flow (play.php -> playlist.php pv/hls
+HLS + subscdn subs): its catalog is a superset of net27 (BND [Hindi]
+trends there, noSource on net27), the mobile catalog shape matches
+(Hindi dubs + Hollywood), and captured playlist samples are that exact
+format. Browsers pass the session wall; our edge cannot, proven four
+ways: verify POST 403, mobile/* 403, NewTV 403 on its single decoded
+base (tv.imgcdn.kim - only 2/25 discovery hosts even answer), and
+checknewtv plants zero cookies (harvest:ck=none). No CORS on net52 /
+tv.imgcdn.kim kills a browser-side lane too; mirrors add nothing
+(netmirror.plus = same site, net22/net20 dead, netmirror.app = APK
+page). Closing the gap needs ungated egress (residential proxy or
+their allowlist) - infra, not code. Server 10 keeps the reachable
+net27 core (verified live: Fight Club full streams + subs); the gated
+fan-out now fast-fails (first all-403 platform skips the rest) so
+loads stay quick, and self-heals the day gating lifts.
