@@ -2,7 +2,7 @@
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
-12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)**. This doc is the full map for future
+12)** + **MoviesMod (Server 13)** + **AutoPlay (Server 14)** + **Nuvio (Server 15)**. This doc is the full map for future
 development.
 
 ## Already in the app (Hindi coverage before this round)
@@ -199,3 +199,22 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   muted fallback + notice. Cross-family hops remount via key.
 - Genuine JW Player needs a paid library ID (user has none) - the
   same feature set built license-free; engine swappable later.
+
+## Shipped this round: Nuvio (Server 15)
+
+- Upstream: `phisher98/phisher-nuvio-providers` (Sept 2026) via
+  nuvioplugin.com (the yoruix/tapframe repos are gutted to templates).
+- XDMovies: `new.xdmovies.wtf/php/search_api.php?query=&fuzzy=true`
+  (+ `top.` fallback, x-auth-token `7297...`) -> exact tmdb_id match
+  -> page `div.download-item` / `div.episode-card` (SxxEyy) links ->
+  HubCloud (FSL V2/FSL/S3/Download/10Gbps) / HubCDN (r= b64 HLS) /
+  Pixeldrain (API info + direct) / StreamTape (videolink) / HubDrive
+  / HbLinks / HubStream / vidmoly-family / HEAD-gated passthrough.
+- HindMoviez: `hindmovie.fit/page/1/?s=` (.cafe redirects there) ->
+  article/h2.entry-title match -> movies: maxbutton x2 -> Get Links
+  -> a.btn; series: h3 Season -> ep list -> h3 Episode -> a.btn ->
+  same full extractor. Lang tagged Hindi on hindi/dubbed/dual.
+- Robustness deviations: gdflix/gofile skipped (upstream calls
+  undefined fns and crashes), BuzzServer skipped (needs manual
+  Location reads), unknown hosts HEAD-gated (upstream passes blind).
+- Budget: ~35 cold (XD ~20 + HMZ ~12 + heads); diag tag `nv:`.

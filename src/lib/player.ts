@@ -82,6 +82,7 @@
  *  (Server 12 Castle added after the prune, by request - Hindi-first
  *  API lane. Full map: docs/hindi-providers.md.)
  *  (Servers 13/14: MoviesMod DDL lane + AutoPlay zero-tap lane.)
+ *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -472,6 +473,19 @@ export const PROVIDERS: EmbedProvider[] = [
      * in-player source panel stays as the manual override. */
     id: "autoplay",
     name: "AutoPlay",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 15 - Nuvio (vlcOnly Hindi lane - the watch page renders
+     * HindiSources with endpoint=/api/nuvio/stream; stubs never
+     * called). XDMovies (search API + exact tmdb_id match -> HubCloud
+     * FSL / HubCDN / Pixeldrain / StreamTape finals) + HindMoviez
+     * (title search -> maxbutton/get-links/a.btn -> full extractor),
+     * movies + series. Ported from phisher98/phisher-nuvio-providers. */
+    id: "nuvio",
+    name: "Nuvio",
     vlcOnly: true,
     movie: () => "",
     tv: () => "",

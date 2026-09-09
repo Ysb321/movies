@@ -50,6 +50,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 12 | castle | HindiSources -> /api/castle/stream -> CastleTV app backend (api.hlowb.com, IndiaA): AES search/details/getVideo2, Hindi track + 1 fallback, 1080p/720p/480p + subs; :site-cs resume; playback step un-triaged live (site down), diag-driven; in-player lang switch (position-preserving) |
 | 13 | moviesmod | HindiSources -> /api/moviesmod/stream -> moviesmod.zone Dual/Multi Audio Hindi posts (480p-2160p, movies + series): search -> post -> modpro/modrefer -> cloud SID bypass (CSX ?go= flow) -> driveseed file page -> Instant/Worker/Direct/Resume finals; :site-mm resume; CF 50-subrequest budget build (mm5) |
 | 14 | autoplay | AutoSources -> /api/webstreamr (addon search) -> zero-tap: ranked rows auto-resolve + play best in SmartPlayer (ArtPlayer + hls.js + dash.js: HLS/DASH/progressive, quality/audio/server/subtitle selectors, VLC + Download), auto-advance on dead links; :site-auto resume |
+| 15 | nuvio | HindiSources -> /api/nuvio/stream -> XDMovies (search API + tmdb_id match -> HubCloud FSL/S3/10Gbps, HubCDN HLS, Pixeldrain, StreamTape) + HindMoviez (title search -> maxbutton/get-links/a.btn -> full extractor); movies + series; :site-nv resume |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

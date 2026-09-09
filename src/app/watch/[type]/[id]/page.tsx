@@ -373,6 +373,27 @@ function WatchContent() {
                 season={season}
                 episode={episode}
               />
+            ) : provider.id === "nuvio" ? (
+              <HindiSources
+                key={`nv-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/nuvio/stream"
+                laneTitle="Nuvio - Hindi"
+                resumeSuffix="site-nv"
+                hideSiteLink
+                loadLines={[
+                  "Contacting Nuvio sources...",
+                  "Searching XDMovies + HindMoviez...",
+                  "Still searching - resolving the file links...",
+                  "Almost there - validating the streams...",
+                ]}
+                emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
             ) : provider.id === "desiddl" ? (
               <DdlSources
                 key={`dd-${t}-${id}-${season}-${episode}`}
