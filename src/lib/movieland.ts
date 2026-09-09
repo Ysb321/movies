@@ -239,22 +239,37 @@ export async function resolveMovieland(args: MovielandArgs): Promise<MovielandRe
   let detailTitle = top.h.title;
   let playerDomain = "";
   let streamId = "";
+  let trParam = "";
   try {
     const r = await httpGet(detailUrl, { ...cookie, Referer: `${base}/` });
     if (r.status < 200 || r.status >= 400) return fail(`post http ${r.status}`);
     const rawTitle = strip(/<h1[^>]*class="[^"]*fs__title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i.exec(r.text)?.[1] || "");
     if (rawTitle) detailTitle = rawTitle.slice(0, 140);
-    playerDomain = (/const\s+AwsIndStreamDomain\s*=\s*'([^']+)'/i.exec(r.text)?.[1] || "").replace(/\/+$/, "");
-    streamId = /src:\s*'([^']+)'/i.exec(r.text)?.[1] || "";
+    const domM = /const\s+AwsIndStreamDomain\s*=\s*['"]([^'"]+)['"]/i.exec(r.text);
+    playerDomain = (domM?.[1] || "").replace(/\/+$/, "");
+    /* scope src/tr to the <script> block holding the player config -
+     * first-match over the whole page can grab unrelated `src:`s */
+    let cfgBlock = "";
+    const domIdx = domM?.index ?? -1;
+    if (domIdx >= 0) {
+      const sStart = r.text.lastIndexOf("<script", domIdx);
+      const sEnd = r.text.indexOf("</script>", domIdx);
+      if (sStart >= 0 && sEnd > sStart) cfgBlock = r.text.slice(sStart, sEnd);
+    }
+    const cfgSrc = cfgBlock || r.text;
+    streamId = /src:\s*['"]([^'"]+)['"]/i.exec(cfgSrc)?.[1] || /file:\s*['"]([^'"]+)['"]/i.exec(cfgSrc)?.[1] || "";
+    trParam = /[{\s,]tr:\s*['"]([^'"]+)['"]/i.exec(cfgSrc)?.[1] || "";
     if (!playerDomain || !streamId) return fail("post has no player config");
   } catch (e) {
     return fail(`post failed: ${e instanceof Error ? e.message.slice(0, 50) : "?"}`);
   }
   d.push(`post: "${detailTitle.slice(0, 40)}"`);
   note(`player:${hostOf(playerDomain)}`);
+  note(`src:${streamId.length}/${streamId.slice(0, 6)}`);
+  note(`tr:${trParam ? "yes" : "no"}`);
 
   /* 5. embed -> HDVBPlayer config */
-  const embedLink = `${playerDomain}/play/${streamId}`;
+  const embedLink = `${playerDomain}/play/${streamId}${trParam ? `?tr=${encodeURIComponent(trParam)}` : ""}`;
   let cfg: { key?: string; file?: string } | null = null;
   try {
     const r = await httpGet(embedLink, { Referer: detailUrl });

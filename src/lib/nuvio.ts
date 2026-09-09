@@ -639,8 +639,28 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
         try {
           const r = await httpGet(lp, { ...HMZ_HEADERS, Referer: postUrl });
           if (r.status < 200 || r.status >= 400) return;
-          if (!firstLinkHtml) firstLinkHtml = r.text;
-          for (const a of anchorsWithClass(r.text, /class="[^"]*\bbtn\b/i)) {
+          let H = r.text;
+          if (!firstLinkHtml) firstLinkHtml = H;
+          let btns = [...anchorsWithClass(H, /class="[^"]*\bbtn\b/i)];
+          if (!btns.length) {
+            /* stub page? follow one meta-refresh / JS-location hop */
+            const meta = /<meta[^>]*http-equiv=["']?refresh["']?[^>]*url=([^"'>\s]+)/i.exec(H)?.[1]
+              || /url=([^"'>\s]+)[^>]*http-equiv=["']?refresh/i.exec(H)?.[1];
+            const js = /(?:location\.(?:href|replace)|window\.location\s*=)\s*\(?\s*["']([^"']+)["']/i.exec(H)?.[1];
+            const hop = absUrl(meta || js || "", lp);
+            if (hop && hop !== lp) {
+              try {
+                const r2 = await httpGet(hop, { ...HMZ_HEADERS, Referer: lp });
+                if (r2.status >= 200 && r2.status < 400) {
+                  H = r2.text;
+                  if (H.length > firstLinkHtml.length) firstLinkHtml = H;
+                  note(`hmz:follow:${hostOf(hop)}`);
+                  btns = [...anchorsWithClass(H, /class="[^"]*\bbtn\b/i)];
+                }
+              } catch {}
+            }
+          }
+          for (const a of btns) {
             if (/^https?:/i.test(a.href)) finals.push(a.href);
             if (finals.length >= 4) break;
           }
@@ -688,6 +708,10 @@ async function resolveHMZ(args: NuvioArgs, d: string[], note: (s: string) => voi
       .join(",");
     const hrefs = (H.match(/href="/gi) || []).length;
     note(`hmz:m:${marks || "none"}/hrefs${hrefs}/${H.length}`);
+    const pageTitle = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(H)?.[1] || "";
+    if (pageTitle) note(`hmz:t:${strip(pageTitle).slice(0, 50)}`);
+    const firstJs = /<script[^>]*src="([^"]+)"/i.exec(H)?.[1] || "";
+    if (firstJs) note(`hmz:js:${firstJs.slice(0, 60)}`);
     const ki = H.indexOf('href="http');
     if (ki >= 0) {
       note(`hmz:snip:${H.slice(Math.max(0, ki - 80), ki + 140).replace(/\s+/g, " ").slice(0, 220)}`);
