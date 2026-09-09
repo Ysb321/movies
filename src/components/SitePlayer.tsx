@@ -10,6 +10,9 @@ export type SourceMini = {
   source: string;
   file: string;
   audio: string;
+  /** per-row audio language (Castle lane) - the audio selector keys on
+   *  this when present, falling back to `audio` (Server 9 dubs) */
+  lang?: string;
 };
 
 type Props = {
@@ -35,7 +38,8 @@ type Props = {
    *  button) for the NetMirror lanes */
   variant?: "netmirror";
   /** show the in-player audio-language selector (lanes whose rows carry
-   *  per-row audio languages, e.g. Server 9's Hindi/Tamil/Telugu dubs) */
+   *  per-row languages in `lang` (Castle) or `audio` (Server 9's
+   *  Hindi/Tamil/Telugu dubs)); hops keep quality + resume position */
   showAudio?: boolean;
 };
 
@@ -56,8 +60,10 @@ type Props = {
  * quality when possible; subtitles switch caption tracks via
  * art.subtitle.switch (OFF hides). onSelect returns void per the 5.4.0
  * types, so labels sync explicitly via syncSelectorLabels.
- * showAudio adds an audio-language selector over sources[].audio
- * (Server 9's Hindi/Tamil/Telugu dubs); hidden unless 2+ languages. */
+ * showAudio adds an audio-language selector over sources[].lang
+ * (Castle; falls back to sources[].audio for Server 9's dubs); hidden
+ * unless 2+ languages. Language hops preserve the viewer's position
+ * (pendingSeek) since it is the same content in another dub. */
 export default function SitePlayer({
   mountId,
   url,
@@ -92,7 +98,7 @@ export default function SitePlayer({
     live.current.key = currentKey;
     live.current.server = cur?.source || "";
     live.current.quality = cur?.quality || "Auto";
-    live.current.audio = (cur?.audio || "").trim();
+    live.current.audio = ((cur?.lang || cur?.audio) || "").trim();
   }
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
@@ -107,9 +113,11 @@ export default function SitePlayer({
     html: s.name || s.lang || "CC",
     url: s.url,
   }));
-  const audioItems = Array.from(
-    new Set(sources.map((s) => (s.audio || "").trim()).filter(Boolean))
-  ).map((a) => ({ html: a, audio: a }));
+  const langOf = (s: SourceMini) => ((s.lang || s.audio) || "").trim();
+  const audioItems = Array.from(new Set(sources.map(langOf).filter(Boolean))).map((a) => ({
+    html: a,
+    audio: a,
+  }));
   /* explicit label sync: onSelect returns void per the 5.4.0 types
    * (ArtPlayer ignores any return), so labels follow truth here - a
    * no-op for controls that don't exist, safe for both variants */
@@ -125,6 +133,8 @@ export default function SitePlayer({
       set("audio", live.current.audio || "Audio");
     } catch {}
   }, []);
+  /* pending resume position for language hops (consumed after switchUrl) */
+  const pendingSeek = useRef<number | null>(null);
   const [panel, setPanel] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [pickFail, setPickFail] = useState(false);
@@ -220,12 +230,18 @@ export default function SitePlayer({
                         const a = item && (item as any).audio;
                         if (a && a !== live.current.audio) {
                           const rows = sourcesRef.current;
+                          /* language hop: keep the viewer's position (same
+                           * content, other dub) */
+                          try {
+                            const t = art.video?.currentTime;
+                            if (typeof t === "number" && t > 5) pendingSeek.current = t;
+                          } catch {}
+                          try {
+                            art.notice.show = `Audio: ${a}`;
+                          } catch {}
                           const row =
-                            rows.find(
-                              (s) =>
-                                (s.audio || "").trim() === a &&
-                                s.quality === live.current.quality
-                            ) || rows.find((s) => (s.audio || "").trim() === a);
+                            rows.find((s) => langOf(s) === a && s.quality === live.current.quality) ||
+                            rows.find((s) => langOf(s) === a);
                           hopToRow(row?.key);
                         }
                       } catch {}
@@ -419,6 +435,21 @@ export default function SitePlayer({
       try {
         art.switchUrl(url);
       } catch {}
+      /* language hop: resume where the viewer was (same content) */
+      if (pendingSeek.current != null) {
+        const t = pendingSeek.current;
+        pendingSeek.current = null;
+        try {
+          const v = art.video as HTMLVideoElement | undefined;
+          const apply = () => {
+            try {
+              if (v && isFinite(v.duration) && t > 0 && t < v.duration) v.currentTime = t;
+            } catch {}
+          };
+          v?.addEventListener("loadedmetadata", apply, { once: true });
+          if (v && v.readyState >= 1) apply();
+        } catch {}
+      }
       try {
         art.title = title;
       } catch {}

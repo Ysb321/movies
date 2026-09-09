@@ -49,6 +49,7 @@ type NmRow = {
   file: string;
   audio: string;
   url: string;
+  lang: string;
 };
 
 type NmCaption = { lang: string; name: string; url: string };
@@ -61,6 +62,13 @@ const LOAD_LINES = [
 ];
 
 const isHlsFile = (u: string) => /\.m3u8(\?|#|$)/i.test(u);
+
+/** player language label: Hindi rows get the 🇮🇳 prefix, others raw */
+const langLabel = (raw?: string) => {
+  const t = (raw || "").trim();
+  if (!t) return "";
+  return /hindi/i.test(t) ? `🇮🇳 ${t}` : t;
+};
 
 const platformHint = () =>
   isDesktopVlc()
@@ -153,7 +161,7 @@ export default function HindiSources({
         const hasHi = caps.some((c) => c.lang.toLowerCase().startsWith("hi"));
         const parsed: NmRow[] = streams
           .filter((s: { url?: string }) => s && s.url)
-          .map((s: { quality?: string; size?: number; url: string; platform?: string }, i: number) => ({
+          .map((s: { quality?: string; size?: number; url: string; platform?: string; lang?: string }, i: number) => ({
             key: `${s.platform || "ott"}-${s.quality || "auto"}-${i}`,
             quality: s.quality || "Auto",
             size: fmtSize(s.size),
@@ -161,6 +169,7 @@ export default function HindiSources({
             file: label,
             audio: hasHi ? "🇮🇳 हिन्दी CC" : caps.length ? "CC" : "",
             url: s.url,
+            lang: langLabel(s.lang),
           }));
         if (!alive.current) return;
         if (parsed.length) {
@@ -363,10 +372,12 @@ export default function HindiSources({
               source: r.source,
               file: r.file,
               audio: r.audio,
+              lang: r.lang,
             }))}
             currentKey={player.rowKey}
             startAt={player.startAt}
             subtitles={captions}
+            showAudio
             onPickSource={pickSource}
             onTimeupdate={onSiteTime}
             onError={() => alive.current && setPlayError(true)}
