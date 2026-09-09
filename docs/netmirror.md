@@ -2,7 +2,7 @@
 
 Two independent integrations; both TMDB-keyed so content always matches.
 
-## Server 22: NetMirror Embed (site player, iframe)
+## Server 21: NetMirror Embed (site player, iframe)
 
 The `?embed=1` watch pages on netmirror.center, e.g.
 `https://netmirror.center/tv/122350/?embed=1`.
@@ -59,7 +59,7 @@ Direct iframes to the `?embed=1` pages fail on the open web with
 "refused to connect": the embed URL answers
 `x-frame-options: SAMEORIGIN` (verified via a headers probe; Cloudflare
 + LiteSpeed, no CSP `frame-ancestors`). Chrome renders an XFO denial as
-that exact error — the site is UP, framing is forbidden. Fix: Server 22
+that exact error — the site is UP, framing is forbidden. Fix: Server 21
 URLs run through the embed proxy as
 `/api/desiddl/embed?allow=nm&url=<netmirror-embed-url>`:
 
@@ -87,7 +87,7 @@ Probed and REJECTED as embed sources: netmirror.global (302 alias to
 (verify-walled app at `/verify2`, no TMDB deep link — not wireable).
 r/TeenIndia mentions Cineby + Sonion as alternates (untried).
 
-## Tab crash -> Server 22 repurposed to API-direct (2026-09-09)
+## Tab crash -> Server 21 repurposed to API-direct (2026-09-09)
 
 Live test: the proxied `?embed=1` page **hard-crashed the whole tab**
 (freeze/Aw-Snap), while netmirror.center itself works fine directly
@@ -99,7 +99,7 @@ proxy pathname (`/api/desiddl/embed?...`) instead of `/tv/...`, rewrites
 `location.href` to "fix" it, our script wrap pulls the hop back into the
 proxy, the check fails again -> infinite reload loop. (Their player is
 ArtPlayer 5.4.0, not an iframe — nested-frame recursion is ruled out.)
-Per the user's vote (working playback wins), Server 22 `netembed` no
+Per the user's vote (working playback wins), Server 21 `netembed` no
 longer frames anything: it is now `vlcOnly` rendering the same
 `HindiSources` lane as Server 10 (API mp4s -> inline SitePlayer). The
 `?embed=1` full site player stays one tap away via the "NetMirror ↗"
@@ -112,7 +112,7 @@ TMDB-keyed -> not wireable) plays the same CDN streams fine from a
 third-party origin — further evidence our-origin direct mp4 playback
 should pass their CDN guard.
 
-## Their ArtPlayer on Server 22 (2026-09-09)
+## Their ArtPlayer on Server 21 (2026-09-09)
 
 Per the user's ask ("i want with their art player"), the `netembed`
 lane renders NetMirror's own player config: `SitePlayer`
@@ -130,7 +130,7 @@ subtitle upload items (our lane ships real caption tracks instead).
 
 ## Cineverse-complete player (2026-09-09)
 
-Per the user's ask, Server 22's player now mirrors the Cineverse
+Per the user's ask, Server 21's player now mirrors the Cineverse
 player's full feature set (`cineverse.modiplay.xyz/embed/{slug}`:
 server list StreamHG/EarnVids/SeekStreaming/Player4Me/RPMShare/
 UpnShare/StreamP2P + multi-audio + EN/HI/... subs + download), powered
@@ -181,7 +181,7 @@ Three-tier playback cascade (extension order):
    playlist.php?id=&t=&tm=&h=` -> `{sources:[{file,label,type}],
    tracks:[{kind,file,label,language}]}` (array-or-object!). Quality
    labels include Full/Mid/Low HD. Relative sub files resolve against
-   **`subscdn.top`** (new subtitle CDN). Our Server 23 lane. The signed
+   **`subscdn.top`** (new subtitle CDN). Our Server 22 lane. The signed
    playlists look like `net52.cc/pv/hls/<id>.m3u8?in=<tok::expiry::
    hash>` (dead tokens answer a plain Apache 404, no CF wall); they
    ride `/api/netmirror/hls`, which pins Referer + a cached
@@ -201,7 +201,7 @@ WebView; we don't) and its video interceptor pins Referer per link
 (`videodownloader.site` for net27, `net77.cc/home` native) + Origin +
 cookies on net52/net77/net22/net27 hosts. Our blind spots: we can't set
 playback Referer from browsers, and if they start validating the
-recaptcha or gating playlist.php on clearance, Server 23 empties
+recaptcha or gating playlist.php on clearance, Server 22 empties
 honestly (laneError) while 10/21 stand. Discovery list is now 24
 domains (added the 9 `mobidetcts.*` variants from the extension).
 net52 does NOT serve `/api/embed-tmdb` (Apache 404) — app/playlist host
@@ -229,7 +229,7 @@ The native lane drops them (`in=unknown` filter) instead of showing
 unplayable rows. Separately, `openInVlc` used to hand site-relative
 proxy paths (`/api/...`) verbatim to VLC/intents/clipboard - VLC can't
 resolve those (a pasted one even autolinks as `http://api/...`). It now
-resolves to absolute `origin + path` first, so Server 23's proxied HLS
+resolves to absolute `origin + path` first, so Server 22's proxied HLS
 opens in desktop/Android/iOS VLC with segments riding the proxy.
 
 ## Live debugging (2026-09-09, Spider-Man BND 969681)
@@ -260,7 +260,7 @@ Warmup changed nothing: `warm st=403 ck=0` on net77/verify2 and
 `warm:0ck` + `search http 403` on every NewTV platform. The net52/77
 app surfaces gate Cloudflare-Pages edge IPs wholesale (flat 403, zero
 cookies, both redirect modes) - IP/ASN or CF-clearance gating, not a
-header/cookie gap. Server 23 (native) and the NewTV fan-out cannot run
+header/cookie gap. Server 22 (native) and the NewTV fan-out cannot run
 from this hosting; they stay in-tree, honest-empty, behind diag. The
 net27 embed API (Server 10/21 core) is unaffected: Fight Club (550)
 returns full 360/480/720p + captions live. Spider-Man BND (969681) is

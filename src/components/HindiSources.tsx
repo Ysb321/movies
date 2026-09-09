@@ -131,6 +131,8 @@ export default function HindiSources({
         const body = await res.json();
         if (typeof body.laneError === "string" && body.laneError) {
           if (!alive.current) return;
+          if (typeof body.diag === "string" && body.diag)
+            console.warn("[netmirror]", body.diag.slice(0, 400));
           setError(body.laneError.slice(0, 160));
           setStatus("error");
           return;

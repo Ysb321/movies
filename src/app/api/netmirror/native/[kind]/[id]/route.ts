@@ -374,8 +374,19 @@ export async function GET(
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "native flow failed";
+    /* verify-403 (IP gating) is the permanent state from our hosting:
+     * show a human line, keep the forensics in `diag` (console) */
+    const blocked = msg.startsWith("verify trick failed");
     return NextResponse.json(
-      { title, streams: [], captions: [], laneError: `Playlists lane: ${msg}` },
+      {
+        title,
+        streams: [],
+        captions: [],
+        laneError: blocked
+          ? "NetMirror blocks this flow from our servers - try Server 10 or 21 (same catalog, reachable lane)."
+          : `Playlists lane: ${msg}`,
+        ...(blocked ? { diag: msg.slice(0, 400) } : {}),
+      },
       { headers: { "cache-control": "no-store" } }
     );
   }
