@@ -89,6 +89,10 @@
  *   (Muse Asia / Ani-One Asia / Gundam Channel INTL) resolved per title
  *   and played in YouTube's own player. Anime-only pill "Anime 2 ·
  *   Official"; details in docs/licensed-anime.md.)
+ *  (Server 19: StreamFlizo Anime - TMDB-native anime streaming API with
+ *   multi-audio support (sub/dub/multi). Anime-only pill "Anime 3";
+ *   endpoints: /stream/tmdb/{tmdb}/multi for movies and
+ *   /stream/tmdb/{tmdb}/{season}/{episode}/multi for TV series.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -576,6 +580,21 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: () => "",
     tv: () => "",
   },
+  {
+    /* Server 19 - StreamFlizo Anime (anime-only server - pill label:
+     * "Anime 3", shown only on anime titles). TMDB-native anime streaming
+     * API with multi-audio support (sub/dub/multi options). Verified
+     * endpoints: /stream/tmdb/{tmdb}/multi for movies and
+     * /stream/tmdb/{tmdb}/{season}/{episode}/multi for TV series/anime.
+     * Default sandbox armor; fullscreen allowed. Multi-language subtitle
+     * support with low-latency adaptive streaming up to 1080p/60fps. */
+    id: "streamflizo",
+    name: "StreamFlizo",
+    animeOnly: true,
+    label: "Anime 3",
+    movie: (id) => `https://streamflizoapi.top/stream/tmdb/${id}/multi`,
+    tv: (id, s, e) => `https://streamflizoapi.top/stream/tmdb/${id}/${s}/${e}/multi`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -608,7 +627,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast", "laika"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast", "laika", "streamflizoapi"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 
