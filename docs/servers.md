@@ -1,9 +1,11 @@
 # Server map: pill -> source
 
 Pills render in `PROVIDERS` order (`Server N` = Nth visible pill).
-13 pills on movies/TV. Anime titles add megaplay ("Anime 1") after pill
-13. Default server: VidOut (pill 7, `useState("netout")`). Brand names
-never display - pills only.
+17 pills on movies/TV. Anime titles add two more: megaplay ("Anime 1")
+and licensedanime ("Anime 2 · Official"). Default server: VidOut
+(pill 7, `useState("netout")`). Brand names never display - pills only,
+except the licensed lane which names the licensor on purpose
+(attribution is the point of that lane).
 
 2026-09-09 prune: pills past 11 removed (free embeds 12-20 +
 NetMirror Direct/Playlists 21-22). Their code stays in-tree
@@ -53,6 +55,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 15 | nuvio | HindiSources -> /api/nuvio/stream -> XDMovies (search API + tmdb_id match -> HubCloud FSL/S3/10Gbps, HubCDN HLS, Pixeldrain, StreamTape) + HindMoviez (title search -> maxbutton/get-links/a.btn -> full extractor); movies + series; :site-nv resume |
 | 16 | movierulz | https://slast430did.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; framing open, no referer gate; prefersImdb; ad armor: no downloads/popups/referrer) |
 | 17 | laika | https://laika422mon.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; same IndStream family as 16; prefersImdb; ad armor: no downloads/popups/referrer) |
+| Anime 2 · Official | licensedanime | LicensedAnimeSources -> /api/licensedanime/stream -> the LICENSORS' OWN YouTube channels (Muse Asia / Ani-One Asia / Gundam Channel INTL): title+episode match -> youtube-nocookie embed, so plays count for the rightsholder. Anime-only pill; Data API when YOUTUBE_API_KEY is set, channel-search HTML otherwise; extend via LICENSED_ANIME_CHANNELS. Catalogue is per-title + territorial, so misses show an explicit empty state. Full map: docs/licensed-anime.md |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

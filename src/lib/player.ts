@@ -85,6 +85,10 @@
  *  (Server 15: Nuvio Hindi lane - XDMovies + HindMoviez.)
  *  (Server 16: MovieRulz slast embed.)
  *  (Server 17: Laika laika422mon embed.)
+ *  (Server 18: Licensed Anime - the licensors' own YouTube channels
+ *   (Muse Asia / Ani-One Asia / Gundam Channel INTL) resolved per title
+ *   and played in YouTube's own player. Anime-only pill "Anime 2 ·
+ *   Official"; details in docs/licensed-anime.md.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -530,6 +534,27 @@ export const PROVIDERS: EmbedProvider[] = [
     noReferrer: true,
     movie: (id) => `https://laika422mon.com/play/${id}`,
     tv: (id) => `https://laika422mon.com/play/${id}`,
+  },
+  {
+    /* Server 18 - Licensed Anime (vlcOnly lane - the watch page renders
+     * LicensedAnimeSources; stubs never called). Resolves the title to
+     * episodes on the RIGHTSHOLDERS' OWN YouTube channels - Muse Asia
+     * (MUSE Communication Singapore, the SEA/India simulcast licensee),
+     * Ani-One Asia (MediaLink HK) and Gundam Channel INTL
+     * (Sunrise/Bandai Namco) - via /api/licensedanime/stream, then
+     * embeds YouTube's privacy-enhanced player so the view counts for
+     * the licensor. Matching is title-similarity + episode-number based
+     * (src/lib/licensedanime.ts); set YOUTUBE_API_KEY to use the Data
+     * API instead of the HTML channel-search fallback. Catalogue is
+     * per-title and territorial, so misses are normal and the lane
+     * shows an explicit empty state rather than guessing. */
+    id: "licensedanime",
+    name: "Licensed Anime",
+    animeOnly: true,
+    label: "Anime 2 · Official",
+    vlcOnly: true,
+    movie: () => "",
+    tv: () => "",
   },
   {
     id: "megaplay",

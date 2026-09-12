@@ -16,6 +16,7 @@ import VlcSources from "@/components/VlcSources";
 import HindiSources from "@/components/HindiSources";
 import AutoSources from "@/components/AutoSources";
 import DdlSources from "@/components/DdlSources";
+import LicensedAnimeSources from "@/components/LicensedAnimeSources";
 import {
   saveProgress, updateProgressPosition, inList, toggleList,
   getResume, saveResume, clearResume, resumeKeyFor, isKidsActive,
@@ -393,6 +394,16 @@ function WatchContent() {
                   "Almost there - validating the streams...",
                 ]}
                 emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
+            ) : provider.id === "licensedanime" ? (
+              <LicensedAnimeSources
+                key={`la-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                altTitle={d?.original_name || d?.original_title || undefined}
+                season={season}
+                episode={episode}
               />
             ) : provider.id === "desiddl" ? (
               <DdlSources
