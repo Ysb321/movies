@@ -138,3 +138,5 @@ VidCore — this repo only embeds it.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 For educational/personal use.
+
+WINDSURF VER
