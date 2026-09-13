@@ -93,6 +93,55 @@
  *   multi-audio support (sub/dub/multi). Anime-only pill "Anime 3";
  *   endpoints: /stream/tmdb/{tmdb}/multi for movies and
  *   /stream/tmdb/{tmdb}/{season}/{episode}/multi for TV series.)
+ *  (Server 20: 8StreamApi - Self-hosted Indian dubbed content API with
+ *   Hindi/Tamil/Telugu/Bengali support. Requires backend deployment
+ *   (GitHub: himanshu8443/8StreamApi) and custom API route implementation.
+ *   Uses IMDB IDs with 2-step resolution: mediaInfo → getStream.)
+ *  (Server 21: ScarperApi - Multi-source scraper API (KMMovies, NetMirror,
+ *   AnimeSalt) with API key auth. Requires self-hosting (GitHub:
+ *   junioralive/ScarperApi) and custom API route implementation.)
+ *  (Server 22: 2Embed - embed-based Hindi dubbed lane with auto-updating
+ *   links, 1080p quality, fully responsive player. Uses 2embed.online API:
+ *   /embed/movie/{id} and /embed/tv/{id}/{season}/{episode}. No API key
+ *   required. Works with Hindi-dubbed movies and series.)
+ *  (Server 23: Videm - embed-based Hindi dubbed lane with automatic failover,
+ *   quality & audio selection, subtitles, built for mobile. Uses videm.xyz API:
+ *   /embed/movie/{id} and /embed/tv/{id}/{season}/{episode}. No API key
+ *   required. Works with Hindi-dubbed movies and series.)
+ *  (Server 24: HDHub - vlcOnly Hindi dubbed FSL/Pixeldrain lane - the watch
+ *   page renders HindiSources with endpoint=/api/hdhub/stream; stubs never
+ *   called). Combined HDHub + WebStreamr addon: FSLv2, Pixeldrain, HubCloud,
+ *   4KHDHub, 10Gbps direct downloads with Hindi/English/Multi-Audio tracks.
+ *   Fetches from both hdhub.thevolecitor.qzz.io and WebStreamr for maximum
+ *   content availability. 2160p/1080p/720p/480p available. Uses IMDB/TMDB IDs
+ *   via Stremio protocol. Hindi audio preferred in streams (DDP 2.0 Hindi +
+ *   English DDP 5.1 dual). All formats playable in flexible embed player with
+ *   audio language switching and download capability.)
+ *  (Server 25: AllInOne (embed.filmu.in) - Free video embed API with TMDB ID
+ *   support for movies/series and AniList ID support for anime. General server
+ *   for all content types. Simple iframe embed with autoplay support. Verified
+ *   endpoints: /movie/{tmdbId}, /tv/{tmdbId}/{season}/{episode}, and
+ *   /anime/{anilistId}/{season}/{episode} for anime content. Anti-sandbox:
+ *   MUST run unsandboxed; popups revoked via Permissions-Policy instead
+ *   (denyPopups flag). Fullscreen allowed. Provides multi-server streaming with
+ *   Hindi/regional content options. No API key required.)
+ *  (Server 24: HDHub - vlcOnly Hindi dubbed FSL/Pixeldrain lane - the watch
+ *   page renders HindiSources with endpoint=/api/hdhub/stream; stubs never
+ *   called). Combined HDHub + WebStreamr addon: FSLv2, Pixeldrain, HubCloud,
+ *   4KHDHub, 10Gbps direct downloads with Hindi/English/Multi-Audio tracks.
+ *   Fetches from both hdhub.thevolecitor.qzz.io and WebStreamr for maximum
+ *   content availability. 2160p/1080p/720p/480p available. Uses IMDB/TMDB IDs
+ *   via Stremio protocol. Hindi audio preferred in streams (DDP 2.0 Hindi +
+ *   English DDP 5.1 dual). All formats playable in flexible embed player with
+ *   audio language switching and download capability.)
+ *  (Server 25: AllInOne (embed.filmu.in) - Free video embed API with TMDB ID
+ *   support for movies/series and AniList ID support for anime. General server
+ *   for all content types. Simple iframe embed with autoplay support. Verified
+ *   endpoints: /movie/{tmdbId}, /tv/{tmdbId}/{season}/{episode}, and
+ *   /anime/{anilistId}/{season}/{episode} for anime content. Anti-sandbox:
+ *   MUST run unsandboxed; popups revoked via Permissions-Policy instead
+ *   (denyPopups flag). Fullscreen allowed. Provides multi-server streaming with
+ *   Hindi/regional content options. No API key required.)
  *  To add another server later, append an entry to PROVIDERS — the watch
  *  page shows a server switcher automatically when there is more than one. */
 
@@ -595,6 +644,107 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: (id) => `https://streamflizoapi.top/stream/tmdb/${id}/multi`,
     tv: (id, s, e) => `https://streamflizoapi.top/stream/tmdb/${id}/${s}/${e}/multi`,
   },
+  {
+    /* Server 20 - 8StreamApi (vlcOnly Hindi/regional lane - the watch page
+     * renders HindiSources with endpoint=/api/8stream/stream; stubs never
+     * called). Self-hosted API providing Indian dubbed content (Hindi,
+     * Tamil, Telugu, Bengali). Uses IMDB IDs with 2-step resolution:
+     * mediaInfo endpoint returns file+key, then POST to getStream returns
+     * the actual stream URL. Multi-language audio tracks available.
+     * Requires self-hosting the 8StreamApi backend (GitHub:
+     * himanshu8443/8StreamApi) - endpoints: /api/v1/mediaInfo?id={imdb},
+     * /api/v1/getSeasonList?id={imdb} (TV), /api/v1/getStream (POST).
+     * Implementation notes: src/app/api/8stream/route.ts needed to handle
+     * the 2-step resolution and return playable URLs to the inbuilt player. */
+    id: "8stream",
+    name: "8Stream",
+    vlcOnly: true,
+    label: "8Stream",
+    prefersImdb: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 21 - ScarperApi (vlcOnly multi-source lane - the watch page
+     * renders HindiSources with endpoint=/api/scarper/stream; stubs never
+     * called). Comprehensive scraper API supporting KMMovies (Bollywood,
+     * Hollywood, dubbed movies), NetMirror, AnimeSalt, and more. Requires
+     * API key authentication (x-api-key header) and self-hosting the
+     * ScarperApi backend (GitHub: junioralive/ScarperApi). Endpoints:
+     * /api/kmmovies, /api/kmmovies/search?q={query}, /api/kmmovies/details,
+     * /api/kmmovies/magiclinks for download/stream links. Multi-quality
+     * (480p-4K) with Hindi/regional audio tracks. Implementation notes:
+     * src/app/api/scarper/route.ts needed to handle API auth, search,
+     * details resolution, and return playable URLs to the inbuilt player. */
+    id: "scarper",
+    name: "Scarper",
+    vlcOnly: true,
+    label: "Scarper",
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 22 - 2Embed (embed-based Hindi dubbed lane - renders as
+     * standard iframe embed, NOT HindiSources). Uses 2embed.online API:
+     * /embed/movie/{id} and /embed/tv/{id}/{season}/{episode}
+     * Features: auto-updates links, 1080p quality, fully responsive player.
+     * No API key required. Works with Hindi-dubbed movies and series. */
+    id: "embed2",
+    name: "2Embed",
+    movie: (id) => `https://www.2embed.online/embed/movie/${id}`,
+    tv: (id, s, e) => `https://www.2embed.online/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    /* Server 23 - Videm (embed-based Hindi dubbed lane - renders as
+     * standard iframe embed, NOT HindiSources). Uses videm.xyz API:
+     * /embed/movie/{id} and /embed/tv/{id}/{season}/{episode}
+     * Features: automatic failover, quality & audio selection, subtitles,
+     * built for mobile, no API key required.
+     * Works with Hindi-dubbed movies and series. */
+    id: "videm",
+    name: "Videm",
+    movie: (id) => `https://videm.xyz/embed/movie/${id}`,
+    tv: (id, s, e) => `https://videm.xyz/embed/tv/${id}/${s}/${e}`,
+  },
+  {
+    /* Server 24 - HDHub (vlcOnly Hindi dubbed FSL/Pixeldrain lane - the watch
+     * page renders HindiSources with endpoint=/api/hdhub/stream; stubs never
+     * called). Combined HDHub + WebStreamr addon: FSLv2, Pixeldrain, HubCloud,
+     * 4KHDHub, 10Gbps direct downloads with Hindi/English/Multi-Audio tracks.
+     * Fetches from both hdhub.thevolecitor.qzz.io and WebStreamr for maximum
+     * content availability. 2160p/1080p/720p/480p available. Uses IMDB/TMDB IDs
+     * via Stremio protocol. Hindi audio preferred in streams (DDP 2.0 Hindi +
+     * English DDP 5.1 dual). All formats playable in flexible embed player with
+     * audio language switching and download capability. */
+    id: "hdhub",
+    name: "HDHub",
+    vlcOnly: true,
+    label: "Server 24 · HDHub",
+    prefersImdb: true,
+    movie: () => "",
+    tv: () => "",
+  },
+  {
+    /* Server 25 - AllInOne (embed.filmu.in) - Free video embed API with
+     * TMDB ID support for movies/series and AniList ID support for anime.
+     * Simple iframe embed with autoplay support.
+     * Verified endpoints: /movie/{tmdbId}, /tv/{tmdbId}/{season}/{episode},
+     * and /anime/{anilistId}/{season}/{episode} for anime content.
+     * For anime titles, the watch page resolves AniList IDs via AniList GraphQL
+     * (src/lib/anilist.ts) and uses the /anime/ endpoint; for regular TV series,
+     * it uses the /tv/ endpoint with TMDB IDs.
+     * Anti-sandbox: MUST run unsandboxed; popups revoked via
+     * Permissions-Policy instead (denyPopups flag). Fullscreen allowed.
+     * Provides multi-server streaming with Hindi/regional content options.
+     * No API key required. General server for all content types. */
+    id: "filmu",
+    name: "AllInOne",
+    label: "AllInOne",
+    sandbox: false,
+    denyPopups: true,
+    movie: (id) => `https://embed.filmu.in/movie/${id}`,
+    tv: (id, s, e) => `https://embed.filmu.in/tv/${id}/${s}/${e}`,
+  },
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -627,7 +777,7 @@ const TIME_KEYS = [
   "currentTime", "current_time", "currenttime", "time", "position", "seconds", "elapsed",
 ];
 const DURATION_KEYS = ["duration", "totalDuration", "total_duration", "length"];
-const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast", "laika", "streamflizoapi"];
+const PLAYER_HOSTS = ["vidzee", "cinesrc", "peachify", "bingr", "pvrplay", "vidbolt", "netout", "vidout", "megaplay", "modiplay", "nxsha", "screenscape", "iqsmartgames", "netmirror", "slast", "laika", "streamflizoapi", "8-stream-api", "screenscapeapi", "filmu"];
 /** playback seconds can never reach this; epoch-ms "timestamp" fields do */
 const MAX_PLAUSIBLE_SECONDS = 1e7;
 

@@ -147,6 +147,23 @@ function WatchContent() {
       });
       return () => { cancelled = true; };
     }
+    /* AllInOne (FilmU) supports both TMDB and AniList IDs: for anime content,
+     * resolve AniList ID and use /anime/ endpoint; for regular TV series, use
+     * /tv/ endpoint with TMDB IDs. Anime detection based on genre or keywords. */
+    if (provider.id === "filmu" && t === "tv") {
+      const name = d?.original_title || d?.original_name || d?.title || d?.name;
+      const genres = d?.genres?.map((g: any) => g.name.toLowerCase()) || [];
+      const isAnime = genres.includes("animation") || genres.includes("anime") ||
+                      (name && name.toLowerCase().includes("anime"));
+      if (isAnime && name) {
+        setEmbed(null); /* resolving - skeleton shows */
+        findAniListId(name).then((aniId) => {
+          if (cancelled) return;
+          setEmbed(aniId ? { src: `https://embed.filmu.in/anime/${aniId}/${season}/${episode}` } : { src: "" });
+        });
+        return () => { cancelled = true; };
+      }
+    }
     /* slug-keyed sub-players (Cineverse) need the TMDB title first -
      * skeleton until it arrives (same as the MegaPlay resolving state) */
     if (subPlayer?.slugTitle && !d) { setEmbed(null); return; }
@@ -394,6 +411,28 @@ function WatchContent() {
                   "Almost there - validating the streams...",
                 ]}
                 emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
+              />
+            ) : provider.id === "hdhub" ? (
+              <HindiSources
+                key={`hd-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={`tmdb:${id}`}
+                title={title}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                imdbId={d?.external_ids?.imdb_id ?? null}
+                season={season}
+                episode={episode}
+                endpoint="/api/hdhub/stream"
+                laneTitle="🏰 HDHub + WebStreamr · All Formats"
+                resumeSuffix="site-hd"
+                hideSiteLink
+                loadLines={[
+                  "Contacting HDHub + WebStreamr sources...",
+                  "Searching FSLv2, Pixeldrain, HubCloud...",
+                  "Fetching direct download links...",
+                  "Almost there - validating stream formats...",
+                ]}
+                emptyHint="Combined HDHub + WebStreamr sources - try another server."
               />
             ) : provider.id === "licensedanime" ? (
               <LicensedAnimeSources

@@ -9,6 +9,7 @@ import {
   isDesktopVlc,
   isAndroid,
   isIOS,
+  playableInBrowser,
 } from "@/lib/vlc";
 import { fmtTime } from "@/lib/player";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
@@ -37,6 +38,8 @@ type Props = {
   hideSiteLink?: boolean;
   /** release year, forwarded as &year= for title matching */
   year?: string;
+  /** IMDb ID (tt1234567), forwarded as &imdb= for title matching */
+  imdbId?: string;
 };
 
 type Status = "loading" | "ready" | "empty" | "error";
@@ -95,6 +98,7 @@ export default function HindiSources({
   loadLines,
   hideSiteLink,
   year,
+  imdbId,
 }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<NmRow[]>([]);
@@ -140,7 +144,7 @@ export default function HindiSources({
         const kind = type === "movie" ? "movie" : "series";
         const id = type === "movie" ? tmdbId : `${tmdbId}:${season}:${episode}`;
         const res = await fetch(
-          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}${year ? `&year=${encodeURIComponent(year)}` : ""}`,
+          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}${year ? `&year=${encodeURIComponent(year)}` : ""}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}`,
           { signal: ctrl.signal }
         );
         if (!alive.current) return;
@@ -159,18 +163,70 @@ export default function HindiSources({
         const caps: NmCaption[] = Array.isArray(body.captions) ? body.captions : [];
         const label = typeof body.title === "string" && body.title ? body.title : title;
         const hasHi = caps.some((c) => c.lang.toLowerCase().startsWith("hi"));
+        
+        // Parse stream description for link type (FSLv2, PixelDrain, HubCloud, etc.)
+        const parseStreamInfo = (description: string, name: string) => {
+          const desc = description || "";
+          const nameStr = name || "";
+          
+          // Extract link type: FSLv2, FSL, PixelDrain, 10Gbps, HubCloud, WebStreamr, etc.
+          let linkType = "Direct";
+          if (desc.includes("FSLv2")) linkType = "FSLv2";
+          else if (desc.includes("FSL")) linkType = "FSL";
+          else if (desc.includes("PixelDrain") || desc.includes("pixeldrain")) linkType = "Pixeldrain";
+          else if (desc.includes("HubCloud") || desc.includes("10Gbps")) linkType = "HubCloud";
+          else if (desc.includes("10Gbps")) linkType = "10Gbps";
+          else if (desc.includes("4KHDHub")) linkType = "4KHDHub";
+          else if (nameStr.includes("4KHDHub")) linkType = "4KHDHub";
+          else if (desc.includes("[HDHub]")) linkType = "HDHub";
+          else if (desc.includes("[WebStreamr]")) linkType = "WebStreamr";
+          
+          // Extract size from description
+          let sizeStr = "Unknown";
+          const sizeMatch = desc.match(/💾\s*([\d.]+)\s*(GB|MB)/i);
+          if (sizeMatch) {
+            sizeStr = `${sizeMatch[1]} ${sizeMatch[2]}`;
+          }
+          
+          // Extract quality from name or description
+          let quality = "Auto";
+          const qualityMatch = nameStr.match(/(\d{3,4})p/i);
+          if (qualityMatch) {
+            quality = qualityMatch[1] + "p";
+          }
+          
+          // Extract audio language from description
+          let audioLang = "";
+          if (desc.toLowerCase().includes("hindi")) audioLang = "🇮🇳";
+          else if (desc.toLowerCase().includes("tamil")) audioLang = "🇹🇦";
+          else if (desc.toLowerCase().includes("telugu")) audioLang = "🇮🇳";
+          else if (desc.toLowerCase().includes("english")) audioLang = "🇬🇧";
+          
+          // Build source label: linkType + quality + size + audio
+          const sourceParts = [linkType];
+          if (quality && quality !== "Auto") sourceParts.push(quality);
+          if (sizeStr && sizeStr !== "Unknown") sourceParts.push(sizeStr);
+          if (audioLang) sourceParts.push(audioLang);
+          const source = sourceParts.join(" ");
+          
+          return { linkType, size: sizeStr, quality, source, audioLang };
+        };
+        
         const parsed: NmRow[] = streams
-          .filter((s: { url?: string }) => s && s.url)
-          .map((s: { quality?: string; size?: number; url: string; platform?: string; lang?: string }, i: number) => ({
-            key: `${s.platform || "ott"}-${s.quality || "auto"}-${i}`,
-            quality: s.quality || "Auto",
-            size: fmtSize(s.size),
-            source: s.platform || "OTT",
-            file: label,
-            audio: hasHi ? "🇮🇳 हिन्दी CC" : caps.length ? "CC" : "",
-            url: s.url,
-            lang: langLabel(s.lang),
-          }));
+          .filter((s: { url?: string; description?: string; name?: string }) => s && s.url)
+          .map((s: { quality?: string; size?: number; url: string; platform?: string; lang?: string; description?: string; name?: string }, i: number) => {
+            const { source, quality, size, audioLang } = parseStreamInfo(s.description || "", s.name || "");
+            return {
+              key: `${source.replace(/\s+/g, "-").toLowerCase()}-${i}`,
+              quality: quality,
+              size: size,
+              source: source,
+              file: label,
+              audio: audioLang || (hasHi ? "🇮🇳 हिन्दी CC" : caps.length ? "CC" : ""),
+              url: s.url,
+              lang: langLabel(s.lang),
+            };
+          });
         if (!alive.current) return;
         if (parsed.length) {
           setRows(parsed);
@@ -231,6 +287,18 @@ export default function HindiSources({
       lastSent.current = pos;
       setPlayError(false);
       setPnote("");
+      
+      // Check if playable in browser - if not, trigger VLC directly
+      if (!playableInBrowser(row.url)) {
+        openInVlc(row.url).then((out) => {
+          if (!alive.current) return;
+          setSent((s) => ({ ...s, [row.key]: out.ok }));
+          setPnote(out.note);
+          setBusy(null);
+        });
+        return;
+      }
+      
       setPlayer({
         url: row.url,
         label: `${row.quality} · ${row.source}`,

@@ -55,7 +55,13 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 15 | nuvio | HindiSources -> /api/nuvio/stream -> XDMovies (search API + tmdb_id match -> HubCloud FSL/S3/10Gbps, HubCDN HLS, Pixeldrain, StreamTape) + HindMoviez (title search -> maxbutton/get-links/a.btn -> full extractor); movies + series; :site-nv resume |
 | 16 | movierulz | https://slast430did.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; framing open, no referer gate; prefersImdb; ad armor: no downloads/popups/referrer) |
 | 17 | laika | https://laika422mon.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; same IndStream family as 16; prefersImdb; ad armor: no downloads/popups/referrer) |
-| Anime 2 · Official | licensedanime | LicensedAnimeSources -> /api/licensedanime/stream -> the LICENSORS' OWN YouTube channels (Muse Asia / Ani-One Asia / Gundam Channel INTL): title+episode match -> youtube-nocookie embed, so plays count for the rightsholder. Anime-only pill; Data API when YOUTUBE_API_KEY is set, channel-search HTML otherwise; extend via LICENSED_ANIME_CHANNELS. Catalogue is per-title + territorial, so misses show an explicit empty state. Full map: docs/licensed-anime.md |
+| 18 | licensedanime | LicensedAnimeSources -> /api/licensedanime/stream -> the LICENSORS' OWN YouTube channels (Muse Asia / Ani-One Asia / Gundam Channel INTL): title+episode match -> youtube-nocookie embed, so plays count for the rightsholder. Anime-only pill; Data API when YOUTUBE_API_KEY is set, channel-search HTML otherwise; extend via LICENSED_ANIME_CHANNELS. Catalogue is per-title + territorial, so misses show an explicit empty state. Full map: docs/licensed-anime.md |
+| 19 | streamflizo | https://streamflizoapi.top/stream/tmdb/{tmdb}/multi (anime-only pill; TMDB-native anime streaming API with multi-audio support (sub/dub/multi)) |
+| 20 | 8stream | vlcOnly Hindi/regional lane (self-hosted API, 2-step resolution: mediaInfo → getStream, requires backend deployment) |
+| 21 | scarper | vlcOnly multi-source lane (KMMovies/NetMirror/AnimeSalt, API key auth, requires self-hosting) |
+| 22 | embed2 | https://www.2embed.online/embed/movie|tv/{id} (Hindi-dubbed, 1080p, auto-updating links) |
+| 23 | videm | https://videm.xyz/embed/movie|tv/{id} (Hindi-dubbed, failover, quality & audio selection, subtitles) |
+| 24 | hdhub | HindiSources -> /api/hdhub/stream -> hdhub.thevolecitor.qzz.io Stremio addon (FSLv2/Pixeldrain/HubCloud/10Gbps, Hindi/English/Multi-Audio, 2160p/1080p/720p/480p) |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

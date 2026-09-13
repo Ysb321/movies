@@ -251,20 +251,24 @@ async function fetchPlatform(
     let search: any = null;
     for (const b of bases) {
       api = b;
-      const searchRes = await fetch(`${b}/newtv/search.php?s=${encodeURIComponent(title)}`, {
-        headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, b, jar),
-        signal: AbortSignal.timeout(12000),
-      });
-      if (searchRes.status === 403) {
-        notes.push(`${platform}: ${shortHost(b)} 403`);
-        continue;
+      try {
+        const searchRes = await fetch(`${b}/newtv/search.php?s=${encodeURIComponent(title)}`, {
+          headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, b, jar),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (searchRes.status === 403) {
+          notes.push(`${platform}: ${shortHost(b)} 403`);
+          continue;
+        }
+        if (!searchRes.ok) {
+          notes.push(`${platform}: search http ${searchRes.status} (${shortHost(b)})`);
+          continue;
+        }
+        search = await searchRes.json();
+        break;
+      } catch (e) {
+        notes.push(`${platform}: search err ${e instanceof Error ? e.message.slice(0, 40) : "err"} (${shortHost(b)})`);
       }
-      if (!searchRes.ok) {
-        notes.push(`${platform}: search http ${searchRes.status}`);
-        return [];
-      }
-      search = await searchRes.json();
-      break;
     }
     if (!search) {
       state.gated = true;
@@ -272,72 +276,82 @@ async function fetchPlatform(
     }
     const first = search && Array.isArray(search.searchResult) ? search.searchResult[0] : null;
     if (!first || !first.id) {
-      notes.push(`${platform}: no search results`);
+      notes.push(`${platform}: no search results (query: ${title})`);
       return [];
     }
-    const postRes = await fetch(`${api}/newtv/post.php?id=${encodeURIComponent(first.id)}`, {
-      headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, api, jar),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!postRes.ok) {
-      notes.push(`${platform}: post http ${postRes.status}`);
-      return [];
-    }
-    const post = await postRes.json();
-    let targetId: string = first.id;
-    if (type === "series") {
-      /* collect episodes (page 1 + page 2 when paginated) */
-      type Ep = { id: string; s: number | null; ep: number | null };
-      const eps: Ep[] = [];
-      const seasons = Array.isArray(post.season) ? post.season : [];
-      const selIdx = seasons.findIndex((s: { selected?: boolean }) => s && s.selected);
-      const seasonNo = selIdx >= 0 ? selIdx + 1 : null;
-      const seasonId = selIdx >= 0 ? seasons[selIdx].id : post.nextPageSeason;
-      for (const ep of post.episodes || []) {
-        if (ep) eps.push({ id: ep.id, s: seasonNo ?? num(ep.sNum), ep: num(ep.ep) ?? num(ep.epNum) });
+    try {
+      const postRes = await fetch(`${api}/newtv/post.php?id=${encodeURIComponent(first.id)}`, {
+        headers: newTvHeaders(ott, { Lastep: "", Usertoken: "" }, api, jar),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!postRes.ok) {
+        notes.push(`${platform}: post http ${postRes.status} (${shortHost(api)})`);
+        return [];
       }
-      if (post.nextPageShow === 1 && seasonId) {
-        try {
-          const p2 = await fetch(`${api}/newtv/episodes.php?id=${encodeURIComponent(seasonId)}&page=2`, {
-            headers: newTvHeaders(ott, {}, api, jar),
-            signal: AbortSignal.timeout(12000),
-          });
-          const p2j = await p2.json();
-          for (const ep of p2j.episodes || []) {
-            if (ep) eps.push({ id: ep.id, s: seasonNo ?? num(ep.sNum), ep: num(ep.ep) ?? num(ep.epNum) });
-          }
-        } catch {
-          /* page 1 still stands */
+      const post = await postRes.json();
+      let targetId: string = first.id;
+      if (type === "series") {
+        /* collect episodes (page 1 + page 2 when paginated) */
+        type Ep = { id: string; s: number | null; ep: number | null };
+        const eps: Ep[] = [];
+        const seasons = Array.isArray(post.season) ? post.season : [];
+        const selIdx = seasons.findIndex((s: { selected?: boolean }) => s && s.selected);
+        const seasonNo = selIdx >= 0 ? selIdx + 1 : null;
+        const seasonId = selIdx >= 0 ? seasons[selIdx].id : post.nextPageSeason;
+        for (const ep of post.episodes || []) {
+          if (ep) eps.push({ id: ep.id, s: seasonNo ?? num(ep.sNum), ep: num(ep.ep) ?? num(ep.epNum) });
         }
+        if (post.nextPageShow === 1 && seasonId) {
+          try {
+            const p2 = await fetch(`${api}/newtv/episodes.php?id=${encodeURIComponent(seasonId)}&page=2`, {
+              headers: newTvHeaders(ott, {}, api, jar),
+              signal: AbortSignal.timeout(12000),
+            });
+            const p2j = await p2.json();
+            for (const ep of p2j.episodes || []) {
+              if (ep) eps.push({ id: ep.id, s: seasonNo ?? num(ep.sNum), ep: num(ep.ep) ?? num(ep.epNum) });
+            }
+          } catch (e) {
+            notes.push(`${platform}: p2 err ${e instanceof Error ? e.message.slice(0, 40) : "err"}`);
+          }
+        }
+        const target = eps.find((x) => x.s === season && x.ep === episode);
+        if (!target) {
+          notes.push(`${platform}: ep not found (S${season}E${episode})`);
+          return [];
+        }
+        targetId = target.id;
+      } else {
+        if (post.type === "t" || (post.episodes || []).filter(Boolean).length > 0) {
+          notes.push(`${platform}: not a movie entry`);
+          return [];
+        }
+        targetId = post.main_id || first.id;
       }
-      const target = eps.find((x) => x.s === season && x.ep === episode);
-      if (!target) {
-        notes.push(`${platform}: ep not found`);
+      try {
+        const playRes = await fetch(`${api}/newtv/player.php?id=${encodeURIComponent(targetId)}`, {
+          headers: newTvHeaders(ott, { Usertoken: "" }, api, jar),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!playRes.ok) {
+          notes.push(`${platform}: player http ${playRes.status} (${shortHost(api)})`);
+          return [];
+        }
+        const play = await playRes.json();
+        if (!play || !play.video_link) {
+          notes.push(`${platform}: no video_link (post.type=${post.type})`);
+          return [];
+        }
+        notes.push(`${platform}: ok (${shortHost(api)})`);
+        return [{ quality: "Auto", url: play.video_link, platform: LABEL[platform] || platform }];
+      } catch (e) {
+        notes.push(`${platform}: player err ${e instanceof Error ? e.message.slice(0, 40) : "err"}`);
         return [];
       }
-      targetId = target.id;
-    } else {
-      if (post.type === "t" || (post.episodes || []).filter(Boolean).length > 0) {
-        notes.push(`${platform}: not a movie entry`);
-        return [];
-      }
-      targetId = post.main_id || first.id;
-    }
-    const playRes = await fetch(`${api}/newtv/player.php?id=${encodeURIComponent(targetId)}`, {
-      headers: newTvHeaders(ott, { Usertoken: "" }, api, jar),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!playRes.ok) {
-      notes.push(`${platform}: player http ${playRes.status}`);
+    } catch (e) {
+      notes.push(`${platform}: exc ${e instanceof Error ? e.message.slice(0, 60) : "err"}`);
       return [];
     }
-    const play = await playRes.json();
-    if (!play || !play.video_link) {
-      notes.push(`${platform}: no video_link`);
-      return [];
-    }
-    notes.push(`${platform}: ok`);
-    return [{ quality: "Auto", url: play.video_link, platform: LABEL[platform] || platform }];
   } catch (err) {
     notes.push(
       `${platform}: EXC ${err instanceof Error ? err.message.slice(0, 60) : "err"}`

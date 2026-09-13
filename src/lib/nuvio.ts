@@ -106,8 +106,11 @@ async function headFollow(url: string): Promise<string> {
     } finally {
       clearTimeout(killer);
     }
-  } catch {
-    return url;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("headFollow: timeout");
+    }
+    throw err;
   }
 }
 

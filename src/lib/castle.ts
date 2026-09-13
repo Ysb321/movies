@@ -61,18 +61,22 @@ const b64ToBytes = (s: string) => {
 /** AES-128-CBC decrypt: key = base64(securityKey) + "T!BgJB", first 16
  *  bytes; IV = key. Verified against live ciphertext (node + edge). */
 export async function castleDecrypt(cipherB64: string, secKeyB64: string): Promise<string> {
-  const rawKey = b64ToBytes(secKeyB64);
-  const suffix = new TextEncoder().encode("T!BgJB");
-  const keyBytes = new Uint8Array(16);
-  keyBytes.set(rawKey.subarray(0, Math.min(16, rawKey.length)), 0);
-  if (rawKey.length < 16) keyBytes.set(suffix.subarray(0, 16 - rawKey.length), rawKey.length);
-  const key = await crypto.subtle.importKey("raw", keyBytes, "AES-CBC", false, ["decrypt"]);
-  const pt = await crypto.subtle.decrypt(
-    { name: "AES-CBC", iv: keyBytes },
-    key,
-    b64ToBytes(cipherB64)
-  );
-  return new TextDecoder().decode(pt);
+  try {
+    const rawKey = b64ToBytes(secKeyB64);
+    const suffix = new TextEncoder().encode("T!BgJB");
+    const keyBytes = new Uint8Array(16);
+    keyBytes.set(rawKey.subarray(0, Math.min(16, rawKey.length)), 0);
+    if (rawKey.length < 16) keyBytes.set(suffix.subarray(0, 16 - rawKey.length), rawKey.length);
+    const key = await crypto.subtle.importKey("raw", keyBytes, "AES-CBC", false, ["decrypt"]);
+    const pt = await crypto.subtle.decrypt(
+      { name: "AES-CBC", iv: keyBytes },
+      key,
+      b64ToBytes(cipherB64)
+    );
+    return new TextDecoder().decode(pt);
+  } catch (err) {
+    throw new Error(`castle: decrypt failed - ${err instanceof Error ? err.message : "unknown"}`);
+  }
 }
 
 /** JSON.parse that survives 64-bit Castle ids (id: 5747736935414784). */

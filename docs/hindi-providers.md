@@ -1,4 +1,4 @@
-# Hindi-audio providers: recon map (2026-09-09)
+# Hindi-audio providers: recon map (2026-09-12)
 
 Goal: Hindi-audio streaming at NetMirror quality, from any source
 (git repos, libraries, plugins, reddit). Shipped: **Castle (Server
@@ -49,14 +49,20 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   `moviesmod.zone` (verified alive 2026-09-09, fresh Sep 2026
   Hindi-dubbed posts; `.army` parked, `.build` dead, `.gd` is an
   unrelated English streaming clone). Dual Audio {Hindi-English} /
-  Multi Audio WEB-DL + BluRay, 480p-2160p, movies + series + Hindi
-  Series / K-Drama / Anime.
+  Multi Audio {Hindi-English-...} WEB-DL + BluRay, 480p-2160p, movies +
+  series, Hindi Series / K-Drama / Anime sections.
 - Chain: `?s=` search -> Dice-similarity + year match (Hindi-ish
-  posts preferred) -> post h4/h3 links -> modrefer.in (base64) /
-  modpro.blog -> driveleech/driveseed direct or unblocked* SID
-  verify -> file page (Size/Name) -> Cloud/Instant/Worker/Direct/
-  Resume final CDN (302 ?url= unwrap, worker token POST, ?type=1+2,
-  video-seed.pro GDrive unwrap) -> HEAD validation.
+  posts preferred) -> post page
+  (.thecontent h4 per quality / h3 Season episode buttons) ->
+  modrefer.in (base64) | links/posts/episodes.modpro.blog ->
+  driveseed/driveleech direct (fast path) | unblocked* SID verify
+  (cloud.unblockedgames.world ?sid=, CSX bypass: #landing forms
+  -> ?go= token + cookie -> meta refresh; legacy s_343 fallback) -> redirect -> window.location.replace file
+  page -> Instant Download (?url= keys -> POST {origin}/api,
+  x-token=host) | Resume Worker Bot (token + /download?id=) |
+  Cloud Download | Direct (?type=1+2) | Resume Cloud -> workers / r2 /
+  cdn.video-leech.pro CDN (video-seed.pro hop unwrapped to the
+  video-downloads.googleusercontent.com file) -> HEAD validation.
 - Code: `src/lib/moviesmod.ts` (edge-safe: native fetch + regex,
   manual cookie jar, driveseed-first, parallel + partial results,
   in-memory 4h cache) + route, rendered by HindiSources
@@ -88,103 +94,6 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   exists, zone-first domain check (lists on failure only),
   path-style search (no 302 hop). Budget now ~35-40 cold.
 
-## Live sources for future ports (ranked)
-
-1. **Hindmovie SkyStream repo** (likhithkrishna1103-tech/Hindmovie,
-   active Sep 2026): `domians.json` = current Hindi-DDL domains
-   (vegamovies.catering, hdmovie2a.cfd, hindmovie.fit,
-   new5.movies4u.clinic, uhdmovies.autos, luxmovies1.shop,
-   123movies9.run, moviesleech.bar, ...) + portable client-side
-   plugins: `movies4u/plugin.js` (107KB), `hindmoviez` (62KB),
-   `hdmovie2` (65KB), `movierulz` (24KB), `vegamovies`,
-   `zinkmovies`, `tamilblasters`, `cinefreak`, giant `cinestream`
-   (339KB, multi-source?). Next DesiDDL blogs should come from here.
-2. **CSX / Megix** (SaurabhKaperwan/CSX): Bollyflix, Moviesmod,
-   World4uFree, CineStream (Kotlin; DesiDDL already ports its
-   VegaMovies/MoviesDrive pattern). r/Cloudstream3 confirms CSX +
-   phisher HindiProviders (Streamplay, Multimovies, HDMovie2,
-   UpMovies, Einthusan HDRips) as the working Hindi set.
-3. **TMDB-Embed-API providers** (self-host, Docker; some portable):
-   Showbox/FebBox (needs febboxCookies + TMDB key - self-host only),
-   4KHDHub (already via WebStreamr), OneTouchTV (api3.devcorp.me),
-   ZXCStreams (r1.zxcstream.xyz), StreamFlix (api.streamflix.app +
-   Firebase RTDB), DahmerMovies (a.111477.xyz), VaPlayer
-   (streamdata.vaplayer.ru/api.php). Its `netmirror.js` uses
-   net27.cc + videodownloader.site Referer - independent
-   corroboration of our Server 10 approach.
-4. **walterwhite-69/Moviebox-API** (FastAPI + CF bypass, active):
-   MovieBox.ph MP4/HLS with Hindi dubs - self-host only.
-5. **cinepro-org/core** (145 stars): multi-site scraper, 50+
-   sources/title, docs.cinepro.cc - evaluate as a self-hosted
-   aggregator.
-6. **animedubhindi** (Hindmovie plugin, 53KB): Hindi-dubbed ANIME -
-   the future "Anime 2" pill (our megaplay is sub-only).
-7. **AllMovieLand successors** (allmovieland.info/.cc/.click):
-   the hindi-dub-api upstream family (AwsIndStream player); needs
-   fresh handshake RE if pursued.
-8. **Torrent + debrid** (highest quality, needs RD/Premiumize keys):
-   Torrentio + Hindi-dubbed WEB-DL (PSA/YTS) - the long-term 4K
-   Hindi path, tracked for a future keyed lane.
-
-## Dead / rejected (do not pursue)
-
-- Videasy (videasy.to): **shutting down 2026-09-15** ("whole
-  infrastructure switched off"). NB: BingeR's backend list includes
-  Videasy - that leg dies; its FilmU/Cinezo/Vidbolt/Vidrift legs
-  survive. Its Hindi "Fade" server dies with it.
-- embed.su / vidsrc.su: apex + www both parked (findakey.net) - gone.
-- HDGharTV (hdghartv.cc): "This service has been discontinued."
-- hindi-dub-api + 8StreamApi (Vercel): deployments answer but the
-  AllMovieLand scraper is broken ("Something went wrong", "Media not
-  found"); archived/unmaintained. Pattern only.
-- VixSrc (vixsrc.to): docs-fresh embed API with `?lang=` audio-track
-  param, BUT `lang=hi` and `lang=en` both return "Invalid language"
-  (Italian-first catalog, StreamingUnity family) - no Hindi value.
-- Reddit dual-audio thread (r/PiracyArchive): streamxtv.tech
-  suggested, reporter says "not giving hindi dubbed" - no action.
-- Simatwa/moviebox-api: repo 404 + PyPI old versions deleted, 0.6.0
-  is a 1.7kB stub - scrubbed, do not pursue.
-- walterwhite-69/Moviebox-API: archived by author (MovieBox went
-  paid, 480p max on API) - dead.
-- MovieBox app API (api.inmoviebox.com/wefeed-mobile-bff): needs a
-  secret HMAC PRIMARY_KEY (APK extraction) - blocked unless the key
-  surfaces publicly.
-- MP4Hydra (mp4hydra.org): "Back soon... rebuilding" since Jul 2026
-  - down, re-check later.
-- yahyaMomin/vegamovies-API: abandoned, author couldn't beat
-  Cloudflare from Vercel/Render (works locally only).
-- VidLink (vidlink.pro, TMDB-Embed `vidlink.js`): English-only
-  (`multiLang=0`) + enc-dec.app dependency - no Hindi value.
-- TMDB-Embed non-castle/4khdhub providers (onetouchtv, streamflix,
-  vaplayer, zxcstreams, dahmermovies): English-only, no Hindi
-  support found.
-
-## Reference lists (re-check monthly, fast churn)
-
-- LyeDevGit/free-streaming-apis (Aug 2026, curl-verified): embed
-  APIs (vidsrc.to/.io/.pm, vsembed.ru, vidsrc.in, vid-src.top,
-  2embed.cc, superembed.stream, moviesapi.to/vidspark.to
-  `/movie/{id}`, vidfast.vc, vidrock.ru, vidflix.club, vidlux.xyz,
-  toustream.xyz, embed.wfs.lol, VidCore vidcore.org/.net) +
-  self-hosted table + graveyard. NOTE: its ScreenScape/CinemaOS
-  "embed gone" flags are stale - our Server 8 screenscape embed
-  still works; verify, don't trust.
-- FMHY non-English page (fmhy.net/non-english): per-language site
-  lists (Hindi section exists; page is JS-heavy, read via browser).
-- r/Cloudstream3 (Hindi Providers / Best working extension threads):
-  CSX shortcode `csx`, phisher `phisherrepo`, Megix/CNCVerse recs.
-- moviesmod.army currently serves a cPanel parked page (dead/moved);
-  always re-verify blog domains before porting (Megix Utils
-  urls.json refreshes ours every 4h; Hindmovie domians.json is the
-  cross-check).
-
-## Removed: UltraStream (ex-Server 14, 2026-09-09)
-
-- newhdmovie2 player-embed lane, removed per user request before it
-  ever played (post HTML carries no data-source-embed - players are
-  JS/AJAX-loaded; the triage markers never got a deployed read).
-  Port notes (provider-hdmovie2, hdm2.biz host) deleted with the code.
-
 ## Shipped this round: AutoPlay (Server 14)
 
 - Zero-tap WebStreamr lane (user call - no lists, no taps): search
@@ -197,8 +106,6 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   (row-hop; HLS alternate-audio auto-prefers Hindi), VLC +
   Download + Report, resume (:site-auto), unmuted-autoplay with
   muted fallback + notice. Cross-family hops remount via key.
-- Genuine JW Player needs a paid library ID (user has none) - the
-  same feature set built license-free; engine swappable later.
 
 ## Shipped this round: Nuvio (Server 15)
 
@@ -219,22 +126,74 @@ skip, resolutions [3,2,1], shared encodes labeled with all languages
   Location reads), unknown hosts HEAD-gated (upstream passes blind).
 - Budget: ~35 cold (XD ~20 + HMZ ~12 + heads); diag tag `nv:`.
 
-## Movieland (Server 17) - REMOVED 2026-09-09, replaced by Laika embed
+## Shipped this round: 2Embed (Server 22)
 
-> Removed: the rotated player hosts 404'd the lane's embed stage, and
-> the user-supplied raw player URL works better as a direct embed
-> (slot 17 now = Laika, laika422mon.com/play/{imdb}). Notes below kept
-> as an IndStream/HDVBPlayer protocol reference.
+- Upstream: 2Embed API (`2embed.online`), verified live 2026-09-12
+- Pattern: Embed-based Hindi-dubbed movies/series using IMDb/TMDB IDs
+- Endpoint: `/embed/movie/{id}` for movies, `/embed/tv/{id}/{season}/{episode}` for series
+- Quality: 1080p via responsive iframe player with auto-updating links
+- Features: Fast streaming servers, fully responsive player, 100% free
+- Code: `src/app/api/embed2/stream/[kind]/[id]/route.ts`
+- Rendered by HindiSources with `resumeSuffix=site-e2` flag
+- No configuration needed - uses external 2Embed infrastructure
 
-- Upstream: `EpicGGCoder/allmovieland-api` (Apr 2026), found via the
-  user's player.js (allmovieland.link uses the SAME slast backend as
-  Server 16 - AwsIndStreamDomain + /play/{src} + init/error msgs).
-- Chain: DLE session (PHPSESSID) -> POST index.php?do=search ->
-  article.short-mid match -> detail h1.fs__title + player config ->
-  HDVBPlayer embed config {key, file} -> POST playlist (X-CSRF-TOKEN,
-  adaptive single-then-bulkx3 vs upstream's always-x10) ->
-  per-language file -> POST playlist/{id}.txt -> m3u8 -> master
-  parse for top-resolution labels. Series: folder walk to S/E.
-- Base allmovieland.art (.one redirects there). Rows tagged per
-  language (Hindi first) so the in-player Audio menu appears.
-- Budget: ~18 cold; diag tag `ml:`.
+## Shipped this round: Videm (Server 23)
+
+- Upstream: Videm API (`videm.xyz`), verified live 2026-09-12
+- Pattern: Embed-based Hindi-dubbed movies/series with source failover
+- Endpoint: `/embed/movie/{id}` for movies, `/embed/tv/{id}/{season}/{episode}` for series
+- Features: Automatic failover, quality & audio selection, subtitles,
+  built for mobile, no API key required
+- Code: `src/app/api/videm/stream/[kind]/[id]/route.ts`
+- Rendered by HindiSources with `resumeSuffix=site-vm` flag
+- No configuration needed - uses external Videm infrastructure
+
+## Shipped this round: HDHub (Server 24)
+
+- Upstream: HDHub Stremio addon (`hdhub.thevolecitor.qzz.io`)
+- Pattern: Direct FSLv2, Pixeldrain, HubCloud downloads with Hindi/English/Multi-Audio streams
+- Endpoints: `/stream/movie/{imdbId}` and `/stream/series/{imdbId}` via Stremio protocol
+- Features: 2160p/1080p/720p/480p available with Hindi audio preferred (DDP 2.0 Hindi + English DDP 5.1)
+- Stream types: FSLv2, Pixeldrain, HubCloud, 10Gbps direct downloads
+- Code: `src/app/api/hdhub/stream/[kind]/[id]/route.ts` + `src/lib/player.ts` (Server 24 provider)
+- Rendered by HindiSources with `resumeSuffix=site-hd` flag
+- Hindi priority: Streams with "Hindi" in description sorted first, then by quality (descending)
+- Uses IMDb IDs (tt1234567) via TMDB external_ids lookup; fallback to TMDB IDs (tmdb:123)
+
+## Live sources for future ports (ranked)
+
+1. **2Embed** (2embed.online): Free embed API, auto-updates links, 1080p quality, fully responsive. Already integrated as Server 22.
+2. **Videm** (videm.xyz): Free embed API with source failover, subtitles, quality selection. No API key needed. Already integrated as Server 23.
+3. **Vidsrc** (vid-src.top): Responsive embed API, Hindi-dubbed support, no API keys needed.
+4. **MoviesNexus** (moviesnexus.fun): Raw stream links with multilingual audio (English, Japanese, Hindi, French, Spanish, Ukrainian)
+5. **VidNest** (vidnest.fun): Anime streaming with Hindi dubbed versions via `/anime/[ANILIST_ID]/[EPISODE]/[SUB_OR_DUB]`
+
+## Removed: Non-working servers (2026-09-12)
+
+- **8Stream** (Server 20): Self-hosted API with 2-step resolution, backend deployments not working consistently.
+- **Scarper** (Server 21): Multi-source scraper API requiring API key and self-hosting, not working in production.
+- **P.R. Movies** (Server 22): Replaced with working 2Embed and Videm servers.
+
+## Dead / rejected (do not pursue)
+
+- Videasy (videasy.to): **shutting down 2026-09-15** ("whole infrastructure switched off").
+- embed.su / vidsrc.su: apex + www both parked (findakey.net) - gone.
+- HDGharTV (hdghartv.cc): "This service has been discontinued."
+- AllMovieLand successors (allmovieland.info/.cc/.click): the hindi-dub-api upstream family (AwsIndStream player); needs fresh handshake RE if pursued.
+- MovieBox app API (api.inmoviebox.com/wefeed-mobile-bff): needs a secret HMAC PRIMARY_KEY (APK extraction) - blocked unless the key surfaces publicly.
+- yahyaMomin/vegamovies-API: abandoned, author couldn't beat Cloudflare from Vercel/Render (works locally only).
+
+## Reference lists (re-check monthly, fast churn)
+
+- LyeDevGit/free-streaming-apis (Aug 2026, curl-verified): embed
+  APIs (vidsrc.to/.io/.pm, vsembed.ru, vidsrc.in, vid-src.top,
+  2embed.cc, superembed.stream, moviesapi.to/vidspark.to
+  `/movie/{id}`, vidfast.vc, vidrock.ru, vidflix.club, vidlux.xyz,
+  toustream.xyz, embed.wfs.lol, VidCore vidcore.org/.net) +
+  self-hosted table + graveyard. NOTE: its ScreenScape/CinemaOS
+  "embed gone" flags are stale - our Server 8 screenscape embed
+  still works; verify, don't trust.
+- FMHY non-English page (fmhy.net/non-english): per-language site
+  lists (Hindi section exists; page is JS-heavy, read via browser).
+- r/Cloudstream3 (Hindi Providers / Best working extension threads):
+  CSX shortcode `csx`, phisher `phisherrepo`, Megix/CNCVerse recs.
