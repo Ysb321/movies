@@ -745,6 +745,16 @@ export const PROVIDERS: EmbedProvider[] = [
     movie: (id) => `https://embed.filmu.in/movie/${id}`,
     tv: (id, s, e) => `https://embed.filmu.in/tv/${id}/${s}/${e}`,
   },
+  {
+  id: "hubstream",
+  name: "HubStream",
+  label: "HubStream",
+  sandbox: false,      // anti-sandbox player (like Peachify, BingeR)
+  denyPopups: true,    // popups killed via Permissions-Policy
+  noReferrer: true,    // avoids hotlink blocks
+  movie: (id) => `https://hubstream.art/#movie-${id}`,
+  tv: (id, s, e) => `https://hubstream.art/#tv-${id}-${s}-${e}`,
+},
 ];
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
