@@ -155,11 +155,12 @@ export async function GET(
   // so the client can fetch it directly with the visitor's own IP and render
   // the results itself (same proxy-first/direct-fallback idea as TMDB).
   if (!uniqueStreams.length) {
-    const bothDown = !hdhubResult.ok && !webstreamrRes.ok;
-    const noStreams =
-      hdhubResult.ok && hdhubResult.streams.length === 0 &&
-      webstreamrRes.ok && webstreamrRes.streams.length === 0;
-    if (bothDown) {
+    // Primary addon failed (e.g. Cloudflare 403 on our server IP) and the
+    // response is otherwise empty — hand the browser the exact addon URL so
+    // it can retry directly with the visitor's own IP. (When WebStreamr did
+    // return rows we serve them instead; the client only consumes the
+    // fallback contract on empty responses.)
+    if (!hdhubResult.ok) {
       return NextResponse.json(
         {
           laneError: "HDHub is unreachable right now — tap Retry to search again.",
@@ -171,13 +172,8 @@ export async function GET(
         { headers: { "cache-control": "no-store" } }
       );
     }
-    if (noStreams) {
-      return NextResponse.json(
-        { noSource: true, streams: [], diag: diagStr },
-        { headers: { "cache-control": "no-store" } }
-      );
-    }
-    // One source up but returned nothing usable — still empty, but keep diag
+    // Addons answered but returned nothing usable — title not (yet) in their
+    // catalogues ("Still being added"), not an outage.
     return NextResponse.json(
       { noSource: true, streams: [], diag: diagStr },
       { headers: { "cache-control": "no-store" } }

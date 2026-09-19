@@ -73,6 +73,68 @@ const langLabel = (raw?: string) => {
   return /hindi/i.test(t) ? `🇮🇳 ${t}` : t;
 };
 
+/* Parse an addon stream row into display fields (link type, size, quality,
+ * audio flag). Pure and shared by every HindiSources lane AND the HDHub
+ * browser-direct fallback, so the row labels can never drift apart again. */
+export const parseStreamInfo = (description: string, name: string) => {
+  const desc = description || "";
+  const nameStr = name || "";
+
+  // Extract link type: FSLv2, FSL, PixelDrain, HubDrive, 10Gbps, HubCloud, 4KHDHub, etc.
+  let linkType = "Direct";
+  if (desc.includes("FSLv2")) linkType = "FSLv2";
+  else if (desc.includes("FSL")) linkType = "FSL";
+  else if (desc.includes("PixelDrain") || desc.includes("pixeldrain")) linkType = "Pixeldrain";
+  else if (desc.includes("HubDrive")) linkType = "HubDrive";
+  else if (desc.includes("10Gbps")) linkType = "10Gbps";
+  else if (desc.includes("HubCloud")) linkType = "HubCloud";
+  else if (desc.includes("4KHDHub")) linkType = "4KHDHub";
+  else if (nameStr.includes("4KHDHub")) linkType = "4KHDHub";
+  else if (desc.includes("[HDHub]")) linkType = "HDHub";
+  else if (desc.includes("[WebStreamr]")) linkType = "WebStreamr";
+
+  // Extract size from description
+  let sizeStr = "Unknown";
+  const sizeMatch = desc.match(/💾\s*([\d.]+)\s*(GB|MB)/i);
+  if (sizeMatch) {
+    sizeStr = `${sizeMatch[1]} ${sizeMatch[2]}`;
+  }
+
+  // Extract quality from name, falling back to the description (HDHub
+  // puts the real resolution there while names say "4KHDHub 4K")
+  let quality = "Auto";
+  const qualityMatch = nameStr.match(/(\d{3,4})p/i) || desc.match(/(\d{3,4})p/i);
+  if (qualityMatch) {
+    quality = qualityMatch[1] + "p";
+  }
+
+  // Extract audio language from description
+  let audioLang = "";
+  if (desc.toLowerCase().includes("hindi")) audioLang = "🇮🇳";
+  else if (desc.toLowerCase().includes("tamil")) audioLang = "🇹🇦";
+  else if (desc.toLowerCase().includes("telugu")) audioLang = "🇮🇳";
+  else if (desc.toLowerCase().includes("english")) audioLang = "🇬🇧";
+
+  // Build source label: linkType + quality + size + audio
+  const sourceParts = [linkType];
+  if (quality && quality !== "Auto") sourceParts.push(quality);
+  if (sizeStr && sizeStr !== "Unknown") sourceParts.push(sizeStr);
+  if (audioLang) sourceParts.push(audioLang);
+  const source = sourceParts.join(" ");
+
+  return { linkType, size: sizeStr, quality, source, audioLang };
+};
+
+/* Display order for addon rows: Hindi first, then quality descending
+ * ("2160p" -> 2160; "Auto"/unparsable sorts last). Used by the HDHub
+ * browser-direct fallback so it matches the server path's ordering. */
+export const addonRowSort = (a: NmRow, b: NmRow) => {
+  const aHi = /hindi/i.test(a.source) ? 0 : 1;
+  const bHi = /hindi/i.test(b.source) ? 0 : 1;
+  if (aHi !== bHi) return aHi - bHi;
+  return (parseInt(b.quality, 10) || 0) - (parseInt(a.quality, 10) || 0);
+};
+
 const platformHint = () =>
   isDesktopVlc()
     ? "Tap a quality — it plays here, or opens in VLC"
@@ -177,55 +239,23 @@ export default function HindiSources({
               });
               if (alive.current && usable.length) {
                 console.info("[hdhub] server blocked by addon; browser-direct fallback ok");
-                setRows(
-                  usable.map((s: any, i: number) => {
-                    const desc = String(s.description || "");
-                    const nameStr = String(s.name || "");
-                    const linkType = desc.includes("FSLv2")
-                      ? "FSLv2"
-                      : desc.includes("FSL")
-                        ? "FSL"
-                        : /pixeldrain/i.test(desc)
-                          ? "Pixeldrain"
-                          : desc.includes("HubDrive")
-                            ? "HubDrive"
-                            : desc.includes("10Gbps")
-                              ? "10Gbps"
-                              : desc.includes("HubCloud")
-                                ? "HubCloud"
-                                : /4KHDHub/i.test(desc) || nameStr.includes("4KHDHub")
-                                  ? "4KHDHub"
-                                  : "Direct";
-                    const qm = nameStr.match(/(\d{3,4})p/i) || desc.match(/(\d{3,4})p/i);
-                    const quality = qm ? `${qm[1]}p` : "Auto";
-                    const size = (desc.match(/💾\s*([\d.]+\s*(?:GB|MB))/i) || [])[1] || "Unknown";
-                    const audioLang = /hindi/i.test(desc)
-                      ? "🇮🇳"
-                      : /tamil/i.test(desc)
-                        ? "🇹🇦"
-                        : /english/i.test(desc)
-                          ? "🇬🇧"
-                          : "";
-                    const source = [
-                      linkType,
-                      quality !== "Auto" ? quality : "",
-                      size !== "Unknown" ? size : "",
-                      audioLang,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                    return {
-                      key: `hdhub-fb-${i}`,
-                      quality,
-                      size,
-                      source,
-                      file: title,
-                      audio: audioLang,
-                      url: s.url,
-                      lang: langLabel(s.lang),
-                    };
-                  })
-                );
+                const parsedFb: NmRow[] = usable.map((s: any, i: number) => {
+                  const info = parseStreamInfo(String(s.description || ""), String(s.name || ""));
+                  return {
+                    key: `hdhub-fb-${i}`,
+                    quality: info.quality,
+                    size: info.size,
+                    source: info.source,
+                    file: title,
+                    audio: info.audioLang,
+                    url: s.url,
+                    lang: langLabel(s.lang),
+                  };
+                });
+                // Same ordering contract as the server path: Hindi rows first,
+                // then quality descending.
+                parsedFb.sort(addonRowSort);
+                setRows(parsedFb);
                 setStatus("ready");
                 return;
               }
@@ -243,56 +273,6 @@ export default function HindiSources({
         const caps: NmCaption[] = Array.isArray(body.captions) ? body.captions : [];
         const label = typeof body.title === "string" && body.title ? body.title : title;
         const hasHi = caps.some((c) => c.lang.toLowerCase().startsWith("hi"));
-        
-        // Parse stream description for link type (FSLv2, PixelDrain, HubCloud, etc.)
-        const parseStreamInfo = (description: string, name: string) => {
-          const desc = description || "";
-          const nameStr = name || "";
-          
-          // Extract link type: FSLv2, FSL, PixelDrain, 10Gbps, HubCloud, WebStreamr, etc.
-          let linkType = "Direct";
-          if (desc.includes("FSLv2")) linkType = "FSLv2";
-          else if (desc.includes("FSL")) linkType = "FSL";
-          else if (desc.includes("PixelDrain") || desc.includes("pixeldrain")) linkType = "Pixeldrain";
-          else if (desc.includes("HubDrive")) linkType = "HubDrive";
-          else if (desc.includes("10Gbps")) linkType = "10Gbps";
-          else if (desc.includes("HubCloud")) linkType = "HubCloud";
-          else if (desc.includes("4KHDHub")) linkType = "4KHDHub";
-          else if (nameStr.includes("4KHDHub")) linkType = "4KHDHub";
-          else if (desc.includes("[HDHub]")) linkType = "HDHub";
-          else if (desc.includes("[WebStreamr]")) linkType = "WebStreamr";
-          
-          // Extract size from description
-          let sizeStr = "Unknown";
-          const sizeMatch = desc.match(/💾\s*([\d.]+)\s*(GB|MB)/i);
-          if (sizeMatch) {
-            sizeStr = `${sizeMatch[1]} ${sizeMatch[2]}`;
-          }
-          
-          // Extract quality from name, falling back to the description (HDHub
-          // puts the real resolution there while names say "4KHDHub 4K")
-          let quality = "Auto";
-          const qualityMatch = nameStr.match(/(\d{3,4})p/i) || desc.match(/(\d{3,4})p/i);
-          if (qualityMatch) {
-            quality = qualityMatch[1] + "p";
-          }
-          
-          // Extract audio language from description
-          let audioLang = "";
-          if (desc.toLowerCase().includes("hindi")) audioLang = "🇮🇳";
-          else if (desc.toLowerCase().includes("tamil")) audioLang = "🇹🇦";
-          else if (desc.toLowerCase().includes("telugu")) audioLang = "🇮🇳";
-          else if (desc.toLowerCase().includes("english")) audioLang = "🇬🇧";
-          
-          // Build source label: linkType + quality + size + audio
-          const sourceParts = [linkType];
-          if (quality && quality !== "Auto") sourceParts.push(quality);
-          if (sizeStr && sizeStr !== "Unknown") sourceParts.push(sizeStr);
-          if (audioLang) sourceParts.push(audioLang);
-          const source = sourceParts.join(" ");
-          
-          return { linkType, size: sizeStr, quality, source, audioLang };
-        };
         
         const parsed: NmRow[] = streams
           .filter((s: { url?: string; description?: string; name?: string }) => s && s.url)
