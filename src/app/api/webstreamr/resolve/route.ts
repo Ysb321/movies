@@ -19,6 +19,16 @@ const HOP_TIMEOUT_MS = 12000;
 const PROBE_TIMEOUT_MS = 10000;
 const MAX_HTML_BYTES = 512 * 1024;
 
+/* Generator hosts sit behind Cloudflare, which challenges datacenter requests
+ * carrying the default runtime UA (same problem the HDHub addon lane hit) —
+ * a blocked resolver means VLC never gets a direct file. Send browser-like
+ * headers so the chain resolves even from server IPs. */
+const BROWSER_HEADERS: Record<string, string> = {
+  "user-agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "accept-language": "en-US,en;q=0.9",
+};
+
 const blockedHost = (h: string) =>
   /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|\[?::1?\]?|fd00:|fe80:)/i.test(h) ||
   h.endsWith(".local") ||
@@ -76,7 +86,7 @@ const cancel = async (res: Response) => {
 async function probeFile(fileUrl: string): Promise<"alive" | "dead" | "unknown"> {
   try {
     const res = await fetch(fileUrl, {
-      headers: { Range: "bytes=0-0", accept: "*/*" },
+      headers: { Range: "bytes=0-0", accept: "*/*", ...BROWSER_HEADERS },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     const st = res.status;
@@ -105,7 +115,11 @@ async function attempt(start: URL): Promise<Attempt> {
       res = await fetch(current.href, {
         redirect: "manual",
         signal: AbortSignal.timeout(HOP_TIMEOUT_MS),
-        headers: { accept: "*/*", ...(jar.header() ? { cookie: jar.header() } : {}) },
+        headers: {
+          accept: "*/*",
+          ...BROWSER_HEADERS,
+          ...(jar.header() ? { cookie: jar.header() } : {}),
+        },
       });
     } catch {
       return {};

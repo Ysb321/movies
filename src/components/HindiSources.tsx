@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
   fmtSize,
@@ -223,11 +224,19 @@ export default function HindiSources({
   /* Server 24 modal presentation + resolved-link cache (page link -> direct file) */
   const [showModal, setShowModal] = useState(false);
   const resolvedRef = useRef<Map<string, { ok: boolean; url: string; note: string }>>(new Map());
+  /* HDHub generator tokens are one-time and the addon caches manifests, so a
+   * cached link can be dead by the time it's tapped. First dead tap silently
+   * re-queries the addon (fresh tokens) and shows a short banner. */
+  const [staleNote, setStaleNote] = useState(false);
+  const staleRefreshed = useRef(false);
   const alive = useRef(true);
   const lastSent = useRef(0);
   const [hint] = useState(platformHint);
   const [isPcWeb] = useState(() => !isDesktopVlc() && !isAndroid() && !isIOS());
   const [isPhone] = useState(() => isAndroid() || isIOS());
+  /* portal guard: document.body doesn't exist during SSR prerender */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const siteKey = `${resumeKeyFor(type, tmdbId, season, episode)}:${resumeSuffix || "site-nm"}`;
 
@@ -365,6 +374,26 @@ export default function HindiSources({
     if (modal && status === "ready") setShowModal(true);
   }, [modal, status]);
 
+  /* lock page scroll while the modal is up */
+  useEffect(() => {
+    if (!modal || !showModal) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [modal, showModal]);
+
+  /* close on Escape (same convention as the CardPreview overlay) */
+  useEffect(() => {
+    if (!modal || !showModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowModal(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modal, showModal]);
+
   const copy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -393,7 +422,6 @@ export default function HindiSources({
     return r;
   }, []);
 
-  /* tap -> resolve (when needed) -> play inline or hand the DIRECT url to VLC */
   const play = useCallback(async (row: NmRow) => {
     if (!row.url || busy) return;
     setBusy(row.key);
@@ -412,8 +440,17 @@ export default function HindiSources({
       if (!alive.current) return;
       if (note) setPnote(note);
       if (!ok) {
-        /* unresolvable page: fall back to opening it (mirrors Server 9's
-         * kind:page handling) — the user can grab the file from the site */
+        /* unresolvable page: the generator token is usually spent (the addon
+         * caches manifests) — silently refresh the links once, then the next
+         * tap plays. After that, fall back to opening the page (mirrors
+         * Server 9's kind:page handling). */
+        if (modal && !staleRefreshed.current) {
+          staleRefreshed.current = true;
+          setStaleNote(true);
+          setTimeout(() => alive.current && setStaleNote(false), 8000);
+          setReload((r) => r + 1); // re-runs the search effect -> fresh tokens
+          return;
+        }
         try { window.open(url, "_blank", "noreferrer"); } catch {}
         setSent((s) => ({ ...s, [row.key]: false }));
         return;
@@ -444,36 +481,64 @@ export default function HindiSources({
   }, [busy, siteKey, rowUrl, modal]);
 
   /* per-row download: resolve page links first, then hand the file to the
-   * browser (link also copied — cross-origin downloads open a tab) */
-  const downloadRow = useCallback(async (row: NmRow) => {
-    if (!row.url || busy) return;
-    setBusy(row.key);
-    try {
-      const { url, ok } = await rowUrl(row);
-      if (!alive.current) return;
-      if (!ok) {
-        try { window.open(url, "_blank", "noreferrer"); } catch {}
-        return;
+   * browser (link also copied — cross-origin downloads open a tab). A dead
+   * generator token also triggers the one-shot silent refresh. */
+  const downloadRow = useCallback(
+    async (row: NmRow) => {
+      if (!row.url || busy) return;
+      setBusy(row.key);
+      try {
+        const { url, ok } = await rowUrl(row);
+        if (!alive.current) return;
+        if (!ok) {
+          if (modal && !staleRefreshed.current) {
+            staleRefreshed.current = true;
+            setStaleNote(true);
+            setTimeout(() => alive.current && setStaleNote(false), 8000);
+            setReload((r) => r + 1); // re-runs the search effect -> fresh tokens
+            return;
+          }
+          try { window.open(url, "_blank", "noreferrer"); } catch {}
+          return;
+        }
+        downloadFile(url, `${title} ${row.quality}`.trim() || "video");
+        copy(url);
+      } finally {
+        if (alive.current) setBusy(null);
       }
-      downloadFile(url, `${title} ${row.quality}`.trim() || "video");
-      copy(url);
-    } finally {
-      if (alive.current) setBusy(null);
-    }
-  }, [busy, title, copy, rowUrl]);
+    },
+    [busy, title, copy, rowUrl, modal]
+  );
 
-  /* in-player quality hop: resolve the picked row exactly like a fresh tap */
-  const pickSource = useCallback(async (key: string): Promise<string | null> => {
-    const row = rows.find((r) => r.key === key);
-    if (!row || !alive.current) return null;
-    setPlayError(false);
-    const { url } = await rowUrl(row);
-    if (!alive.current) return null;
-    setPlayer((p) =>
-      p && { ...p, url, label: `${row.quality} · ${row.source}`, filename: row.file, rowKey: row.key }
-    );
-    return url;
-  }, [rows, rowUrl]);
+  /* in-player quality hop: resolve the picked row exactly like a fresh tap
+   * (same !ok handling — a dead token triggers the one-shot refresh instead
+   * of installing an unplayable page url) */
+  const pickSource = useCallback(
+    async (key: string): Promise<string | null> => {
+      const row = rows.find((r) => r.key === key);
+      if (!row || !alive.current) return null;
+      setPlayError(false);
+      const { url, ok, note } = await rowUrl(row);
+      if (!alive.current) return null;
+      if (!ok) {
+        if (modal && !staleRefreshed.current) {
+          staleRefreshed.current = true;
+          setStaleNote(true);
+          setTimeout(() => alive.current && setStaleNote(false), 8000);
+          setPnote("Link expired — fetching fresh ones from HDHub…");
+          setReload((r) => r + 1); // re-runs the search effect -> fresh tokens
+          return null;
+        }
+        if (note) setPnote(note);
+        return null;
+      }
+      setPlayer((p) =>
+        p && { ...p, url, label: `${row.quality} · ${row.source}`, filename: row.file, rowKey: row.key }
+      );
+      return url;
+    },
+    [rows, rowUrl, modal]
+  );
 
   const onSiteTime = useCallback((time: number, duration?: number) => {
     if (!alive.current || time < 5) return;
@@ -725,100 +790,114 @@ export default function HindiSources({
   );
 
   /* Server 24: sources in a modern modal — auto-opens when rows land, the
-   * inline player takes over the pane while playing, then hands back */
+   * inline player takes over the pane while playing, then hands back. The
+   * overlay is portalled to document.body so it always centers on the real
+   * viewport (the sources pane sits inside overflow-hidden flex containers
+   * that otherwise trap position:fixed) and adapts to phone screens. */
   if (modal) {
+    if (!mounted) return <div className="relative flex h-full flex-col bg-black" />;
     return (
       <>
-        {showModal ? (
-          <div
-            className="anim-fade-in fixed inset-0 z-[450] flex items-center justify-center bg-black/85 p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowModal(false);
-            }}
-          >
-            <div className="flex h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950 shadow-2xl">
-              <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-                <span className="text-[13px] font-bold">{laneTitle || "🏰 HDHub sources"}</span>
-                {status === "ready" && (
-                  <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[11px] font-semibold text-brand">
-                    {rows.length} links
-                  </span>
-                )}
-                <span className="hidden min-w-0 flex-1 truncate text-[11.5px] text-neutral-500 sm:block">
-                  {hint}
-                </span>
-                {isPhone && (
-                  <a
-                    href="https://www.videolan.org/vlc/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
-                  >
-                    Get VLC
-                  </a>
-                )}
+        <div className="relative flex h-full flex-col bg-black">
+          {status === "ready" ? (
+            <button
+              onClick={() => setShowModal(true)}
+              className="anim-fade-in group flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+            >
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform group-hover:scale-105">
+                <PlayIcon className="h-7 w-7" />
+              </span>
+              <span className="text-[15px] font-bold">{rows.length} HDHub links ready</span>
+              <span className="max-w-xs text-[12px] text-neutral-400">
+                Browse sources — direct play, VLC handoff and downloads
+              </span>
+              <span className="rounded-full bg-white/10 px-3.5 py-1.5 text-[11.5px] font-semibold text-neutral-200 transition group-hover:bg-white/20">
+                Open sources
+              </span>
+            </button>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
+              <p className="text-[12.5px] font-semibold text-neutral-300">
+                {status === "error" ? error : "Scanning HDHub sources…"}
+              </p>
+              {(status === "loading" || status === "error") && (
                 <button
                   onClick={() => setReload((r) => r + 1)}
-                  title="Search again"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
+                  className={clsx(
+                    "rounded-full px-4 py-1.5 text-[12px] font-bold",
+                    status === "error" ? "bg-brand text-white" : "bg-white/10 text-neutral-300"
+                  )}
                 >
-                  <RotateCcwIcon className="h-3.5 w-3.5" />
+                  {status === "error" ? "Retry" : "Search again"}
                 </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  title="Close"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
-                >
-                  <XIcon className="h-4 w-4" />
-                </button>
-              </div>
-              {list}
+              )}
             </div>
-          </div>
-        ) : (
-          <div className="relative flex h-full flex-col bg-black">
-            {status === "ready" ? (
-              <button
-                onClick={() => setShowModal(true)}
-                className="anim-fade-in group flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
-              >
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform group-hover:scale-105">
-                  <PlayIcon className="h-7 w-7" />
-                </span>
-                <span className="text-[15px] font-bold">{rows.length} HDHub links ready</span>
-                <span className="max-w-xs text-[12px] text-neutral-400">
-                  Browse sources — direct play, VLC handoff and downloads
-                </span>
-                <span className="rounded-full bg-white/10 px-3.5 py-1.5 text-[11.5px] font-semibold text-neutral-200 transition group-hover:bg-white/20">
-                  Open sources
-                </span>
-              </button>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
-                <p className="text-[12.5px] font-semibold text-neutral-300">
-                  {status === "error" ? error : "Scanning HDHub sources…"}
-                </p>
-                {(status === "loading" || status === "error") && (
+          )}
+        </div>
+        {showModal &&
+          createPortal(
+            <div
+              className="anim-fade-in fixed inset-0 z-[450] flex items-center justify-center bg-black/85 p-3 sm:p-6"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowModal(false);
+              }}
+            >
+              <div className="modal-in flex h-[85dvh] max-h-[85dvh] w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950 shadow-2xl sm:h-[80vh] sm:max-h-[80vh] sm:max-w-xl">
+                <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3 sm:px-4">
+                  <span className="min-w-0 truncate text-[13px] font-bold">
+                    {laneTitle || "🏰 HDHub sources"}
+                  </span>
+                  {status === "ready" && (
+                    <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 text-[11px] font-semibold text-brand">
+                      {rows.length} links
+                    </span>
+                  )}
+                  <span className="hidden min-w-0 flex-1 truncate text-[11.5px] text-neutral-500 sm:block">
+                    {hint}
+                  </span>
+                  {isPhone && (
+                    <a
+                      href="https://www.videolan.org/vlc/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+                    >
+                      Get VLC
+                    </a>
+                  )}
                   <button
                     onClick={() => setReload((r) => r + 1)}
-                    className={clsx(
-                      "rounded-full px-4 py-1.5 text-[12px] font-bold",
-                      status === "error" ? "bg-brand text-white" : "bg-white/10 text-neutral-300"
-                    )}
+                    title="Search again"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
                   >
-                    {status === "error" ? "Retry" : "Search again"}
+                    <RotateCcwIcon className="h-3.5 w-3.5" />
                   </button>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    title="Close"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                {staleNote && (
+                  <div className="border-b border-white/10 bg-amber-400/10 px-4 py-2 text-[11.5px] font-medium text-amber-300">
+                    That link had expired — fetching fresh ones from HDHub… try again in a moment.
+                  </div>
                 )}
+                {list}
               </div>
-            )}
-          </div>
-        )}
-        {copied && (
-          <div className="fixed bottom-6 left-1/2 z-[460] -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
-            Link copied
-          </div>
-        )}
+            </div>,
+            document.body
+          )}
+        {copied &&
+          createPortal(
+            <div className="fixed bottom-6 left-1/2 z-[460] -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
+              Link copied
+            </div>,
+            document.body
+          )}
       </>
     );
   }
