@@ -10,11 +10,12 @@ import {
   isAndroid,
   isIOS,
   playableInBrowser,
+  resolveWsUrl,
 } from "@/lib/vlc";
 import { fmtTime } from "@/lib/player";
 import { getResume, saveResume, clearResume, resumeKeyFor } from "@/lib/storage";
 import SitePlayer from "@/components/SitePlayer";
-import { PlayIcon, RotateCcwIcon, CheckIcon, ChevronIcon } from "@/components/Icons";
+import { PlayIcon, RotateCcwIcon, CheckIcon, ChevronIcon, XIcon } from "@/components/Icons";
 
 type Props = {
   type: "movie" | "tv";
@@ -40,6 +41,11 @@ type Props = {
   year?: string;
   /** IMDb ID (tt1234567), forwarded as &imdb= for title matching */
   imdbId?: string;
+  /** Server 24 presentation: sources open in a modern modal overlay instead of
+   *  inline; page/generator links (HubCloud ?id=…) are resolved to direct files
+   *  before VLC/download (VLC cannot play HTML pages); every row gets a
+   *  Download button. Other lanes keep the classic inline list. */
+  modal?: boolean;
 };
 
 type Status = "loading" | "ready" | "empty" | "error";
@@ -135,6 +141,37 @@ export const addonRowSort = (a: NmRow, b: NmRow) => {
   return (parseInt(b.quality, 10) || 0) - (parseInt(a.quality, 10) || 0);
 };
 
+/* Page links (HubCloud/HubDrive ?id=… generators, GDFlix file pages) are HTML,
+ * not media — VLC cannot play them and browsers would just show the site.
+ * Resolve through the Server 9 resolver (follows generator redirects, scrapes
+ * the direct file, probes liveness) to a real media url first. Direct media
+ * urls pass through untouched. */
+const PAGE_LINK = /\?[&]?(id|link|url)=|\/[a-z0-9]{8,}\/?($|\?)|hubdrive\.pics\/file\//i;
+/* hosts that serve the actual bytes directly — never generators, never resolve */
+const DIRECT_HOST = /(^|\.)(pixeldrain\.dev|pixeldrain\.com|r2\.dev|cloudflarestorage\.com|googleusercontent\.com|googlevideo\.com|dropboxusercontent\.com|gofile\.io)$/i;
+export const needsResolve = (u: string) => {
+  if (!/^https?:\/\//i.test(u)) return false;
+  if (playableInBrowser(u)) return false;
+  try {
+    if (DIRECT_HOST.test(new URL(u).hostname)) return false;
+  } catch {
+    return false;
+  }
+  return PAGE_LINK.test(u) || !/\.(mkv|mp4|webm|m4v|mov|avi|m3u8|mpd)(\?|#|$)/i.test(u);
+};
+
+const resolveRowUrl = async (
+  url: string
+): Promise<{ ok: boolean; url: string; note: string }> => {
+  if (!needsResolve(url)) return { ok: true, url, note: "" };
+  const r = await resolveWsUrl(url);
+  if (r.ok && r.kind === "file")
+    return { ok: true, url: r.url, note: r.stale ? "Link may be stale — VLC will try anyway" : "" };
+  if (r.ok && r.kind === "page")
+    return { ok: false, url: r.url, note: "Couldn't auto-resolve — download page opened in a new tab instead" };
+  return { ok: false, url, note: "Couldn't resolve this link right now — try another one" };
+};
+
 const platformHint = () =>
   isDesktopVlc()
     ? "Tap a quality — it plays here, or opens in VLC"
@@ -161,6 +198,7 @@ export default function HindiSources({
   hideSiteLink,
   year,
   imdbId,
+  modal,
 }: Props) {
   const [status, setStatus] = useState<Status>("loading");
   const [rows, setRows] = useState<NmRow[]>([]);
@@ -182,6 +220,9 @@ export default function HindiSources({
   const [pnote, setPnote] = useState("");
   const [copied, setCopied] = useState(false);
   const [reload, setReload] = useState(0);
+  /* Server 24 modal presentation + resolved-link cache (page link -> direct file) */
+  const [showModal, setShowModal] = useState(false);
+  const resolvedRef = useRef<Map<string, { ok: boolean; url: string; note: string }>>(new Map());
   const alive = useRef(true);
   const lastSent = useRef(0);
   const [hint] = useState(platformHint);
@@ -198,6 +239,7 @@ export default function HindiSources({
     setError("");
     setAdding(false);
     setTick(0);
+    resolvedRef.current.clear(); // fresh search -> drop stale resolved links
     const ctrl = new AbortController();
     const killer = setTimeout(() => ctrl.abort(new Error("timeout")), 90000);
     const clock = setInterval(() => setTick((n) => n + 1), 9000);
@@ -318,6 +360,11 @@ export default function HindiSources({
     };
   }, [type, tmdbId, title, season, episode, reload]);
 
+  /* Server 24 modal: pop the sources modal open as soon as rows land */
+  useEffect(() => {
+    if (modal && status === "ready") setShowModal(true);
+  }, [modal, status]);
+
   const copy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -335,8 +382,19 @@ export default function HindiSources({
     setTimeout(() => alive.current && setCopied(false), 1600);
   }, []);
 
-  /* tap -> instant play (the urls are already direct signed mp4s) */
-  const play = useCallback((row: NmRow) => {
+  /* Resolve a row's url (cached per row): page/generator links become direct
+   * files, direct media passes through. Shared by play/VLC/download so VLC
+   * never receives an HTML page (it cannot play those — the reported bug). */
+  const rowUrl = useCallback(async (row: NmRow): Promise<{ url: string; ok: boolean; note: string }> => {
+    const cached = resolvedRef.current.get(row.key);
+    if (cached) return cached;
+    const r = await resolveRowUrl(row.url);
+    resolvedRef.current.set(row.key, r);
+    return r;
+  }, []);
+
+  /* tap -> resolve (when needed) -> play inline or hand the DIRECT url to VLC */
+  const play = useCallback(async (row: NmRow) => {
     if (!row.url || busy) return;
     setBusy(row.key);
     try {
@@ -349,20 +407,30 @@ export default function HindiSources({
       lastSent.current = pos;
       setPlayError(false);
       setPnote("");
-      
-      // Check if playable in browser - if not, trigger VLC directly
-      if (!playableInBrowser(row.url)) {
-        openInVlc(row.url).then((out) => {
-          if (!alive.current) return;
-          setSent((s) => ({ ...s, [row.key]: out.ok }));
-          setPnote(out.note);
-          setBusy(null);
-        });
+
+      const { url, ok, note } = await rowUrl(row);
+      if (!alive.current) return;
+      if (note) setPnote(note);
+      if (!ok) {
+        /* unresolvable page: fall back to opening it (mirrors Server 9's
+         * kind:page handling) — the user can grab the file from the site */
+        try { window.open(url, "_blank", "noreferrer"); } catch {}
+        setSent((s) => ({ ...s, [row.key]: false }));
         return;
       }
-      
+
+      // Check if playable in browser - if not, trigger VLC with the DIRECT url
+      if (!playableInBrowser(url)) {
+        const out = await openInVlc(url);
+        if (!alive.current) return;
+        setSent((s) => ({ ...s, [row.key]: out.ok }));
+        if (out.note) setPnote(out.note);
+        return;
+      }
+
+      if (modal) setShowModal(false); // hand the pane to the player
       setPlayer({
-        url: row.url,
+        url,
         label: `${row.quality} · ${row.source}`,
         filename: row.file,
         rowKey: row.key,
@@ -373,18 +441,39 @@ export default function HindiSources({
     } finally {
       if (alive.current) setBusy(null);
     }
-  }, [busy, siteKey]);
+  }, [busy, siteKey, rowUrl, modal]);
 
-  /* in-player quality hop: direct urls, so just seamless-switch */
+  /* per-row download: resolve page links first, then hand the file to the
+   * browser (link also copied — cross-origin downloads open a tab) */
+  const downloadRow = useCallback(async (row: NmRow) => {
+    if (!row.url || busy) return;
+    setBusy(row.key);
+    try {
+      const { url, ok } = await rowUrl(row);
+      if (!alive.current) return;
+      if (!ok) {
+        try { window.open(url, "_blank", "noreferrer"); } catch {}
+        return;
+      }
+      downloadFile(url, `${title} ${row.quality}`.trim() || "video");
+      copy(url);
+    } finally {
+      if (alive.current) setBusy(null);
+    }
+  }, [busy, title, copy, rowUrl]);
+
+  /* in-player quality hop: resolve the picked row exactly like a fresh tap */
   const pickSource = useCallback(async (key: string): Promise<string | null> => {
     const row = rows.find((r) => r.key === key);
     if (!row || !alive.current) return null;
     setPlayError(false);
+    const { url } = await rowUrl(row);
+    if (!alive.current) return null;
     setPlayer((p) =>
-      p && { ...p, url: row.url, label: `${row.quality} · ${row.source}`, filename: row.file, rowKey: row.key }
+      p && { ...p, url, label: `${row.quality} · ${row.source}`, filename: row.file, rowKey: row.key }
     );
-    return row.url;
-  }, [rows]);
+    return url;
+  }, [rows, rowUrl]);
 
   const onSiteTime = useCallback((time: number, duration?: number) => {
     if (!alive.current || time < 5) return;
@@ -435,7 +524,10 @@ export default function HindiSources({
       <div className="flex h-full flex-col bg-black">
         <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 px-3 py-2 text-[12px]">
           <button
-            onClick={() => setPlayer(null)}
+            onClick={() => {
+              setPlayer(null);
+              if (modal) setShowModal(true); // back to the sources modal
+            }}
             className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-semibold text-neutral-200 hover:bg-white/20"
           >
             <ChevronIcon dir="left" className="h-3.5 w-3.5" /> Sources
@@ -525,7 +617,213 @@ export default function HindiSources({
     );
   }
 
-  /* ── source list ── */
+  /* ── source rows (shared by the inline list and the Server 24 modal) ── */
+  const list = (
+    <div className="styled-scroll min-h-0 flex-1 overflow-y-auto p-1.5">
+      {status === "loading" && (
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
+          <p className="text-[13px] font-semibold">
+            {(loadLines || LOAD_LINES)[Math.min(tick, (loadLines || LOAD_LINES).length - 1)]}
+          </p>
+          <p className="max-w-xs text-[11.5px] text-neutral-500">
+            Live search across the sources — first load can take up to a minute.
+          </p>
+        </div>
+      )}
+
+      {status === "error" && (
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+          <span className="text-3xl">📡</span>
+          <p className="text-[13px] font-bold">{error}</p>
+          <button
+            onClick={() => setReload((r) => r + 1)}
+            className="mt-1 rounded-full bg-brand px-4 py-1.5 text-[12px] font-bold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {status === "empty" && (
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+          <span className="text-3xl">📼</span>
+          <p className="text-[13px] font-bold">
+            {adding
+              ? "Still being added — check back soon"
+              : laneTitle
+                ? "No sources for this title yet"
+                : "No Hindi sources for this title yet"}
+          </p>
+          <p className="max-w-xs text-[11.5px] text-neutral-400">
+            {emptyHint ||
+              "Only OTT titles (Netflix / Hotstar / Prime / Disney) land here — try a Server above, or check back later."}
+          </p>
+        </div>
+      )}
+
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          onClick={() => play(row)}
+          className={clsx(
+            "flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition hover:bg-white/5",
+            busy === row.key && "pointer-events-none opacity-70"
+          )}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+            {busy === row.key ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : sent[row.key] ? (
+              <CheckIcon className="h-4 w-4" />
+            ) : (
+              <PlayIcon className="h-4 w-4" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] font-semibold">
+              {row.quality && (
+                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px]">
+                  {row.quality}
+                </span>
+              )}
+              {row.size && <span className="text-neutral-300">{row.size}</span>}
+              {row.source && (
+                <span className="truncate font-normal text-neutral-400">{row.source}</span>
+              )}
+            </span>
+            <span className="mt-0.5 block truncate text-[11.5px] text-neutral-500">
+              {row.audio ? `${row.audio} · ` : ""}
+              {row.file}
+            </span>
+          </span>
+          {modal && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadRow(row);
+              }}
+              title="Download this file"
+              className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+            >
+              Download
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              copy(row.url);
+            }}
+            title="Copy link"
+            className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+          >
+            Copy
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  /* Server 24: sources in a modern modal — auto-opens when rows land, the
+   * inline player takes over the pane while playing, then hands back */
+  if (modal) {
+    return (
+      <>
+        {showModal ? (
+          <div
+            className="anim-fade-in fixed inset-0 z-[450] flex items-center justify-center bg-black/85 p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowModal(false);
+            }}
+          >
+            <div className="flex h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950 shadow-2xl">
+              <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+                <span className="text-[13px] font-bold">{laneTitle || "🏰 HDHub sources"}</span>
+                {status === "ready" && (
+                  <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[11px] font-semibold text-brand">
+                    {rows.length} links
+                  </span>
+                )}
+                <span className="hidden min-w-0 flex-1 truncate text-[11.5px] text-neutral-500 sm:block">
+                  {hint}
+                </span>
+                {isPhone && (
+                  <a
+                    href="https://www.videolan.org/vlc/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
+                  >
+                    Get VLC
+                  </a>
+                )}
+                <button
+                  onClick={() => setReload((r) => r + 1)}
+                  title="Search again"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
+                >
+                  <RotateCcwIcon className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setShowModal(false)}
+                  title="Close"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-neutral-300 hover:bg-white/20 hover:text-white"
+                >
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+              {list}
+            </div>
+          </div>
+        ) : (
+          <div className="relative flex h-full flex-col bg-black">
+            {status === "ready" ? (
+              <button
+                onClick={() => setShowModal(true)}
+                className="anim-fade-in group flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+              >
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform group-hover:scale-105">
+                  <PlayIcon className="h-7 w-7" />
+                </span>
+                <span className="text-[15px] font-bold">{rows.length} HDHub links ready</span>
+                <span className="max-w-xs text-[12px] text-neutral-400">
+                  Browse sources — direct play, VLC handoff and downloads
+                </span>
+                <span className="rounded-full bg-white/10 px-3.5 py-1.5 text-[11.5px] font-semibold text-neutral-200 transition group-hover:bg-white/20">
+                  Open sources
+                </span>
+              </button>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
+                <p className="text-[12.5px] font-semibold text-neutral-300">
+                  {status === "error" ? error : "Scanning HDHub sources…"}
+                </p>
+                {(status === "loading" || status === "error") && (
+                  <button
+                    onClick={() => setReload((r) => r + 1)}
+                    className={clsx(
+                      "rounded-full px-4 py-1.5 text-[12px] font-bold",
+                      status === "error" ? "bg-brand text-white" : "bg-white/10 text-neutral-300"
+                    )}
+                  >
+                    {status === "error" ? "Retry" : "Search again"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {copied && (
+          <div className="fixed bottom-6 left-1/2 z-[460] -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">
+            Link copied
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* classic inline list (every other lane) */
   return (
     <div className="relative flex h-full flex-col bg-black">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
@@ -578,97 +876,7 @@ export default function HindiSources({
         </div>
       )}
 
-      <div className="styled-scroll min-h-0 flex-1 overflow-y-auto p-1.5">
-        {status === "loading" && (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/15 border-t-brand" />
-            <p className="text-[13px] font-semibold">
-              {(loadLines || LOAD_LINES)[Math.min(tick, (loadLines || LOAD_LINES).length - 1)]}
-            </p>
-            <p className="max-w-xs text-[11.5px] text-neutral-500">
-              Live search across the OTT sources — first load can take up to a minute.
-            </p>
-          </div>
-        )}
-
-        {status === "error" && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <span className="text-3xl">📡</span>
-            <p className="text-[13px] font-bold">{error}</p>
-            <button
-              onClick={() => setReload((r) => r + 1)}
-              className="mt-1 rounded-full bg-brand px-4 py-1.5 text-[12px] font-bold text-white"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {status === "empty" && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <span className="text-3xl">📼</span>
-            <p className="text-[13px] font-bold">
-              {adding
-                ? "Still being added — check back soon"
-                : laneTitle
-                  ? "No sources for this title yet"
-                  : "No Hindi sources for this title yet"}
-            </p>
-            <p className="max-w-xs text-[11.5px] text-neutral-400">
-              {emptyHint ||
-                "Only OTT titles (Netflix / Hotstar / Prime / Disney) land here — try a Server above, or check back later."}
-            </p>
-          </div>
-        )}
-
-        {rows.map((row) => (
-          <div
-            key={row.key}
-            onClick={() => play(row)}
-            className={clsx(
-              "flex w-full cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-left transition hover:bg-white/5",
-              busy === row.key && "pointer-events-none opacity-70"
-            )}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-              {busy === row.key ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : sent[row.key] ? (
-                <CheckIcon className="h-4 w-4" />
-              ) : (
-                <PlayIcon className="h-4 w-4" />
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] font-semibold">
-                {row.quality && (
-                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px]">
-                    {row.quality}
-                  </span>
-                )}
-                {row.size && <span className="text-neutral-300">{row.size}</span>}
-                {row.source && (
-                  <span className="truncate font-normal text-neutral-400">{row.source}</span>
-                )}
-              </span>
-              <span className="mt-0.5 block truncate text-[11.5px] text-neutral-500">
-                {row.audio ? `${row.audio} · ` : ""}
-                {row.file}
-              </span>
-            </span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                copy(row.url);
-              }}
-              title="Copy link"
-              className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 hover:bg-white/20 hover:text-white"
-            >
-              Copy
-            </button>
-          </div>
-        ))}
-      </div>
+      {list}
 
       {copied && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black">

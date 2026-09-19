@@ -426,13 +426,14 @@ function WatchContent() {
                 laneTitle="🏰 HDHub + WebStreamr · All Formats"
                 resumeSuffix="site-hd"
                 hideSiteLink
+                modal
                 loadLines={[
                   "Contacting HDHub + WebStreamr sources...",
-                  "Searching FSLv2, Pixeldrain, HubCloud...",
+                  "Searching FSLv2, Pixeldrain, HubDrive, HubCloud...",
                   "Fetching direct download links...",
                   "Almost there - validating stream formats...",
                 ]}
-                emptyHint="Combined HDHub + WebStreamr sources - try another server."
+                emptyHint="Combined HDHub + WebStreamr sources — try another server."
               />
             ) : provider.id === "licensedanime" ? (
               <LicensedAnimeSources
