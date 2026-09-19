@@ -149,7 +149,11 @@ export async function GET(
   const diagStr = diag.join(" ");
 
   // Total outage -> lane error (200 + laneError, the client-lane convention:
-  // castle/moviesmod/nuvio do the same so HindiSources can show the message)
+  // castle/moviesmod/nuvio do the same so HindiSources can show the message).
+  // When the primary addon blocked US (the server), hand the browser the exact
+  // addon URL: hdhub.thevolecitor.qzz.io sends access-control-allow-origin: *,
+  // so the client can fetch it directly with the visitor's own IP and render
+  // the results itself (same proxy-first/direct-fallback idea as TMDB).
   if (!uniqueStreams.length) {
     const bothDown = !hdhubResult.ok && !webstreamrRes.ok;
     const noStreams =
@@ -161,6 +165,8 @@ export async function GET(
           laneError: "HDHub is unreachable right now — tap Retry to search again.",
           streams: [],
           diag: diagStr,
+          hdhubFailed: true,
+          fallbackUrl: hdhubUrl,
         },
         { headers: { "cache-control": "no-store" } }
       );

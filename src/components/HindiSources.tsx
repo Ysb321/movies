@@ -154,6 +154,86 @@ export default function HindiSources({
           if (!alive.current) return;
           if (typeof body.diag === "string" && body.diag)
             console.warn("[netmirror]", body.diag.slice(0, 400));
+          // HDHub lane only: the addon blocked OUR SERVER (e.g. Cloudflare 403
+          // on the datacenter IP). hdhub.thevolecitor.qzz.io sends
+          // access-control-allow-origin: *, so retry DIRECTLY from this
+          // browser — the visitor's own IP passes. Same proxy-first /
+          // direct-fallback idea as the TMDB lane. Other lanes don't send
+          // fallbackUrl and skip this entirely.
+          if (body.hdhubFailed === true && typeof body.fallbackUrl === "string" && body.fallbackUrl) {
+            try {
+              const fb = await fetch(body.fallbackUrl, {
+                signal: ctrl.signal,
+                headers: { accept: "application/json" },
+              });
+              const fdata = fb.ok ? await fb.json() : null;
+              const seen = new Set<string>();
+              const usable = (Array.isArray(fdata?.streams) ? fdata.streams : []).filter((s: any) => {
+                if (!s || !s.url || s.externalUrl || !s.name) return false;
+                if (String(s.name).includes("Donation") || String(s.name).includes("Discord")) return false;
+                if (seen.has(s.url)) return false;
+                seen.add(s.url);
+                return true;
+              });
+              if (alive.current && usable.length) {
+                console.info("[hdhub] server blocked by addon; browser-direct fallback ok");
+                setRows(
+                  usable.map((s: any, i: number) => {
+                    const desc = String(s.description || "");
+                    const nameStr = String(s.name || "");
+                    const linkType = desc.includes("FSLv2")
+                      ? "FSLv2"
+                      : desc.includes("FSL")
+                        ? "FSL"
+                        : /pixeldrain/i.test(desc)
+                          ? "Pixeldrain"
+                          : desc.includes("HubDrive")
+                            ? "HubDrive"
+                            : desc.includes("10Gbps")
+                              ? "10Gbps"
+                              : desc.includes("HubCloud")
+                                ? "HubCloud"
+                                : /4KHDHub/i.test(desc) || nameStr.includes("4KHDHub")
+                                  ? "4KHDHub"
+                                  : "Direct";
+                    const qm = nameStr.match(/(\d{3,4})p/i) || desc.match(/(\d{3,4})p/i);
+                    const quality = qm ? `${qm[1]}p` : "Auto";
+                    const size = (desc.match(/💾\s*([\d.]+\s*(?:GB|MB))/i) || [])[1] || "Unknown";
+                    const audioLang = /hindi/i.test(desc)
+                      ? "🇮🇳"
+                      : /tamil/i.test(desc)
+                        ? "🇹🇦"
+                        : /english/i.test(desc)
+                          ? "🇬🇧"
+                          : "";
+                    const source = [
+                      linkType,
+                      quality !== "Auto" ? quality : "",
+                      size !== "Unknown" ? size : "",
+                      audioLang,
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+                    return {
+                      key: `hdhub-fb-${i}`,
+                      quality,
+                      size,
+                      source,
+                      file: title,
+                      audio: audioLang,
+                      url: s.url,
+                      lang: langLabel(s.lang),
+                    };
+                  })
+                );
+                setStatus("ready");
+                return;
+              }
+            } catch {
+              /* addon unreachable from the browser too — fall through to the error */
+            }
+            if (!alive.current) return;
+          }
           setError(body.laneError.slice(0, 160));
           setStatus("error");
           return;
