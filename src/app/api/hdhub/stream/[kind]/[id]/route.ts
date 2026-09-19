@@ -1,42 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const HDHUB_MANIFEST =
-  "https://hdhub.thevolecitor.qzz.io/eyJ0b3Jyb3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9";
+  "https://hdhub.thevolecitor.qzz.io/eyJxdWFsaXRpZXMiOiIyMTYwcCwxMDgwcCw3MjBwLDQ4MHAiLCJzb3J0IjoiZGVzYyJ9";
 
 const WEBSTREAMR_ADDON = "https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club";
 const WEBSTREAMR_CONFIG = encodeURIComponent(
   JSON.stringify({ multi: "on", hi: "on", ta: "on", te: "on" })
 );
 
-/** HDHub + WebStreamr combined addon: FSLv2, Pixeldrain, HubCloud, 4KHDHub direct downloads
- *  with Hindi/English/Multi-Audio streams via Stremio protocol. Combines sources from both
- *  HDHub and WebStreamr for maximum content availability. Hindi audio preferred in streams
- *  (DDP 2.0 Hindi + English DDP 5.1). Returns playable stream URLs for movies and TV series.
- *  Accepts TMDB IDs (tmdb:123) or IMDb IDs (tt1234567). */
+/** HDHub + WebStreamr combined addon: FSLv2, Pixeldrain, HubDrive/HubCloud, 4KHDHub direct
+ *  downloads with Hindi/English/Multi-Audio streams via Stremio protocol. Combines sources
+ *  from both HDHub and WebStreamr for maximum content availability. Hindi audio preferred
+ *  in streams (DDP 2.0 Hindi + English DDP 5.1). Returns playable stream URLs for movies
+ *  and TV series. Accepts TMDB IDs (tmdb:123) or IMDb IDs (tt1234567).
+ *  Every link the addons return is shown — cloud page links (HubDrive/FSL zips) included;
+ *  the client decides play vs VLC per link, nothing is dropped here. */
 export const runtime = "edge";
 
 const okKind = (k: string) => k === "movie" || k === "series";
 const okId = (id: string) => /^(tmdb:\d+(:\d+:\d+)?|tt\d+(:\d+:\d+)?)$/.test(id);
 
-// Filter out non-playable links (zip files, attachements, etc.)
-const isPlayableUrl = (url: string) => {
-  // Allow cloudflare storage URLs (FSLv2, FSL, HubCloud)
-  if (url.includes(".cloudflarestorage.com") || url.includes("r2.cloudflarestorage.com")) {
-    // Filter out zip file attachments
-    return !url.includes("response-content-disposition=attachment") || 
-           url.includes(".mp4") || url.includes(".mkv") || url.includes(".mov") || url.includes(".m3u8");
-  }
-  // Allow direct download URLs (Pixeldrain, HubCloud direct)
-  if (url.includes("pixeldrain.dev/api/file") || url.includes("pixel.hubcloud.cx") || 
-      url.includes("gpdl.hubcloud.cx") || url.includes("gpdl2.hubcloud.cx")) {
-    return true;
-  }
-  // Allow other streaming URLs (HLS, DASH, etc.)
-  if (url.includes(".m3u8") || url.includes(".mpd") || url.includes(".mp4") || url.includes(".mkv")) {
-    return true;
-  }
-  return false;
-};
+/* Keep EVERY link the addons return: direct media (mp4/mkv/m3u8/dash),
+ * signed R2/FSL files and cloud page links (HubDrive/HubDrive pics/GDFlix
+ * file pages, pixeldrain.com shares). The client renders all rows and only
+ * hands the non-browser ones to VLC — dropping them here silently hid
+ * several 4K/REMUX results in the UI. Only truly empty urls are skipped. */
+const isPlayableUrl = (url: string) => !!url && /^https?:\/\//i.test(url);
 
 // Mark streams with their source
 const markSource = (streams: any[], source: string) => {
@@ -63,7 +52,8 @@ export async function GET(
     // Use IMDb ID if provided, otherwise use TMDB ID
     const streamId = imdbParam?.startsWith("tt") ? imdbParam : id;
     
-    // Fetch from both sources in parallel
+    // Fetch from both sources in parallel (HDHub is the primary lane; a
+    // WebStreamr outage alone must not fail the request)
     const [hdhubRes, webstreamrRes] = await Promise.allSettled([
       fetch(`${HDHUB_MANIFEST}/stream/${kind}/${streamId}.json`, {
         headers: { accept: "application/json" },
@@ -76,6 +66,7 @@ export async function GET(
     ]);
 
     let allStreams: any[] = [];
+    let hdhubFailed = false;
 
     // Process HDHub results
     if (hdhubRes.status === "fulfilled" && hdhubRes.value.ok) {
@@ -85,6 +76,10 @@ export async function GET(
                     !s.name.includes("Donation") && !s.name.includes("Discord")
       );
       allStreams.push(...markSource(hdhubStreams, "HDHub"));
+    } else {
+      hdhubFailed = true;
+      console.warn("[hdhub] primary addon unavailable:",
+        hdhubRes.status === "rejected" ? (hdhubRes.reason as Error)?.message : `HTTP ${hdhubRes.value.status}`);
     }
 
     // Process WebStreamr results
@@ -105,14 +100,21 @@ export async function GET(
     );
 
     // Prioritize: Hindi audio first, then by quality (descending), then by source (HDHub preferred)
+    if (!uniqueStreams.length && hdhubFailed) {
+      return NextResponse.json(
+        { laneError: "HDHub is unreachable right now — tap Retry to search again.", streams: [] },
+        { headers: { "cache-control": "no-store" } }
+      );
+    }
+
     const sortedStreams = uniqueStreams.sort((a: any, b: any) => {
       const aHindi = (a.description || "").toLowerCase().includes("hindi");
       const bHindi = (b.description || "").toLowerCase().includes("hindi");
       if (aHindi && !bHindi) return -1;
       if (!aHindi && bHindi) return 1;
       
-      const aQuality = extractQuality(a.name);
-      const bQuality = extractQuality(b.name);
+      const aQuality = extractQuality(a.name, a.description);
+      const bQuality = extractQuality(b.name, b.description);
       if (aQuality !== bQuality) return bQuality - aQuality;
       
       // Prefer HDHub over WebStreamr for same quality
@@ -134,9 +136,11 @@ export async function GET(
   }
 }
 
-/** Extract quality number from stream name (e.g. "2160p", "1080p", "720p", "480p") */
-function extractQuality(name: string): number {
-  const match = name.match(/(\d{3,4})p/i);
+/** Extract quality number from stream name or description
+ *  (e.g. "2160p", "1080p", "720p", "480p" — HDHub puts the real resolution
+ *  in the description, while names say "4KHDHub 4K" / "HdHub 2160p"). */
+function extractQuality(name: string, description?: string): number {
+  const match = (description || "").match(/(\d{3,4})p/i) || name.match(/(\d{3,4})p/i);
   if (match) return parseInt(match[1], 10);
   return 0;
 }

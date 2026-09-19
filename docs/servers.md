@@ -61,7 +61,7 @@ or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
 | 21 | scarper | vlcOnly multi-source lane (KMMovies/NetMirror/AnimeSalt, API key auth, requires self-hosting) |
 | 22 | embed2 | https://www.2embed.online/embed/movie|tv/{id} (Hindi-dubbed, 1080p, auto-updating links) |
 | 23 | videm | https://videm.xyz/embed/movie|tv/{id} (Hindi-dubbed, failover, quality & audio selection, subtitles) |
-| 24 | hdhub | HindiSources -> /api/hdhub/stream -> hdhub.thevolecitor.qzz.io Stremio addon (FSLv2/Pixeldrain/HubCloud/10Gbps, Hindi/English/Multi-Audio, 2160p/1080p/720p/480p) |
+| 24 | hdhub | HindiSources -> /api/hdhub/stream -> hdhub.thevolecitor.qzz.io Stremio addon (FSLv2/Pixeldrain/HubDrive/HubCloud/10Gbps, Hindi/English/Multi-Audio, 2160p/1080p/720p/480p) + WebStreamr; every addon link is shown, non-browser links hand off to VLC |
 
 Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
 CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,

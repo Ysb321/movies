@@ -709,8 +709,9 @@ export const PROVIDERS: EmbedProvider[] = [
   {
     /* Server 24 - HDHub (vlcOnly Hindi dubbed FSL/Pixeldrain lane - the watch
      * page renders HindiSources with endpoint=/api/hdhub/stream; stubs never
-     * called). Combined HDHub + WebStreamr addon: FSLv2, Pixeldrain, HubCloud,
-     * 4KHDHub, 10Gbps direct downloads with Hindi/English/Multi-Audio tracks.
+     * called). Combined HDHub + WebStreamr addon: FSLv2, Pixeldrain, HubDrive,
+     * HubCloud, 4KHDHub, 10Gbps direct downloads with Hindi/English/Multi-Audio
+     * tracks.
      * Fetches from both hdhub.thevolecitor.qzz.io and WebStreamr for maximum
      * content availability. 2160p/1080p/720p/480p available. Uses IMDB/TMDB IDs
      * via Stremio protocol. Hindi audio preferred in streams (DDP 2.0 Hindi +

@@ -174,8 +174,9 @@ export default function HindiSources({
           if (desc.includes("FSLv2")) linkType = "FSLv2";
           else if (desc.includes("FSL")) linkType = "FSL";
           else if (desc.includes("PixelDrain") || desc.includes("pixeldrain")) linkType = "Pixeldrain";
-          else if (desc.includes("HubCloud") || desc.includes("10Gbps")) linkType = "HubCloud";
+          else if (desc.includes("HubDrive")) linkType = "HubDrive";
           else if (desc.includes("10Gbps")) linkType = "10Gbps";
+          else if (desc.includes("HubCloud")) linkType = "HubCloud";
           else if (desc.includes("4KHDHub")) linkType = "4KHDHub";
           else if (nameStr.includes("4KHDHub")) linkType = "4KHDHub";
           else if (desc.includes("[HDHub]")) linkType = "HDHub";
