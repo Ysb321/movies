@@ -189,9 +189,10 @@ export default function HindiSources({
             sizeStr = `${sizeMatch[1]} ${sizeMatch[2]}`;
           }
           
-          // Extract quality from name or description
+          // Extract quality from name, falling back to the description (HDHub
+          // puts the real resolution there while names say "4KHDHub 4K")
           let quality = "Auto";
-          const qualityMatch = nameStr.match(/(\d{3,4})p/i);
+          const qualityMatch = nameStr.match(/(\d{3,4})p/i) || desc.match(/(\d{3,4})p/i);
           if (qualityMatch) {
             quality = qualityMatch[1] + "p";
           }
