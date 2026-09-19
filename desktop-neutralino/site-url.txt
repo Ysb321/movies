@@ -1,0 +1,2 @@
+REPLACE_WITH_YOUR_DEPLOYED_SITE_URL
+(then run: npm run build  inside desktop-neutralino/)

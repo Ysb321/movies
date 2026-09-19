@@ -1,0 +1,39 @@
+{
+  "name": "netout-clone",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "node scripts/serve.js",
+    "lint": "next lint",
+    "desktop:start": "cd desktop && npm install && npm run start",
+    "desktop:dist": "cd desktop && npm install && npm run dist",
+    "pages:build": "npm_config_legacy_peer_deps=true npx --yes @cloudflare/next-on-pages@1"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@vidstack/react": "^1.15.6",
+    "artplayer": "^5.4.0",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "clsx": "^2.1.1",
+    "dashjs": "^4.7.4",
+    "hls.js": "^1.7.2",
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-simple-pull-to-refresh": "^1.3.4",
+    "swr": "^2.3.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.9.3"
+  }
+}
