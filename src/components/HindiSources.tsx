@@ -42,6 +42,8 @@ type Props = {
   year?: string;
   /** IMDb ID (tt1234567), forwarded as &imdb= for title matching */
   imdbId?: string;
+  /** original-language title, forwarded as &ot= for title matching (M2Box) */
+  otTitle?: string;
   /** Server 24 presentation: sources open in a modern modal overlay instead of
    *  inline; page/generator links (HubCloud ?id=…) are resolved to direct files
    *  before VLC/download (VLC cannot play HTML pages); every row gets a
@@ -199,6 +201,7 @@ export default function HindiSources({
   hideSiteLink,
   year,
   imdbId,
+  otTitle,
   modal,
 }: Props) {
   const [status, setStatus] = useState<Status>("loading");
@@ -257,7 +260,7 @@ export default function HindiSources({
         const kind = type === "movie" ? "movie" : "series";
         const id = type === "movie" ? tmdbId : `${tmdbId}:${season}:${episode}`;
         const res = await fetch(
-          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}${year ? `&year=${encodeURIComponent(year)}` : ""}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}`,
+          `${endpoint || "/api/netmirror/stream"}/${kind}/${id}?title=${encodeURIComponent(title)}${year ? `&year=${encodeURIComponent(year)}` : ""}${imdbId ? `&imdb=${encodeURIComponent(imdbId)}` : ""}${otTitle ? `&ot=${encodeURIComponent(otTitle)}` : ""}`,
           { signal: ctrl.signal }
         );
         if (!alive.current) return;

@@ -412,6 +412,29 @@ function WatchContent() {
                 ]}
                 emptyHint="Nuvio covers Hindi and Hindi-dubbed titles - try a Server above, or check back later."
               />
+            ) : provider.id === "m2box" ? (
+              <HindiSources
+                key={`m2-${t}-${id}-${season}-${episode}`}
+                type={t}
+                tmdbId={String(id)}
+                title={title}
+                otTitle={d?.original_title || d?.original_name || ""}
+                year={(d?.release_date || d?.first_air_date || "").slice(0, 4)}
+                season={season}
+                episode={episode}
+                endpoint="/api/m2box/stream"
+                laneTitle="🎬 M2Box · Movies · Series · Anime"
+                resumeSuffix="site-m2"
+                hideSiteLink
+                modal
+                loadLines={[
+                  "Contacting M2Box sources...",
+                  "Matching the title in M2Box's catalog...",
+                  "Signing the stream urls...",
+                  "Almost there - validating formats...",
+                ]}
+                emptyHint="M2Box covers movies, series and anime — try another server, or check back later."
+              />
             ) : provider.id === "hdhub" ? (
               <HindiSources
                 key={`hd-${t}-${id}-${season}-${episode}`}
