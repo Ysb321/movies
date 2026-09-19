@@ -14,7 +14,10 @@ const WEBSTREAMR_CONFIG = encodeURIComponent(
  *  in streams (DDP 2.0 Hindi + English DDP 5.1). Returns playable stream URLs for movies
  *  and TV series. Accepts TMDB IDs (tmdb:123) or IMDb IDs (tt1234567).
  *  Every link the addons return is shown — cloud page links (HubDrive/FSL zips) included;
- *  the client decides play vs VLC per link, nothing is dropped here. */
+ *  the client decides play vs VLC per link, nothing is dropped here.
+ *  Reliability: browser-like UA (the addon host is Cloudflare-fronted and challenges
+ *  bare edge-fetch UAs), HDHub retried once on transient failure, and a `diag` string
+ *  on lane errors (castle/moviesmod/nuvio convention) so outages are debuggable. */
 export const runtime = "edge";
 
 const okKind = (k: string) => k === "movie" || k === "series";
@@ -36,6 +39,45 @@ const markSource = (streams: any[], source: string) => {
   }));
 };
 
+/* Some addon hosts (Cloudflare) challenge datacenter requests that carry the
+ * default runtime UA — send a normal browser UA + JSON accept instead. */
+const ADDON_HEADERS: Record<string, string> = {
+  accept: "application/json, */*",
+  "user-agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "accept-language": "en-US,en;q=0.9",
+};
+
+type AddonResult =
+  | { ok: true; streams: any[] }
+  | { ok: false; detail: string };
+
+/** Fetch a Stremio addon stream resource; resolves to a typed result instead of
+ *  throwing so the lane can degrade gracefully and report why. */
+async function fetchAddonStreams(
+  url: string,
+  timeoutMs: number
+): Promise<AddonResult> {
+  try {
+    const res = await fetch(url, {
+      headers: ADDON_HEADERS,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      return { ok: false, detail: `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    const streams = Array.isArray(data?.streams) ? data.streams : [];
+    return { ok: true, streams };
+  } catch (e) {
+    const err = e as Error;
+    const detail = err?.name === "TimeoutError" ? "timeout" : err?.message || "network error";
+    return { ok: false, detail };
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ kind: string; id: string }> }
@@ -48,92 +90,118 @@ export async function GET(
   const search = req.nextUrl.searchParams;
   const imdbParam = search.get("imdb") || undefined;
 
-  try {
-    // Use IMDb ID if provided, otherwise use TMDB ID
-    const streamId = imdbParam?.startsWith("tt") ? imdbParam : id;
-    
-    // Fetch from both sources in parallel (HDHub is the primary lane; a
-    // WebStreamr outage alone must not fail the request)
-    const [hdhubRes, webstreamrRes] = await Promise.allSettled([
-      fetch(`${HDHUB_MANIFEST}/stream/${kind}/${streamId}.json`, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(60000),
-      }),
-      fetch(`${WEBSTREAMR_ADDON}/${WEBSTREAMR_CONFIG}/stream/${kind}/${streamId}.json`, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(95000),
-      })
-    ]);
+  // Use IMDb ID if provided, otherwise use TMDB ID
+  const streamId = imdbParam?.startsWith("tt") ? imdbParam : id;
 
-    let allStreams: any[] = [];
-    let hdhubFailed = false;
+  // HDHub is the primary lane: try, and retry once on transient failure
+  // (cold starts / 52x / blips). WebStreamr is a bonus source — its failure
+  // must never fail the request. Worst-case server time ≈ 30s + 0.9s + 30s
+  // (retries) ≈ 61s, safely under the client's 90s abort.
+  const hdhubUrl = `${HDHUB_MANIFEST}/stream/${kind}/${streamId}.json`;
+  const webstreamrUrl = `${WEBSTREAMR_ADDON}/${WEBSTREAMR_CONFIG}/stream/${kind}/${streamId}.json`;
 
-    // Process HDHub results
-    if (hdhubRes.status === "fulfilled" && hdhubRes.value.ok) {
-      const hdhubData = await hdhubRes.value.json();
-      const hdhubStreams = (hdhubData.streams || []).filter(
-        (s: any) => s.url && !s.externalUrl && s.name && 
-                    !s.name.includes("Donation") && !s.name.includes("Discord")
-      );
-      allStreams.push(...markSource(hdhubStreams, "HDHub"));
-    } else {
-      hdhubFailed = true;
-      console.warn("[hdhub] primary addon unavailable:",
-        hdhubRes.status === "rejected" ? (hdhubRes.reason as Error)?.message : `HTTP ${hdhubRes.value.status}`);
-    }
+  const [hdhubFirst, webstreamrRes] = await Promise.all([
+    fetchAddonStreams(hdhubUrl, 30000),
+    fetchAddonStreams(webstreamrUrl, 60000),
+  ]);
 
-    // Process WebStreamr results
-    if (webstreamrRes.status === "fulfilled" && webstreamrRes.value.ok) {
-      const webstreamrData = await webstreamrRes.value.json();
-      const webstreamrStreams = (webstreamrData.streams || []).filter(
-        (s: any) => s.url && !s.externalUrl && s.name
-      );
-      allStreams.push(...markSource(webstreamrStreams, "WebStreamr"));
-    }
+  let hdhubResult = hdhubFirst;
+  if (!hdhubResult.ok) {
+    console.warn("[hdhub] primary addon failed, retrying once:", hdhubResult.detail);
+    await sleep(900);
+    hdhubResult = await fetchAddonStreams(hdhubUrl, 30000);
+  }
 
-    // Filter out non-playable URLs (zip files, attachments)
-    const playableStreams = allStreams.filter((s: any) => isPlayableUrl(s.url));
+  let allStreams: any[] = [];
+  const diag: string[] = [];
 
-    // Remove duplicates based on URL
-    const uniqueStreams = playableStreams.filter((stream, index, self) =>
-      index === self.findIndex((s) => s.url === stream.url)
+  // Process HDHub results
+  if (hdhubResult.ok) {
+    const hdhubStreams = hdhubResult.streams.filter(
+      (s: any) => s.url && !s.externalUrl && s.name &&
+                  !s.name.includes("Donation") && !s.name.includes("Discord")
     );
+    allStreams.push(...markSource(hdhubStreams, "HDHub"));
+    diag.push(`hdhub:${hdhubStreams.length}`);
+  } else {
+    diag.push(`hdhub:FAIL(${hdhubResult.detail})`);
+  }
 
-    // Prioritize: Hindi audio first, then by quality (descending), then by source (HDHub preferred)
-    if (!uniqueStreams.length && hdhubFailed) {
+  // Process WebStreamr results
+  if (webstreamrRes.ok) {
+    const webstreamrStreams = webstreamrRes.streams.filter(
+      (s: any) => s.url && !s.externalUrl && s.name
+    );
+    allStreams.push(...markSource(webstreamrStreams, "WebStreamr"));
+    diag.push(`ws:${webstreamrStreams.length}`);
+  } else {
+    diag.push(`ws:FAIL(${webstreamrRes.detail})`);
+  }
+
+  // Filter out non-playable URLs (zip files, attachments)
+  const playableStreams = allStreams.filter((s: any) => isPlayableUrl(s.url));
+
+  // Remove duplicates based on URL
+  const uniqueStreams = playableStreams.filter((stream, index, self) =>
+    index === self.findIndex((s) => s.url === stream.url)
+  );
+
+  const diagStr = diag.join(" ");
+
+  // Total outage -> lane error (200 + laneError, the client-lane convention:
+  // castle/moviesmod/nuvio do the same so HindiSources can show the message)
+  if (!uniqueStreams.length) {
+    const bothDown = !hdhubResult.ok && !webstreamrRes.ok;
+    const noStreams =
+      hdhubResult.ok && hdhubResult.streams.length === 0 &&
+      webstreamrRes.ok && webstreamrRes.streams.length === 0;
+    if (bothDown) {
       return NextResponse.json(
-        { laneError: "HDHub is unreachable right now — tap Retry to search again.", streams: [] },
+        {
+          laneError: "HDHub is unreachable right now — tap Retry to search again.",
+          streams: [],
+          diag: diagStr,
+        },
         { headers: { "cache-control": "no-store" } }
       );
     }
-
-    const sortedStreams = uniqueStreams.sort((a: any, b: any) => {
-      const aHindi = (a.description || "").toLowerCase().includes("hindi");
-      const bHindi = (b.description || "").toLowerCase().includes("hindi");
-      if (aHindi && !bHindi) return -1;
-      if (!aHindi && bHindi) return 1;
-      
-      const aQuality = extractQuality(a.name, a.description);
-      const bQuality = extractQuality(b.name, b.description);
-      if (aQuality !== bQuality) return bQuality - aQuality;
-      
-      // Prefer HDHub over WebStreamr for same quality
-      const aHdhub = a._source === "HDHub";
-      const bHdhub = b._source === "HDHub";
-      if (aHdhub && !bHdhub) return -1;
-      if (!aHdhub && bHdhub) return 1;
-      
-      return 0;
-    });
-
-    return NextResponse.json({ streams: sortedStreams }, { headers: { "cache-control": "no-store" } });
-  } catch (e) {
-    const timeout = !!e && (e as Error).name === "TimeoutError";
+    if (noStreams) {
+      return NextResponse.json(
+        { noSource: true, streams: [], diag: diagStr },
+        { headers: { "cache-control": "no-store" } }
+      );
+    }
+    // One source up but returned nothing usable — still empty, but keep diag
     return NextResponse.json(
-      { error: timeout ? "addon_timeout" : "addon_unreachable", streams: [] },
-      { status: 504 }
+      { noSource: true, streams: [], diag: diagStr },
+      { headers: { "cache-control": "no-store" } }
     );
   }
+
+  // Prioritize: Hindi audio first, then by quality (descending), then by source (HDHub preferred)
+  const sortedStreams = uniqueStreams.sort((a: any, b: any) => {
+    const aHindi = (a.description || "").toLowerCase().includes("hindi");
+    const bHindi = (b.description || "").toLowerCase().includes("hindi");
+    if (aHindi && !bHindi) return -1;
+    if (!aHindi && bHindi) return 1;
+
+    const aQuality = extractQuality(a.name, a.description);
+    const bQuality = extractQuality(b.name, b.description);
+    if (aQuality !== bQuality) return bQuality - aQuality;
+
+    // Prefer HDHub over WebStreamr for same quality
+    const aHdhub = a._source === "HDHub";
+    const bHdhub = b._source === "HDHub";
+    if (aHdhub && !bHdhub) return -1;
+    if (!aHdhub && bHdhub) return 1;
+
+    return 0;
+  });
+
+  return NextResponse.json(
+    { streams: sortedStreams, diag: diagStr },
+    { headers: { "cache-control": "no-store" } }
+  );
 }
 
 /** Extract quality number from stream name or description
