@@ -24,7 +24,10 @@
  * their public sitemaps (~355k movie slugs on the sibling themoviebox.org)
  * plus the paginated SSR TV/anime list pages and the home/trending
  * catalogs, then match the TMDB title against detailPath slugs (normalized)
- * with year verification from the detail payload's releaseDate. */
+ * with year verification from the detail payload's releaseDate. The index
+ * is two-phase (featured rows first, full sitemaps only when needed) and
+ * persisted to the runtime Cache API on Cloudflare, so cold isolates skip
+ * the crawl (and its subrequest budget) entirely. */
 
 /* ── edge-safe MD5 ─────────────────────────────────────────────────────
  * The client token needs md5(reversed-unix-seconds). Web Crypto has no
@@ -160,16 +163,48 @@ export async function fetchJson(url: string, headers: Record<string, string>, ti
   }
 }
 
+/* ── keyword search (SSR page) ─────────────────────────────────────────
+ * m2box renders /web/searchResult?keyword=... server-side with /detail/{slug}
+ * links for BOTH movies and TV. Fresh (unlike the sitemap dump, which is
+ * full of stale slugs) and 1 subrequest — the cheapest reliable matcher.
+ * Results are cached briefly so multi-episode taps don't refetch. */
+const searchCache = new Map<string, { at: number; slugs: string[] }>();
+const SEARCH_TTL = 10 * 60 * 1000;
+const SEARCH_HREF = /href="[^"]*\/detail\/([a-zA-Z0-9-]+)"/g;
+
+export async function searchSlugs(keyword: string, diag: string[]): Promise<string[]> {
+  const key = words(keyword);
+  if (!key) return [];
+  const hit = searchCache.get(key);
+  if (hit && Date.now() - hit.at < SEARCH_TTL) return hit.slugs;
+  const html = await fetchText(`${SITE}/web/searchResult?keyword=${encodeURIComponent(key)}`, {
+    accept: "text/html,*/*",
+    "user-agent": UA,
+    "accept-language": "en-US,en;q=0.9",
+  }, 15000);
+  if (!html) {
+    diag.push("search:fail");
+    return hit ? hit.slugs : [];
+  }
+  const slugs: string[] = [];
+  for (const m of html.matchAll(SEARCH_HREF)) {
+    if (!slugs.includes(m[1])) slugs.push(m[1]);
+    if (slugs.length >= 12) break;
+  }
+  diag.push(`search:${slugs.length}`);
+  searchCache.set(key, { at: Date.now(), slugs });
+  return slugs;
+}
+
 /* ── title index (full catalog via the public sitemaps) ────────────── */
 
-/* slug -> parsed title words (built lazily, then cached process-wide:
- * all 71 sub-sitemaps (~355k rows) are loaded once in batches; the catalog
- * barely changes between deploys. Slugs like "inception-russian-40v6bCfWC6"
- * end with a random 8-12 char token; language markers (russian/hindi...)
- * stay part of the title text. */
+/* slug -> parsed title words (built lazily, then cached process-wide and
+ * persisted across isolates via the runtime Cache API; the catalog barely
+ * changes between deploys. Slugs like "inception-russian-40v6bCfWC6" end
+ * with a random 8-12 char token; language markers (russian/hindi...) stay
+ * part of the title text. */
 const SUFFIX = /-[a-zA-Z0-9]{8,12}$/;
 export const slugIndex = new Map<string, string>(); // slug -> normalized title words
-let indexPromise: Promise<void> | null = null;
 
 /* TV + anime have no sitemap; the site's SSR list pages carry /detail/{slug}
  * links and DO paginate (?page=N, ~15 pages each). Crawled alongside the
@@ -178,27 +213,100 @@ const LIST_PAGES = ["/web/tv-series", "/web/animated-series"];
 const LIST_PAGES_DEPTH = 16;
 const DETAIL_HREF = /\/detail\/([a-z0-9-]+-[a-zA-Z0-9]{8,12})/g;
 
-export function loadSitemapIndex(diag: string[]): Promise<void> {
-  if (indexPromise) return indexPromise;
-  indexPromise = (async () => {
-    const h = m2boxHeaders();
-    const idx = await fetchText(SITEMAP_INDEX, h);
-    const subs = (idx ? idx.match(/<loc>([^<]+)<\/loc>/g) : null) || [];
-    if (!subs.length) {
-      diag.push("sitemap:index-fail");
-      return;
+/* best-effort persistence across isolates: the runtime Cache API exists on
+ * Cloudflare workers (zero config) but not in Node dev — every touch is
+ * guarded and failure is non-fatal. Cloudflare's free plan caps an
+ * invocation at 50 subrequests, so persisting the catalog is what lets a
+ * cold isolate serve a request that would otherwise need ~120 fetches. */
+const SNAPSHOT_URL = "https://m2box-index.internal/slug-index-v1.json";
+const cacheBucket = (): any => {
+  try {
+    return (globalThis as any).caches?.default ?? null;
+  } catch {
+    return null;
+  }
+};
+
+let smallPromise: Promise<void> | null = null;
+let fullPromise: Promise<void> | null = null;
+let fullReady = false;
+
+/* restore a previously saved catalog snapshot (whole index in one cache
+ * read instead of the crawl) */
+export async function restoreIndexSnapshot(diag: string[]): Promise<boolean> {
+  try {
+    const bucket = cacheBucket();
+    if (!bucket) return false;
+    const hit = await bucket.match(SNAPSHOT_URL);
+    if (!hit) return false;
+    const entries = JSON.parse(await hit.text()) as [string, string][];
+    if (!Array.isArray(entries) || !entries.length) return false;
+    for (const [slug, w] of entries) if (!slugIndex.has(slug)) slugIndex.set(slug, w);
+    diag.push(`snapshot:${slugIndex.size}`);
+    fullReady = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* persist whatever catalog is loaded (even a partial one) */
+export async function saveIndexSnapshot(diag: string[]): Promise<void> {
+  try {
+    const bucket = cacheBucket();
+    if (!bucket || slugIndex.size < 1000) return;
+    const body = JSON.stringify(Array.from(slugIndex.entries()));
+    await bucket.put(
+      SNAPSHOT_URL,
+      new Response(body, { headers: { "cache-control": "public, max-age=604800" } })
+    );
+    diag.push("saved");
+  } catch {
+    diag.push("save-fail");
+  }
+}
+
+/* cheap phase: home + trending catalogs — only ~400 rows but they carry the
+ * currently featured movies AND TV/anime (which the movie sitemaps lack),
+ * in 2 upstream calls */
+async function buildSmall(diag: string[]): Promise<void> {
+  const h = m2boxHeaders();
+  const take = (list: any[]) => {
+    for (const item of list || []) {
+      const s = item?.subject || item;
+      const path = s?.detailPath || s?.detailPathName;
+      if (!path || slugIndex.has(path)) continue;
+      slugIndex.set(path, words(path.replace(SUFFIX, "").replace(/-/g, " ")));
     }
-    /* all subs, 10 concurrent: ~355k rows land in ~10-15s once per process,
-     * then every request is a local map scan */
+  };
+  const home = await fetchJson(`${SITE}/wefeed-h5api-bff/home?host=m2box.org`, h);
+  if (home?.code === 0) {
+    for (const section of home?.data?.operatingList || []) {
+      if (Array.isArray(section?.subjects)) take(section.subjects);
+      if (Array.isArray(section?.banner?.items)) take(section.banner.items);
+    }
+  }
+  const trend = await fetchJson(
+    `${SITE}/wefeed-h5api-bff/subject/trending?page=1&perPage=36`,
+    h
+  );
+  if (trend?.code === 0) take(trend?.data?.items || trend?.data?.subjects || []);
+  diag.push(`small:${slugIndex.size}`);
+}
+
+/* full phase: all 71 movie sub-sitemaps (~355k rows, 10 concurrent: lands
+ * in ~10-15s once, then every request is a local map scan) plus the
+ * paginated TV/anime list pages into the same slug index */
+async function buildFull(diag: string[]): Promise<void> {
+  const h = m2boxHeaders();
+  const idx = await fetchText(SITEMAP_INDEX, h);
+  const subs = (idx ? idx.match(/<loc>([^<]+)<\/loc>/g) : null) || [];
+  if (subs.length) {
     const picked = subs.map((l) => l.replace(/<\/?loc>/g, ""));
     const re = /<loc>([^<]+)<\/loc>/g;
     for (let i = 0; i < picked.length; i += 10) {
-      const batch = picked.slice(i, i + 10);
       const parts = await Promise.all(
-        batch.map(async (u) => {
-          const xml = await fetchText(u, h, 20000);
-          return xml || "";
-        })
+        picked.slice(i, i + 10).map(async (u) => (await fetchText(u, h, 20000)) || "")
       );
       for (const xml of parts) {
         for (const m of xml.matchAll(re)) {
@@ -208,59 +316,65 @@ export function loadSitemapIndex(diag: string[]): Promise<void> {
         }
       }
     }
-    diag.push(`sitemap:${slugIndex.size}`);
+  } else {
+    diag.push("sitemap:index-fail");
+  }
+  diag.push(`sitemap:${slugIndex.size}`);
 
-    /* home + trending catalogs: only ~400 rows but they carry the currently
-     * featured TV/anime (which the movie sitemaps lack) */
-    const take = (list: any[]) => {
-      for (const item of list || []) {
-        const s = item?.subject || item;
-        const path = s?.detailPath || s?.detailPathName;
-        if (!path || slugIndex.has(path)) continue;
-        slugIndex.set(path, words(path.replace(SUFFIX, "").replace(/-/g, " ")));
-      }
-    };
-    const home = await fetchJson(`${SITE}/wefeed-h5api-bff/home?host=m2box.org`, h);
-    if (home?.code === 0) {
-      for (const section of home?.data?.operatingList || []) {
-        if (Array.isArray(section?.subjects)) take(section.subjects);
-        if (Array.isArray(section?.banner?.items)) take(section.banner.items);
-      }
+  const addSlugs = (html: string) => {
+    for (const m of html.matchAll(DETAIL_HREF)) {
+      const slug = m[1];
+      if (!slugIndex.has(slug))
+        slugIndex.set(slug, words(slug.replace(SUFFIX, "").replace(/-/g, " ")));
     }
-    const trend = await fetchJson(
-      `${SITE}/wefeed-h5api-bff/subject/trending?page=1&perPage=36`,
-      h
-    );
-    if (trend?.code === 0) take(trend?.data?.items || trend?.data?.subjects || []);
+  };
+  for (const base of LIST_PAGES) {
+    for (let i = 0; i < LIST_PAGES_DEPTH; i += 4) {
+      const pages = await Promise.all(
+        [0, 1, 2, 3].map(async (k) => {
+          const html = await fetchText(`${SITE}${base}?page=${i + k + 1}`, h, 15000);
+          return html || "";
+        })
+      );
+      const before = slugIndex.size;
+      for (const html of pages) addSlugs(html);
+      if (slugIndex.size === before) break; // past the last page
+    }
+  }
+  diag.push(`total:${slugIndex.size}`);
+}
 
-    /* TV + anime list pages (paginated SSR) into the same index */
-    const addSlugs = (html: string) => {
-      for (const m of html.matchAll(DETAIL_HREF)) {
-        const slug = m[1];
-        if (!slugIndex.has(slug))
-          slugIndex.set(slug, words(slug.replace(SUFFIX, "").replace(/-/g, " ")));
-      }
-    };
-    for (const base of LIST_PAGES) {
-      for (let i = 0; i < LIST_PAGES_DEPTH; i += 4) {
-        const pages = await Promise.all(
-          [0, 1, 2, 3].map(async (k) => {
-            const p = i + k + 1;
-            const html = await fetchText(`${SITE}${base}?page=${p}`, h, 15000);
-            return html || "";
-          })
-        );
-        const before = slugIndex.size;
-        for (const html of pages) addSlugs(html);
-        if (slugIndex.size === before) break; // past the last page
-      }
+/* Build (or restore) the title index. `full: false` is the cheap path every
+ * request starts with; `full: true` pulls the whole catalog and persists a
+ * snapshot so later cold isolates skip the crawl entirely. */
+export async function ensureIndex(diag: string[], full: boolean): Promise<void> {
+  if (fullReady) return;
+  if (!full) {
+    if (!smallPromise) {
+      smallPromise = (async () => {
+        if (slugIndex.size) return;
+        if (await restoreIndexSnapshot(diag)) return;
+        await buildSmall(diag);
+      })().catch(() => {
+        smallPromise = null; // allow a retry on the next request
+        diag.push("small:error");
+      });
     }
-    diag.push(`total:${slugIndex.size}`);
-  })().catch(() => {
-    indexPromise = null; // allow a retry on the next request
-    diag.push("sitemap:error");
-  });
-  return indexPromise;
+    await smallPromise;
+    return;
+  }
+  if (!fullPromise) {
+    fullPromise = (async () => {
+      if (await restoreIndexSnapshot(diag)) return; // sets fullReady itself
+      await buildFull(diag); // small rows already in the map simply dedupe
+      fullReady = true;
+      await Promise.race([saveIndexSnapshot(diag), new Promise((r) => setTimeout(r, 5000))]);
+    })().catch(() => {
+      fullPromise = null; // allow a retry on the next request
+      diag.push("index:error");
+    });
+  }
+  await fullPromise;
 }
 
 export const norm = (s: string) =>
