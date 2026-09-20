@@ -1,0 +1,69 @@
+{
+  "name": "yetflix-desktop",
+  "productName": "Yetflix",
+  "version": "1.0.0",
+  "description": "Yetflix by Yashraj — Netflix-style streaming desktop app",
+  "author": "Yashraj",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "site": "node scripts/prepare.js",
+    "start": "npm run site && electron .",
+    "dist": "npm run site && electron-builder --win",
+    "dist:portable": "npm run site && electron-builder --win portable",
+    "dist:all": "npm run site && electron-builder -mwl",
+    "dist:simple": "npm run site && npx electron-packager . Yetflix --platform=win --arch=x64 --icon=build/icon.ico --overwrite --out=dist-simple --ignore=\"^/?dist\" --ignore=\"^/?dist-simple\" --ignore=\"^/?scripts\" --ignore=\"site-url.txt\"",
+    "portable": "npm run site && node scripts/portable.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.yashraj.yetflix",
+    "productName": "Yetflix",
+    "directories": {
+      "app": ".",
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "protocols": [
+      {
+        "name": "Yetflix VLC bridge",
+        "schemes": ["yetflix-vlc"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "artifactName": "Yetflix-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "Yetflix-Portable-${version}.exe"
+    },
+    "asarUnpack": [
+      "app/**/*"
+    ]
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.18.2"
+  }
+}

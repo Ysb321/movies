@@ -1,0 +1,68 @@
+# Server map: pill -> source
+
+Pills render in `PROVIDERS` order (`Server N` = Nth visible pill).
+17 pills on movies/TV. Anime titles add two more: megaplay ("Anime 1")
+and licensedanime ("Anime 2 · Official"). Default server: VidOut
+(pill 7, `useState("netout")`). Brand names never display - pills only,
+except the licensed lane which names the licensor on purpose
+(attribution is the point of that lane).
+
+2026-09-09 prune: pills past 11 removed (free embeds 12-20 +
+NetMirror Direct/Playlists 21-22). Their code stays in-tree
+(HindiSources `playerVariant`/`endpoint` props, /api/netmirror/native,
+/api/netmirror/hls, docs/netmirror.md) - re-append PROVIDERS entries
+to restore a pill.
+
+## Iframe servers (their player, framed)
+
+| Pill | id | Upstream |
+| --- | --- | --- |
+| 1 | vidzee | player.vidzee.wtf/embed/movie/{tmdb}, /embed/tv/{tmdb}/{s}/{e} |
+| 2 | cinesrc | cinesrc.st/embed/movie/{tmdb}, /embed/tv/{tmdb}?s=&e= (resume `?t=`) |
+| 3 | peachify | peachify.top/embed/... (unsandboxed, `?startAt=` resume, autoNext) |
+| 4 | bingr | bingr.one/watch/... (FilmU engine: FilmU/Videasy/Cinezo/Vidbolt/Vidrift; unsandboxed, fullscreen required) |
+| 5 | pvrplay | pvrplay.online/watch/... (full site, noScroll) |
+| 6 | vidbolt | vidbolt.xyz/movie\|tv/... (multi-audio incl. Hindi; postMessage resume; unsandboxed) |
+| 7 | netout | vidout.pages.dev (VidOut bare player, DEFAULT; multi-audio HI/TA/TE/KA/EN, Skip Intro; unsandboxed + noScroll) |
+| Anime 1 | megaplay | megaplay.buzz/stream/ani/{anilistId}/{ep}/sub (anime-only pill; AniList id via GraphQL title search; unsandboxed) |
+
+Armor: default popup-killing sandbox; unsandboxed + popups-revoked for
+peachify/bingr/vidbolt/netout/multimovies/megaplay (anti-sandbox
+players). Resume via `?startParam` (cinesrc/peachify) + postMessage
+time events (PLAYER_HOSTS allowlist in player.ts).
+
+## Server 8: MultiMovies sub-players (their players, as-is, picker row)
+
+Cineverse (movies-only, slug-keyed: cineverse.modiplay.xyz/embed/{slug}),
+GDMirror (streams.iqsmartgames.com/embed + fixed site key = their
+"Recommended" library file view), Nxsha (web.nxsha.app/embed),
+screenscape (screenscape.me/embed?tmdb=&type=, Hindi default), Multiverse
+(multiverse.modiplay.xyz/embed/{tmdb}|/embed/tv/..., TMDB-keyed),
+Vidout (vidout.pages.dev). Never cineverse.pages.dev (unrelated demo)
+or multiverse.pages.dev (dead 500) or /embed/{slug} on Multiverse
+(static demo shell).
+
+## API lanes (our player, no iframe - vlcOnly)
+
+| Pill | id | Component -> route -> upstream |
+| --- | --- | --- |
+| 9 | webstreamr | VlcSources -> /api/webstreamr -> self-hosted WebStreamrMBG Stremio addon, India-first config (multi+hi+ta+te): 4KHDHub/HDHub4u/MovieBox/VidSrc/VidZee/VixSrc + HubCloud/GDFlix/... extractors; in-player audio changer; VLC handoff |
+| 10 | netmirror | HindiSources -> /api/netmirror/stream -> net27.cc embed-tmdb (signed mp4 360-1080p + captions) + NewTV fan-out (mobiledetect* discovery -> player.php M3U8; 403-gated from Pages); :site-nm resume; Hindi subs default |
+| 11 | desiddl | DdlSources -> /api/desiddl -> VegaMovies (new2.vegamovies.futbol) + MoviesDrive (new3.moviesdrive.christmas) + HDMovie2 (newhdmovie2.best -> hdm.im -> GDFlix); hub links (G-Direct/fastdl, V-Cloud, HubCloud, GDFlix) embedded, user generates -> auto-plays; :site-dd resume |
+| 12 | castle | HindiSources -> /api/castle/stream -> CastleTV app backend (api.hlowb.com, IndiaA): AES search/details/getVideo2, Hindi track + 1 fallback, 1080p/720p/480p + subs; :site-cs resume; playback step un-triaged live (site down), diag-driven; in-player lang switch (position-preserving) |
+| 13 | moviesmod | HindiSources -> /api/moviesmod/stream -> moviesmod.zone Dual/Multi Audio Hindi posts (480p-2160p, movies + series): search -> post -> modpro/modrefer -> cloud SID bypass (CSX ?go= flow) -> driveseed file page -> Instant/Worker/Direct/Resume finals; :site-mm resume; CF 50-subrequest budget build (mm5) |
+| 14 | autoplay | AutoSources -> /api/webstreamr (addon search) -> zero-tap: ranked rows auto-resolve + play best in SmartPlayer (ArtPlayer + hls.js + dash.js: HLS/DASH/progressive, quality/audio/server/subtitle selectors, VLC + Download), auto-advance on dead links; :site-auto resume |
+| 15 | nuvio | HindiSources -> /api/nuvio/stream -> XDMovies (search API + tmdb_id match -> HubCloud FSL/S3/10Gbps, HubCDN HLS, Pixeldrain, StreamTape) + HindMoviez (title search -> maxbutton/get-links/a.btn -> full extractor); movies + series; :site-nv resume |
+| 16 | movierulz | https://slast430did.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; framing open, no referer gate; prefersImdb; ad armor: no downloads/popups/referrer) |
+| 17 | laika | https://laika422mon.com/play/{imdb} iframed (IMDb-keyed, movies + TV same url, in-player S/E + Hindi audio; same IndStream family as 16; prefersImdb; ad armor: no downloads/popups/referrer) |
+| 18 | licensedanime | LicensedAnimeSources -> /api/licensedanime/stream -> the LICENSORS' OWN YouTube channels (Muse Asia / Ani-One Asia / Gundam Channel INTL): title+episode match -> youtube-nocookie embed, so plays count for the rightsholder. Anime-only pill; Data API when YOUTUBE_API_KEY is set, channel-search HTML otherwise; extend via LICENSED_ANIME_CHANNELS. Catalogue is per-title + territorial, so misses show an explicit empty state. Full map: docs/licensed-anime.md |
+| 19 | streamflizo | https://streamflizoapi.top/stream/tmdb/{tmdb}/multi (anime-only pill; TMDB-native anime streaming API with multi-audio support (sub/dub/multi)) |
+| 20 | 8stream | vlcOnly Hindi/regional lane (self-hosted API, 2-step resolution: mediaInfo → getStream, requires backend deployment) |
+| 21 | scarper | vlcOnly multi-source lane (KMMovies/NetMirror/AnimeSalt, API key auth, requires self-hosting) |
+| 22 | embed2 | https://www.2embed.online/embed/movie|tv/{id} (Hindi-dubbed, 1080p, auto-updating links) |
+| 23 | videm | https://videm.xyz/embed/movie|tv/{id} (Hindi-dubbed, failover, quality & audio selection, subtitles) |
+| 24 | hdhub | HindiSources -> /api/hdhub/stream -> hdhub.thevolecitor.qzz.io Stremio addon (FSLv2/Pixeldrain/HubDrive/HubCloud/10Gbps, Hindi/English/Multi-Audio, 2160p/1080p/720p/480p) + WebStreamr; every addon link is shown, non-browser links hand off to VLC |
+
+Subs proxy (/api/netmirror/sub): net27 + subscdn.top (+subs) + MovieBox
+CDN. Details per lane: docs/netmirror.md, docs/webstreamr.md,
+docs/hub-embed.md.
