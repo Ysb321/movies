@@ -15,6 +15,8 @@ import {
  * the watch page renders HindiSources with endpoint=/api/m2box/stream.
  * Protocol + title-matching details live in @/lib/m2boxCore. */
 
+export const runtime = "edge"; // required by Cloudflare Pages (next-on-pages), like every lane
+
 const json = (body: object, status = 200) =>
   NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
 
